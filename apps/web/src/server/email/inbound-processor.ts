@@ -95,17 +95,55 @@ export async function processInboundEmail(
     };
   }
 
+function extractEmail(str: string): string {
+  const match = str.match(/<([^>]+)>/);
+  return (match && match[1] ? match[1] : str).trim().toLowerCase();
+}
+
+function cleanSubject(sub: string): string {
+  return sub
+    .replace(/^(?:re|fwd):\s*/gi, "")
+    .replace(/\[ref:\s*#(?:th|qt)_\w+\]/gi, "")
+    .replace(/\s*-\s*sizing\s+information\s+needed/gi, "")
+    .replace(/\s*-\s*sizing\s+&\s+custom\s+pricing\s+notice/gi, "")
+    .replace(/\s*-\s*ref\s+#\w+/gi, "")
+    .replace(/^(?:re|fwd):\s*/gi, "")
+    .trim()
+    .toLowerCase();
+}
+
+function stripQuotedEmail(text: string): string {
+  const lines = text.split("\n");
+  const result: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (
+      trimmed.startsWith(">") ||
+      /^on\s+.*wrote:$/i.test(trimmed) ||
+      /^-----original message-----/i.test(trimmed) ||
+      /^(?:from|sent|to|subject):\s+/i.test(trimmed)
+    ) {
+      break;
+    }
+    result.push(line);
+  }
+  const clean = result.join("\n").trim();
+  return clean.length > 0 ? clean : text;
+}
+
   // 3. Thread Resolution (Link reply to existing thread or create a new one)
   const isReply =
     lowerSubject.startsWith("re:") ||
     lowerSubject.startsWith("fwd:") ||
-    lowerSubject.includes("re: ");
+    lowerSubject.includes("re: ") ||
+    lowerSubject.includes("[ref:");
 
+  const normalizedSender = extractEmail(payload.from);
   let thread: EmailThread | undefined;
 
   // Check for explicit Thread or Quote Ref in subject or body
-  const threadRefMatch = (payload.subject + "\n" + payload.text).match(/#(th_\d+)/i);
-  const quoteRefMatch = (payload.subject + "\n" + payload.text).match(/#(qt_\d+)/i);
+  const threadRefMatch = (payload.subject + "\n" + payload.text).match(/#(th_\w+)/i);
+  const quoteRefMatch = (payload.subject + "\n" + payload.text).match(/#(qt_\w+)/i);
 
   if (threadRefMatch && threadRefMatch[1]) {
     thread = store.getThread(threadRefMatch[1]);
@@ -116,23 +154,22 @@ export async function processInboundEmail(
     }
   }
 
-  if (!thread) {
-    // Find active thread matching this sender that is awaiting reply
-    const openThread = store
-      .getThreads()
-      .find((t) => t.senderEmail.toLowerCase() === senderEmail && t.status === "awaiting_reply");
+  // If not found by explicit ref, match active thread for this sender only if this is a reply
+  if (!thread && isReply) {
+    const openThread = store.getActiveThreadBySender(normalizedSender);
     if (openThread) {
       thread = openThread;
-    } else if (isReply) {
-      // Clean subject prefix and match existing thread
-      const cleanSubject = payload.subject.replace(/^(?:re|fwd):\s*/i, "").trim().toLowerCase();
-      const subjectMatch = store
-        .getThreads()
-        .find(
-          (t) =>
-            t.senderEmail.toLowerCase() === senderEmail &&
-            t.subject.replace(/^(?:re|fwd):\s*/i, "").trim().toLowerCase() === cleanSubject
+    } else {
+      // Fuzzy match subject for this sender
+      const targetClean = cleanSubject(payload.subject);
+      const subjectMatch = store.getThreads().find((t) => {
+        const tSender = extractEmail(t.senderEmail);
+        const tClean = cleanSubject(t.subject);
+        return (
+          tSender === normalizedSender &&
+          (tClean === targetClean || tClean.includes(targetClean) || targetClean.includes(tClean))
         );
+      });
       if (subjectMatch) {
         thread = subjectMatch;
       }
@@ -189,11 +226,12 @@ export async function processInboundEmail(
   });
 
   // 5. Requirement Extraction & Multi-Turn Merging
+  const cleanReplyText = stripQuotedEmail(payload.text);
   const existingProfile = store.getProfile(thread.id);
   const extraction = existingProfile
     ? mergeRequirements({
         existingProfile,
-        replyText: payload.text,
+        replyText: cleanReplyText,
         senderEmail: payload.from,
         senderName: payload.fromName || null,
         subject: payload.subject,

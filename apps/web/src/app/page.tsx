@@ -445,11 +445,22 @@ export default function InboxPage() {
                     >
                       {/* Status Column */}
                       <TableCell className="py-3.5">
-                        <div className="flex items-center gap-2">
-                          <StatusDot status={thread.status} />
-                          <Badge variant={statusInfo.variant} className="text-[11px] font-medium">
-                            {statusInfo.label}
-                          </Badge>
+                        <div className="flex flex-col gap-1.5 items-start">
+                          <div className="flex items-center gap-2">
+                            <StatusDot status={thread.status} />
+                            <Badge variant={statusInfo.variant} className="text-[11px] font-medium">
+                              {statusInfo.label}
+                            </Badge>
+                          </div>
+                          {thread.id.startsWith("th_") ? (
+                            <Badge variant="primary" className="text-[9px] py-0 px-1 font-mono tracking-tight">
+                              Live Inbound
+                            </Badge>
+                          ) : (
+                            <Badge variant="neutral" className="text-[9px] py-0 px-1 font-mono tracking-tight text-muted-foreground">
+                              Demo Seed
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
 

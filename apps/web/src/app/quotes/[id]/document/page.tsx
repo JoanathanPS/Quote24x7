@@ -245,7 +245,7 @@ export default function QuoteDocumentPage() {
                 Infrastructure Monitoring Quotation
               </h1>
               <p className="mt-1 text-xs text-muted-foreground print:text-neutral-600">
-                Automated preliminary pricing estimate derived from Site24x7 public catalogue
+                Automated preliminary pricing estimate derived from Site24x7 demo catalogue (v{quote.catalogueVersion})
               </p>
             </div>
 
@@ -265,7 +265,7 @@ export default function QuoteDocumentPage() {
               </div>
               <div className="mt-1">
                 <Badge variant="warning" className="text-[11px] font-medium print:border-neutral-400 print:text-neutral-800">
-                  Estimate — Non-binding
+                  Demo Estimate — Non-binding
                 </Badge>
               </div>
             </div>
@@ -276,7 +276,7 @@ export default function QuoteDocumentPage() {
             <div className="flex items-start gap-2.5">
               <Info size={16} className="mt-0.5 shrink-0 text-warning print:text-neutral-700" weight="bold" />
               <div className="leading-relaxed">
-                <span className="font-semibold">Notice of Non-Binding Estimate:</span> This quotation is an automated preliminary estimate calculated from publicly verifiable Site24x7 pricing data. It is generated for sizing and budgeting assistance only and does not constitute an official or binding offer by Zoho Corporation.
+                <span className="font-semibold">DEMO ESTIMATE (Catalogue v{quote.catalogueVersion}):</span> This quotation is an automated preliminary estimate calculated by Quote24x7 using unverified demo catalogue data. It is generated strictly for sizing and budgeting demonstration purposes and does not constitute an authorized commercial offer by Zoho Corporation.
               </div>
             </div>
           </div>
@@ -747,7 +747,7 @@ export default function QuoteDocumentPage() {
                 Quote24x7 Automated Pricing Assistant
               </div>
               <div className="text-[10px] text-muted-foreground print:text-neutral-600">
-                Automated Verification: Certified against public pricing rules
+                Automated Verification: Sized against demo catalogue (v{quote.catalogueVersion}, unverified)
               </div>
               <div className="mt-2 text-[10px] text-subtle-foreground print:text-neutral-500">
                 Timestamp: {formatDateTime(quote.createdAt)}

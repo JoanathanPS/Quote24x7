@@ -60,7 +60,8 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
   const lowestCost = input.quote.options.find((o) => o.optionType === "lowest_cost");
   const bestCoverage = input.quote.options.find((o) => o.optionType === "best_coverage");
 
-  const subject = `Site24x7 Quotation & Sizing Proposal - Ref #${input.quote.id}`;
+  const cleanSub = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
+  const subject = `Re: ${cleanSub} - Proposal Ref #${input.quote.id} [Ref: #${input.thread.id}]`;
 
   // Plain Text Version
   const textContent = `
@@ -77,6 +78,8 @@ ${lowestCost ? `LOWEST COMMITMENT OPTION:\n- Plan: ${lowestCost.planName}\n- Tot
 ${bestCoverage ? `MAXIMUM HEADROOM OPTION:\n- Plan: ${bestCoverage.planName}\n- Total (${input.quote.billingPeriod}): ${formatMoney(bestCoverage.total, input.quote.currency)}\n` : ""}
 
 Please review the attached PDF quotation ("Quote24x7-Proposal-${input.quote.id}.pdf") for a comprehensive line-item breakdown, included allowances, and capacity fulfillment.
+
+Reference Thread: #${input.thread.id} | Proposal Reference: #${input.quote.id}
 
 IMPORTANT NOTICE:
 This quotation is an automated preliminary estimate calculated from publicly verifiable Site24x7 pricing data. It is provided for planning and budgeting purposes and is not a legally binding offer by Zoho Corporation.
@@ -286,7 +289,8 @@ export async function sendClarificationEmail(
   const now = new Date().toISOString();
   const targetRecipient = (config.testRecipientEmail || input.recipientEmail).trim();
 
-  const subject = `Re: ${input.thread.subject} - Sizing Information Needed`;
+  const cleanSubject = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
+  const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Sizing Information Needed`;
 
   const textContent = `
 Dear ${input.recipientName || "Valued Customer"},
@@ -296,6 +300,8 @@ Thank you for reaching out to Quote24x7 regarding Site24x7 monitoring.
 To ensure our pricing engine selects the most cost-effective plan and accurately calculates any necessary add-on packs, could you please clarify:
 
 ${input.questionText}
+
+Reference: #${input.thread.id}
 
 As soon as you reply with these details, we will immediately generate a full quotation with side-by-side plan comparisons and an official proposal PDF.
 
@@ -407,7 +413,8 @@ export async function sendUnpriceableNotificationEmail(
   const now = new Date().toISOString();
   const targetRecipient = (config.testRecipientEmail || input.recipientEmail).trim();
 
-  const subject = `Re: ${input.thread.subject} - Sizing & Custom Pricing Notice`;
+  const cleanSubject = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
+  const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Sizing & Custom Pricing Notice`;
 
   const reasonList = input.rejectionReasons.map((r) => `• ${r}`).join("\n");
 
@@ -419,6 +426,8 @@ Thank you for contacting Quote24x7 regarding Site24x7 monitoring.
 Our automated pricing engine evaluated your requirements against active Site24x7 plans and add-on packs. However, we are unable to generate an automated quotation for your request due to the following constraint(s):
 
 ${reasonList}
+
+Reference: #${input.thread.id}
 
 What happens next:
 1. Your request has been escalated to our Enterprise Solutions team for manual sizing and custom volume pricing.

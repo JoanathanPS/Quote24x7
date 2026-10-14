@@ -277,6 +277,15 @@ export default function ThreadDetailPage() {
               <Badge variant={statusInfo.variant} className="text-xs">
                 {statusInfo.label}
               </Badge>
+              {thread.id.startsWith("th_") ? (
+                <Badge variant="primary" className="text-xs font-mono">
+                  Live Inbound
+                </Badge>
+              ) : (
+                <Badge variant="neutral" className="text-xs font-mono">
+                  Demo Seed Fixture
+                </Badge>
+              )}
             </div>
           </div>
 

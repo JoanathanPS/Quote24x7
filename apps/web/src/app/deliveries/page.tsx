@@ -381,8 +381,13 @@ export default function DeliveriesPage() {
                       <div className="text-xs text-muted-foreground truncate mt-0.5" title={delivery.subject}>
                         {delivery.subject}
                       </div>
-                      <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                        {delivery.provider} • ID: {delivery.providerMessageId ?? "pending"}
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono mt-0.5">
+                        {delivery.threadId.startsWith("th_") ? (
+                          <Badge variant="primary" className="text-[9px] py-0 px-1 font-mono">Live</Badge>
+                        ) : (
+                          <Badge variant="neutral" className="text-[9px] py-0 px-1 font-mono">Seed</Badge>
+                        )}
+                        <span>{delivery.provider} • ID: {delivery.providerMessageId ?? "pending"}</span>
                       </div>
                     </TableCell>
 

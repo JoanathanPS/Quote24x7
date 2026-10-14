@@ -133,7 +133,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
   });
 
   page1.drawText(
-    "NOTICE: This quotation is an automated preliminary estimate derived from publicly verifiable Site24x7 pricing rules.",
+    `DEMO ESTIMATE: Calculated by Quote24x7 using unverified demo catalogue (v${quote.catalogueVersion}).`,
     {
       x: margin + 10,
       y: y - 13,
@@ -143,7 +143,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
     }
   );
   page1.drawText(
-    "It is generated for sizing and budgeting assistance and does not constitute an official commercial offer by Zoho Corporation.",
+    "Preliminary sizing estimate for planning purposes. Does not constitute an authorized commercial offer by Zoho Corporation.",
     {
       x: margin + 10,
       y: y - 24,

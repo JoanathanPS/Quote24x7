@@ -1,7 +1,10 @@
+import fs from "node:fs";
+import path from "node:path";
 import type {
   DeliveryRecord,
   EmailMessage,
   EmailThread,
+  HealthComponent,
   IntegrationStatus,
   OverviewMetrics,
   Quote,
@@ -9,11 +12,21 @@ import type {
   SystemHealth,
 } from "@/types/domain";
 import { getSeedData } from "../fixtures/seed-data.ts";
+import { getAppConfig } from "../config.ts";
+
+interface PersistedState {
+  threads: EmailThread[];
+  messages: EmailMessage[];
+  profiles: Array<[string, RequirementProfile]>;
+  quotes: Array<[string, Quote]>;
+  deliveries: DeliveryRecord[];
+  processedMessageIds: string[];
+}
 
 /**
- * Stateful in-memory repository for Quote24x7.
+ * Stateful repository for Quote24x7 with file-backed persistence.
  * Seeded with initial realistic fixture data, but accepts real runtime mutations
- * from inbound webhooks, extraction pipeline, pricing engine, and Resend delivery events.
+ * and survives server restarts by saving to .data/session-store.json.
  */
 class SessionStore {
   private threads: Map<string, EmailThread> = new Map();
@@ -24,10 +37,96 @@ class SessionStore {
   private processedMessageIds: Set<string> = new Set(); // for idempotency
   private initialized = false;
 
+  private isTestEnvironment(): boolean {
+    return (
+      process.env.NODE_ENV === "test" ||
+      process.env.npm_lifecycle_event === "test" ||
+      process.execArgv.some((a) => a.includes("test"))
+    );
+  }
+
+  private getStoragePath(): string {
+    return path.resolve(process.cwd(), ".data", "session-store.json");
+  }
+
+  private persistToDisk(): void {
+    if (this.isTestEnvironment()) return;
+    try {
+      const filePath = this.getStoragePath();
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const allMessages: EmailMessage[] = [];
+      for (const list of this.messages.values()) {
+        allMessages.push(...list);
+      }
+      const data: PersistedState = {
+        threads: Array.from(this.threads.values()),
+        messages: allMessages,
+        profiles: Array.from(this.profiles.entries()),
+        quotes: Array.from(this.quotes.entries()),
+        deliveries: Array.from(this.deliveries.values()),
+        processedMessageIds: Array.from(this.processedMessageIds),
+      };
+      const tmpPath = `${filePath}.tmp`;
+      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf8");
+      fs.renameSync(tmpPath, filePath);
+    } catch {
+      // Graceful fallback for read-only or restricted environments
+    }
+  }
+
+  public reset(): void {
+    this.threads.clear();
+    this.messages.clear();
+    this.profiles.clear();
+    this.quotes.clear();
+    this.deliveries.clear();
+    this.processedMessageIds.clear();
+    this.initialized = false;
+    this.ensureInitialized();
+  }
+
   private ensureInitialized() {
     if (this.initialized) return;
     this.initialized = true;
 
+    // 1. Try reading persisted data from disk first (skip in test environment)
+    const filePath = this.getStoragePath();
+    if (!this.isTestEnvironment() && fs.existsSync(filePath)) {
+      try {
+        const raw = fs.readFileSync(filePath, "utf8");
+        const parsed = JSON.parse(raw) as PersistedState;
+        if (Array.isArray(parsed.threads) && parsed.threads.length > 0) {
+          for (const thread of parsed.threads) {
+            this.threads.set(thread.id, thread);
+          }
+          for (const msg of parsed.messages || []) {
+            const existing = this.messages.get(msg.threadId) ?? [];
+            existing.push(msg);
+            this.messages.set(msg.threadId, existing);
+          }
+          for (const [id, prof] of parsed.profiles || []) {
+            this.profiles.set(id, prof);
+          }
+          for (const [id, q] of parsed.quotes || []) {
+            this.quotes.set(id, q);
+          }
+          for (const del of parsed.deliveries || []) {
+            this.deliveries.set(del.id, del);
+          }
+          for (const id of parsed.processedMessageIds || []) {
+            this.processedMessageIds.add(id);
+          }
+          return;
+        }
+      } catch {
+        // Fall back to seed data if persisted file is corrupted
+      }
+    }
+
+    // 2. Otherwise load baseline seed data
     const seed = getSeedData();
     for (const thread of seed.threads) {
       this.threads.set(thread.id, { ...thread });
@@ -56,6 +155,8 @@ class SessionStore {
         this.processedMessageIds.add(delivery.providerMessageId);
       }
     }
+
+    this.persistToDisk();
   }
 
   // --- Threads ---
@@ -74,6 +175,7 @@ class SessionStore {
   saveThread(thread: EmailThread): void {
     this.ensureInitialized();
     this.threads.set(thread.id, { ...thread });
+    this.persistToDisk();
   }
 
   updateThread(id: string, updates: Partial<EmailThread>): EmailThread | undefined {
@@ -82,7 +184,23 @@ class SessionStore {
     if (!existing) return undefined;
     const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
     this.threads.set(id, updated);
+    this.persistToDisk();
     return updated;
+  }
+
+  getActiveThreadBySender(email: string): EmailThread | undefined {
+    this.ensureInitialized();
+    const clean = email.replace(/^.*?<([^>]+)>.*$/, "$1").trim().toLowerCase();
+    return this.getThreads().find((t) => {
+      const tClean = t.senderEmail.replace(/^.*?<([^>]+)>.*$/, "$1").trim().toLowerCase();
+      return (
+        tClean === clean &&
+        (t.status === "awaiting_reply" ||
+          t.status === "received" ||
+          t.status === "extracting" ||
+          t.status === "pricing")
+      );
+    });
   }
 
   // --- Messages ---
@@ -102,6 +220,7 @@ class SessionStore {
     if (message.providerMessageId) {
       this.processedMessageIds.add(message.providerMessageId);
     }
+    this.persistToDisk();
   }
 
   // --- Requirement Profiles ---
@@ -113,6 +232,7 @@ class SessionStore {
   saveProfile(profile: RequirementProfile): void {
     this.ensureInitialized();
     this.profiles.set(profile.threadId, { ...profile });
+    this.persistToDisk();
   }
 
   // --- Quotes ---
@@ -124,6 +244,7 @@ class SessionStore {
   saveQuote(quote: Quote): void {
     this.ensureInitialized();
     this.quotes.set(quote.id, { ...quote });
+    this.persistToDisk();
   }
 
   // --- Deliveries ---
@@ -152,6 +273,7 @@ class SessionStore {
     if (delivery.providerMessageId) {
       this.processedMessageIds.add(delivery.providerMessageId);
     }
+    this.persistToDisk();
   }
 
   updateDelivery(id: string, updates: Partial<DeliveryRecord>): DeliveryRecord | undefined {
@@ -160,6 +282,7 @@ class SessionStore {
     if (!existing) return undefined;
     const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
     this.deliveries.set(id, updated);
+    this.persistToDisk();
     return updated;
   }
 
@@ -172,6 +295,7 @@ class SessionStore {
   markMessageProcessed(providerMessageId: string): void {
     this.ensureInitialized();
     this.processedMessageIds.add(providerMessageId);
+    this.persistToDisk();
   }
 
   // --- Metrics ---
@@ -227,18 +351,109 @@ class SessionStore {
   // --- System Health ---
   getHealth(): SystemHealth {
     this.ensureInitialized();
-    const seed = getSeedData();
+    const config = getAppConfig();
+    const catVersion = "2026.10.0-demo";
+    const threads = this.getThreads();
+    const deliveries = this.getDeliveries();
+
+    const components: HealthComponent[] = [
+      {
+        id: "pricing-engine",
+        name: "Deterministic Pricing Engine",
+        level: "ok",
+        detail: `Catalogue ${catVersion} active with 6 plans and add-on matrix (demo_unverified)`,
+        latencyMs: null,
+      },
+      {
+        id: "inbound-webhook",
+        name: "Resend Inbound Webhook",
+        level: config.resendWebhookSecret ? "ok" : "degraded",
+        detail: config.resendWebhookSecret
+          ? "Svix HMAC signature verification active on /api/v1/inbound"
+          : "RESEND_WEBHOOK_SECRET not configured (unauthenticated dev mode)",
+        latencyMs: null,
+      },
+      {
+        id: "resend-outbound",
+        name: "Outbound Email Dispatcher",
+        level: config.resendApiKey && config.isLiveDispatchEnabled ? "ok" : "degraded",
+        detail: config.isLiveDispatchEnabled
+          ? `Live dispatch enabled via Resend MTA (Sender: ${config.outboundFromEmail})`
+          : "Dry run / test mode active (external dispatch disabled)",
+        latencyMs: null,
+      },
+      {
+        id: "extractor",
+        name: "Deterministic Requirement Extractor",
+        level: "ok",
+        detail: "Deterministic multi-capability pattern extractor (version quote24x7-extractor-v1.0.0; local execution)",
+        latencyMs: null,
+      },
+      {
+        id: "pdf-renderer",
+        name: "Vector PDF Proposal Renderer",
+        level: "ok",
+        detail: "Multi-page A4 PDF rendering engine operational (pdf-lib, local execution)",
+        latencyMs: null,
+      },
+      {
+        id: "store-persistence",
+        name: "Conversation & Quote Session Store",
+        level: "ok",
+        detail: `File-backed storage active with ${threads.length} threads and ${deliveries.length} delivery records`,
+        latencyMs: null,
+      },
+    ];
+
+    const hasDegraded = components.some((c) => c.level === "degraded");
+    const hasDown = components.some((c) => c.level === "down");
+
     return {
-      ...seed.health,
+      overall: hasDown ? "down" : hasDegraded ? "degraded" : "ok",
       checkedAt: new Date().toISOString(),
+      components,
+      outboundSendingPaused: false,
+      environment: "local",
     };
   }
 
   // --- Integrations ---
   getIntegrations(): IntegrationStatus[] {
     this.ensureInitialized();
-    const seed = getSeedData();
-    return seed.integrations;
+    const config = getAppConfig();
+    return [
+      {
+        id: "int_inbound_resend",
+        name: "Resend Inbound Webhook",
+        category: "inbound_email",
+        state: config.resendWebhookSecret ? "configured" : "demo_mode",
+        detail: config.resendWebhookSecret
+          ? "Svix HMAC signature verification active on /api/v1/inbound"
+          : "Webhook secret not configured; running in simulation mode",
+        requiredEnvVars: ["RESEND_WEBHOOK_SECRET", "INBOUND_EMAIL_DOMAIN"],
+        docsPath: "docs/integrations/inbound-email.md",
+      },
+      {
+        id: "int_outbound_resend",
+        name: "Resend Outbound Delivery",
+        category: "outbound_email",
+        state: config.resendApiKey ? "configured" : "demo_mode",
+        detail: config.resendApiKey
+          ? `Live dispatch enabled via verified sender <${config.outboundFromEmail}>`
+          : "Resend API key missing; running in simulation mode",
+        requiredEnvVars: ["RESEND_API_KEY", "OUTBOUND_FROM_EMAIL"],
+        docsPath: "docs/integrations/outbound-email.md",
+      },
+      {
+        id: "int_db_file",
+        name: "Local Session Store",
+        category: "database",
+        state: "configured",
+        detail: "JSON file-backed persistent repository at .data/session-store.json",
+        requiredEnvVars: [],
+        docsPath: "docs/integrations/database.md",
+      },
+    ];
   }
 }
 
