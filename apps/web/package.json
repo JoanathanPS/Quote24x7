@@ -1,6 +1,6 @@
 {
   "name": "@quote24x7/web",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Quote24x7 operational console — independent Site24x7 pricing assistant (internship project, not an official Zoho or Site24x7 product).",
   "scripts": {
