@@ -11,7 +11,6 @@ import type {
   RequirementProfile,
   SystemHealth,
 } from "@/types/domain";
-import { getSeedData } from "../fixtures/seed-data.ts";
 import { getAppConfig } from "../config.ts";
 
 interface PersistedState {
@@ -98,7 +97,7 @@ class SessionStore {
       try {
         const raw = fs.readFileSync(filePath, "utf8");
         const parsed = JSON.parse(raw) as PersistedState;
-        if (Array.isArray(parsed.threads) && parsed.threads.length > 0) {
+        if (Array.isArray(parsed.threads)) {
           for (const thread of parsed.threads) {
             this.threads.set(thread.id, thread);
           }
@@ -122,41 +121,11 @@ class SessionStore {
           return;
         }
       } catch {
-        // Fall back to seed data if persisted file is corrupted
+        // Fall back to clean empty store
       }
     }
 
-    // 2. Otherwise load baseline seed data
-    const seed = getSeedData();
-    for (const thread of seed.threads) {
-      this.threads.set(thread.id, { ...thread });
-    }
-
-    for (const msg of seed.messages) {
-      const existing = this.messages.get(msg.threadId) ?? [];
-      existing.push({ ...msg });
-      this.messages.set(msg.threadId, existing);
-      if (msg.providerMessageId) {
-        this.processedMessageIds.add(msg.providerMessageId);
-      }
-    }
-
-    for (const [threadId, profile] of seed.profiles.entries()) {
-      this.profiles.set(threadId, { ...profile });
-    }
-
-    for (const [quoteId, quote] of seed.quotes.entries()) {
-      this.quotes.set(quoteId, { ...quote });
-    }
-
-    for (const delivery of seed.deliveries) {
-      this.deliveries.set(delivery.id, { ...delivery });
-      if (delivery.providerMessageId) {
-        this.processedMessageIds.add(delivery.providerMessageId);
-      }
-    }
-
-    this.persistToDisk();
+    // 2. Start with empty store (never auto-seed demo fixtures into production store)
   }
 
   // --- Threads ---
@@ -340,7 +309,22 @@ class SessionStore {
       }
     }
 
-    const seed = getSeedData();
+    const activityMap = new Map<string, { received: number; quoted: number; clarified: number }>();
+    for (const t of threads) {
+      const dateStr = (t.createdAt || new Date().toISOString()).slice(0, 10);
+      const entry = activityMap.get(dateStr) ?? { received: 0, quoted: 0, clarified: 0 };
+      entry.received++;
+      if (t.quoteId) entry.quoted++;
+      if (t.status === "awaiting_reply") entry.clarified++;
+      activityMap.set(dateStr, entry);
+    }
+
+    const activity = Array.from(activityMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, counts]) => ({
+        date,
+        ...counts,
+      }));
 
     return {
       windowLabel: "All-time (Live Store)",
@@ -349,7 +333,7 @@ class SessionStore {
       pendingClarifications,
       deliveryFailures,
       threadsByStatus,
-      activity: seed.metrics.activity,
+      activity,
       medianProcessingSeconds: 8.4,
       deadLetterCount: deliveryFailures,
     };
