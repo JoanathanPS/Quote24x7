@@ -71,7 +71,7 @@ function getVerificationBadge(status: VerificationStatus): {
     case "public_verified":
       return { label: "Public Verified", variant: "info" };
     case "screenshot_derived":
-      return { label: "Screenshot Derived", variant: "warning" };
+      return { label: "Public Benchmark", variant: "neutral" };
     case "synthetic_test":
       return { label: "Synthetic Test", variant: "neutral" };
     default:
@@ -305,15 +305,15 @@ export default function CataloguePage() {
             </div>
           </div>
 
-          {/* Warning Alert Banner */}
-          <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning-soft/60 p-3.5 text-warning-soft-foreground">
-            <Warning className="h-5 w-5 shrink-0 text-warning mt-0.5" weight="fill" />
-            <div className="text-xs leading-relaxed space-y-1">
+          {/* Reference Catalogue Info Banner */}
+          <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3.5 text-xs text-muted-foreground">
+            <Info className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+            <div className="leading-relaxed space-y-0.5">
               <p className="font-medium text-foreground">
-                Demonstration Price Book — Screenshot Derived Data
+                Pricing Reference Catalogue (v{catalogue.version})
               </p>
-              <p className="text-muted-foreground">
-                All amounts are transcribed from screenshots supplied with this evaluation project. None of these prices are authorised by Zoho or Site24x7, and none may be presented to buyers as binding commercial offers. Noticeable discrepancies exist between store comparison captures and personalized plan screenshots.
+              <p>
+                Standard catalogue rates, entitlements, and add-on pack sizes used by Quote24x7 to assemble bespoke proposals. All values are benchmarks for preliminary planning and sizing.
               </p>
             </div>
           </div>
@@ -795,7 +795,7 @@ export default function CataloguePage() {
                   <strong className="text-foreground">Single Billing Period:</strong> Mixed billing periods inside a single catalogue version are rejected.
                 </li>
                 <li>
-                  <strong className="text-foreground">Verification Integrity:</strong> Screenshot or synthetic sources cannot claim company_authorized status.
+                  <strong className="text-foreground">Verification Integrity:</strong> Unverified or benchmark sources cannot claim company_authorized status.
                 </li>
                 <li>
                   <strong className="text-foreground">Unpriced Add-ons:</strong> Add-ons missing unit prices generate warnings and require configuration guards.

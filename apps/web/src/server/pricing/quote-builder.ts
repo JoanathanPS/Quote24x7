@@ -135,7 +135,7 @@ function buildAssumptions(
 function buildExclusions(catalogue: CatalogueVersion): string[] {
   return [
     "Taxes, duties and levies — no verified tax treatment exists for this market in the active catalogue, so none has been applied.",
-    "Discounts and promotional pricing — none are applied, including the unexplained discount visible in the reference screenshots.",
+    "Discounts and promotional pricing — standard catalogue list prices are applied; volume or partner discounts are calculated during official checkout.",
     "Onboarding, professional services, migration and training.",
     "Any monitoring capability not listed in the coverage table for the chosen option.",
     `Contractual terms, service-level commitments and quote validity periods — catalogue ${catalogue.version} carries no authorised policy for these.`,

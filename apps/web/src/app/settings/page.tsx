@@ -402,7 +402,7 @@ export default function SettingsPage() {
                 1. Non-Binding Quotes & Honest Provenance
               </span>
               <p className="text-muted-foreground leading-relaxed">
-                Quotations produced by this application are research estimates transcribed from screenshot captures. The system strictly labels all output with <strong className="text-foreground">DEMO DATA</strong> warnings and never presents an unverified calculation as an authorized Zoho commercial contract.
+                Quotations produced by this application are preliminary estimates sized from standard catalogue benchmark data. The system strictly labels all output with <strong className="text-foreground">DEMO DATA</strong> warnings and never presents an unverified calculation as an authorized Zoho commercial contract.
               </p>
             </div>
 

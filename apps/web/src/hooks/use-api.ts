@@ -54,6 +54,13 @@ export function useThreadRequirements(threadId: string) {
 // Quotes
 // ---------------------------------------------------------------------------
 
+export function useQuotes() {
+  return useQuery({
+    queryKey: ["quotes"],
+    queryFn: () => apiGet<Quote[]>("/api/v1/quotes"),
+  });
+}
+
 export function useQuote(id: string) {
   return useQuery({
     queryKey: ["quotes", id],

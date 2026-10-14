@@ -1,141 +1,104 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Tray,
-  ClockCountdown,
-  Receipt,
-  WarningCircle,
-  Timer,
   MagnifyingGlass,
   ArrowClockwise,
   ChatCircleText,
   CaretRight,
-  ArrowsClockwise,
+  User,
+  PaperPlaneTilt,
+  ArrowDownLeft,
+  ArrowSquareOut,
+  FilePdf,
+  WarningOctagon,
+  ClockCountdown,
+  GearSix,
+  HardDrives,
+  Network,
+  Globe,
+  Database,
+  FileText,
+  Calendar,
+  Buildings,
+  EnvelopeSimple,
+  Paperclip,
 } from "@phosphor-icons/react";
 
-import { useOverviewMetrics, useThreads } from "@/hooks/use-api";
+import {
+  useThreads,
+  useThreadMessages,
+  useThreadRequirements,
+} from "@/hooks/use-api";
 import { formatMoney } from "@/server/pricing/money";
 import { formatRelativeTime, formatDateTime, cn } from "@/lib/utils";
-import type { RequestType, ThreadStatus } from "@/types/domain";
+import type {
+  EmailThread,
+  ThreadStatus,
+} from "@/types/domain";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/data-table";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 
-type FilterStatus = "all" | "completed" | "awaiting_reply" | "pricing" | "received" | "failed";
+type HumanFilter = "all" | "needs_reply" | "configuring" | "proposal_ready" | "needs_review";
 
-const STATUS_FILTERS: { label: string; value: FilterStatus }[] = [
+const HUMAN_FILTERS: { label: string; value: HumanFilter }[] = [
   { label: "All", value: "all" },
-  { label: "Completed", value: "completed" },
-  { label: "Awaiting Reply", value: "awaiting_reply" },
-  { label: "Pricing", value: "pricing" },
-  { label: "Received", value: "received" },
-  { label: "Failed", value: "failed" },
+  { label: "Needs Reply", value: "needs_reply" },
+  { label: "Configuring", value: "configuring" },
+  { label: "Proposal Ready", value: "proposal_ready" },
+  { label: "Needs Review", value: "needs_review" },
 ];
 
-function getStatusBadge(status: ThreadStatus): {
+function getHumanStatus(status: ThreadStatus): {
   label: string;
   variant: "default" | "primary" | "success" | "warning" | "danger" | "info" | "neutral";
+  category: HumanFilter;
 } {
   switch (status) {
     case "completed":
-      return { label: "Completed", variant: "success" };
+      return { label: "Proposal Ready", variant: "success", category: "proposal_ready" };
     case "awaiting_reply":
-      return { label: "Awaiting Reply", variant: "warning" };
+      return { label: "Needs Reply", variant: "warning", category: "needs_reply" };
     case "pricing":
-      return { label: "Pricing", variant: "primary" };
     case "extracting":
-      return { label: "Extracting", variant: "info" };
     case "document_generation":
-      return { label: "Generating Doc", variant: "primary" };
     case "sending":
-      return { label: "Sending", variant: "primary" };
+      return { label: "Configuring", variant: "primary", category: "configuring" };
     case "received":
-      return { label: "Received", variant: "info" };
+      return { label: "Received", variant: "info", category: "configuring" };
     case "failed":
-      return { label: "Failed", variant: "danger" };
     case "unsupported":
-      return { label: "Unsupported", variant: "neutral" };
+      return { label: "Needs Review", variant: "danger", category: "needs_review" };
     default:
-      return { label: status, variant: "default" };
-  }
-}
-
-function getRequestTypeBadge(type: RequestType): {
-  label: string;
-  variant: "default" | "primary" | "success" | "warning" | "danger" | "info" | "neutral";
-} {
-  switch (type) {
-    case "quote":
-      return { label: "Quote", variant: "primary" };
-    case "proposal":
-      return { label: "Proposal", variant: "info" };
-    case "clarification":
-      return { label: "Clarification", variant: "warning" };
-    default:
-      return { label: "General", variant: "neutral" };
+      return { label: status, variant: "default", category: "all" };
   }
 }
 
 export default function InboxPage() {
-  const router = useRouter();
   const [search, setSearch] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState<FilterStatus>("all");
-
-  const queryParams = React.useMemo(() => {
-    const params: Record<string, string | undefined> = {};
-    if (statusFilter !== "all") {
-      params.status = statusFilter;
-    }
-    if (search.trim()) {
-      params.search = search.trim();
-    }
-    return params;
-  }, [statusFilter, search]);
+  const [activeFilter, setActiveFilter] = React.useState<HumanFilter>("all");
+  const [selectedThreadId, setSelectedThreadId] = React.useState<string | null>(null);
 
   const {
     data: threads,
     isLoading: threadsLoading,
     isFetching: threadsFetching,
     refetch: refetchThreads,
-  } = useThreads(queryParams);
+  } = useThreads();
 
-  const {
-    data: metrics,
-    isLoading: metricsLoading,
-    isFetching: metricsFetching,
-    refetch: refetchMetrics,
-  } = useOverviewMetrics();
-
-  const handleRefresh = React.useCallback(() => {
-    void refetchThreads();
-    void refetchMetrics();
-  }, [refetchThreads, refetchMetrics]);
-
-  const isRefreshing = threadsFetching || metricsFetching;
-
-  // Filter threads client-side as well for immediate UX responsiveness
+  // Filter threads client-side
   const filteredThreads = React.useMemo(() => {
     if (!threads) return [];
     return threads.filter((t) => {
-      if (statusFilter !== "all" && t.status !== statusFilter) {
+      const human = getHumanStatus(t.status);
+      if (activeFilter !== "all" && human.category !== activeFilter) {
         return false;
       }
       if (search.trim()) {
@@ -148,387 +111,543 @@ export default function InboxPage() {
       }
       return true;
     });
-  }, [threads, statusFilter, search]);
+  }, [threads, activeFilter, search]);
+
+  // Counts for tabs
+  const counts = React.useMemo(() => {
+    if (!threads) return { all: 0, needs_reply: 0, configuring: 0, proposal_ready: 0, needs_review: 0 };
+    return {
+      all: threads.length,
+      needs_reply: threads.filter((t) => getHumanStatus(t.status).category === "needs_reply").length,
+      configuring: threads.filter((t) => getHumanStatus(t.status).category === "configuring").length,
+      proposal_ready: threads.filter((t) => getHumanStatus(t.status).category === "proposal_ready").length,
+      needs_review: threads.filter((t) => getHumanStatus(t.status).category === "needs_review").length,
+    };
+  }, [threads]);
+
+  // Auto-select first thread if none selected or if current selection is not in list
+  React.useEffect(() => {
+    if (filteredThreads.length > 0) {
+      if (!selectedThreadId || !filteredThreads.some((t) => t.id === selectedThreadId)) {
+        const first = filteredThreads[0];
+        if (first) {
+          setSelectedThreadId(first.id);
+        }
+      }
+    } else {
+      setSelectedThreadId(null);
+    }
+  }, [filteredThreads, selectedThreadId]);
+
+  const selectedThread = React.useMemo(
+    () => threads?.find((t) => t.id === selectedThreadId) ?? null,
+    [threads, selectedThreadId]
+  );
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-12">
-      {/* Page Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mx-auto max-w-7xl space-y-4 pb-12">
+      {/* Top Header */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Operations Overview &amp; Inbox
+          <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Tray className="h-5 w-5 text-primary" />
+            Autonomous Quotation Inbox
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Real-time inbound email threads, requirement extraction, and automated quote generation.
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Real-time inbound email requests, autonomous sizing clarification, and AI-configured Site24x7 proposals.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
+            onClick={() => void refetchThreads()}
+            disabled={threadsFetching}
             className="h-8 gap-1.5 text-xs"
           >
             <ArrowClockwise
-              className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin text-primary")}
+              className={cn("h-3.5 w-3.5", threadsFetching && "animate-spin text-primary")}
             />
-            {isRefreshing ? "Refreshing..." : "Refresh"}
+            {threadsFetching ? "Syncing..." : "Sync"}
           </Button>
         </div>
       </div>
 
-      {/* Top Summary Metric Strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {/* Metric 1: Total Received */}
-        <Card className="border-border/80 bg-surface shadow-xs transition-shadow hover:shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              Total Received
-            </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-foreground">
-              <Tray className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            {metricsLoading ? (
-              <Skeleton className="h-7 w-16" />
-            ) : (
-              <div className="text-2xl font-bold tracking-tight text-foreground">
-                {metrics?.emailsReceived ?? 0}
-              </div>
-            )}
-            <p className="mt-1 text-[11px] text-muted-foreground">Inbound pipeline</p>
-          </CardContent>
-        </Card>
-
-        {/* Metric 2: Awaiting Reply */}
-        <Card className="border-border/80 bg-surface shadow-xs transition-shadow hover:shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              Awaiting Reply
-            </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-warning-soft text-warning-soft-foreground">
-              <ClockCountdown className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            {metricsLoading ? (
-              <Skeleton className="h-7 w-16" />
-            ) : (
-              <div className="text-2xl font-bold tracking-tight text-warning-soft-foreground">
-                {metrics?.pendingClarifications ?? 0}
-              </div>
-            )}
-            <p className="mt-1 text-[11px] text-muted-foreground">Pending clarification</p>
-          </CardContent>
-        </Card>
-
-        {/* Metric 3: Quotes Generated */}
-        <Card className="border-border/80 bg-surface shadow-xs transition-shadow hover:shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              Quotes Generated
-            </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-success-soft text-success-soft-foreground">
-              <Receipt className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            {metricsLoading ? (
-              <Skeleton className="h-7 w-16" />
-            ) : (
-              <div className="text-2xl font-bold tracking-tight text-success-soft-foreground">
-                {metrics?.quotesGenerated ?? 0}
-              </div>
-            )}
-            <p className="mt-1 text-[11px] text-muted-foreground">Valid price options</p>
-          </CardContent>
-        </Card>
-
-        {/* Metric 4: Delivery Failures */}
-        <Card className="border-border/80 bg-surface shadow-xs transition-shadow hover:shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              Delivery Failures
-            </span>
-            <div
-              className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-md",
-                (metrics?.deliveryFailures ?? 0) > 0
-                  ? "bg-danger-soft text-danger-soft-foreground"
-                  : "bg-muted text-muted-foreground"
-              )}
+      {/* Filter and Search Bar */}
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+        {/* Search */}
+        <div className="relative flex-1 sm:max-w-md">
+          <MagnifyingGlass className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search sender, organisation, subject..."
+            className="flex h-8 w-full rounded-md border border-border bg-surface pl-8 pr-3 py-1 text-xs text-foreground shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground hover:text-foreground"
             >
-              <WarningCircle className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            {metricsLoading ? (
-              <Skeleton className="h-7 w-16" />
-            ) : (
-              <div
+              Clear
+            </button>
+          )}
+        </div>
+
+        {/* Human Status Filter Pills */}
+        <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
+          {HUMAN_FILTERS.map((f) => {
+            const active = activeFilter === f.value;
+            const count = counts[f.value];
+            return (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => setActiveFilter(f.value)}
                 className={cn(
-                  "text-2xl font-bold tracking-tight",
-                  (metrics?.deliveryFailures ?? 0) > 0
-                    ? "text-danger-soft-foreground"
-                    : "text-foreground"
+                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors select-none",
+                  active
+                    ? "bg-primary text-primary-foreground shadow-xs"
+                    : "bg-surface border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
-                {metrics?.deliveryFailures ?? 0}
-              </div>
-            )}
-            <p className="mt-1 text-[11px] text-muted-foreground">Requires attention</p>
-          </CardContent>
-        </Card>
-
-        {/* Metric 5: Median Processing Time */}
-        <Card className="col-span-2 border-border/80 bg-surface shadow-xs transition-shadow hover:shadow-sm sm:col-span-1">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              Median Processing
-            </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-info-soft text-info-soft-foreground">
-              <Timer className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            {metricsLoading ? (
-              <Skeleton className="h-7 w-16" />
-            ) : (
-              <div className="text-2xl font-bold tracking-tight text-foreground font-mono">
-                {metrics?.medianProcessingSeconds ? `${metrics.medianProcessingSeconds}s` : "—"}
-              </div>
-            )}
-            <p className="mt-1 text-[11px] text-muted-foreground">Ingress to quotation</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Controls Bar */}
-      <Card className="border-border/80 bg-surface shadow-xs">
-        <div className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between">
-          {/* Search Box */}
-          <div className="relative flex-1 sm:max-w-md">
-            <MagnifyingGlass className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Filter by sender, organisation, or subject..."
-              className="flex h-9 w-full rounded-md border border-border bg-surface pl-9 pr-3 py-1.5 text-sm text-foreground shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-
-          {/* Status Tabs / Filter Pills */}
-          <div className="flex flex-wrap items-center gap-1 overflow-x-auto">
-            {STATUS_FILTERS.map((f) => {
-              const active = statusFilter === f.value;
-              return (
-                <button
-                  key={f.value}
-                  type="button"
-                  onClick={() => setStatusFilter(f.value)}
+                <span>{f.label}</span>
+                <span
                   className={cn(
-                    "inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium transition-colors select-none",
+                    "rounded-full px-1.5 py-0.2 text-[10px] font-mono",
                     active
-                      ? "bg-primary text-primary-foreground shadow-xs"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
                   )}
                 >
-                  {f.label}
-                </button>
-              );
-            })}
-          </div>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
-      </Card>
+      </div>
 
-      {/* Thread List Table */}
-      <Card className="border-border/80 bg-surface shadow-xs overflow-hidden">
-        {threadsLoading ? (
-          <div className="p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-4 w-20" />
+      {/* Split Pane: Thread List (Left) + Detail & Timeline (Right) */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 min-h-[640px]">
+        {/* Left Pane: Thread List */}
+        <div className="lg:col-span-5 flex flex-col space-y-2">
+          {threadsLoading ? (
+            <div className="space-y-2 p-2">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="p-3 rounded-lg border border-border bg-surface space-y-2">
+                  <div className="flex justify-between">
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-4 w-14" />
+                  </div>
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+              ))}
             </div>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="flex items-center justify-between gap-4 py-3 border-b border-border/50">
-                <Skeleton className="h-6 w-24" />
-                <Skeleton className="h-5 w-48" />
-                <Skeleton className="h-5 w-64" />
-                <Skeleton className="h-5 w-16" />
-                <Skeleton className="h-5 w-20" />
-                <Skeleton className="h-6 w-20" />
-              </div>
-            ))}
-          </div>
-        ) : filteredThreads.length === 0 ? (
-          <EmptyState
-            icon={Tray}
-            title="No threads found"
-            description={
-              search.trim() || statusFilter !== "all"
-                ? "No email threads match the current filter criteria. Try adjusting your query or resetting filters."
-                : "No inbound email threads received yet."
-            }
-            action={
-              (search.trim() || statusFilter !== "all") && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSearch("");
-                    setStatusFilter("all");
-                  }}
-                >
-                  Reset all filters
-                </Button>
-              )
-            }
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-b border-border bg-surface-sunken/60 hover:bg-surface-sunken/60">
-                  <TableHead className="w-[140px]">Status</TableHead>
-                  <TableHead className="min-w-[190px]">Sender</TableHead>
-                  <TableHead className="min-w-[260px]">Subject</TableHead>
-                  <TableHead className="w-[110px]">Type</TableHead>
-                  <TableHead className="w-[120px]">Last Activity</TableHead>
-                  <TableHead numeric className="w-[130px]">Quote Amount</TableHead>
-                  <TableHead className="w-[40px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredThreads.map((thread) => {
-                  const statusInfo = getStatusBadge(thread.status);
-                  const typeInfo = getRequestTypeBadge(thread.requestType);
+          ) : filteredThreads.length === 0 ? (
+            <div className="p-8 border border-border rounded-xl bg-surface text-center">
+              <EmptyState
+                icon={Tray}
+                title="No conversations found"
+                description={
+                  search.trim() || activeFilter !== "all"
+                    ? "No email threads match the current filter. Try adjusting your search query."
+                    : "No inbound email requests yet."
+                }
+              />
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[750px] overflow-y-auto pr-1">
+              {filteredThreads.map((thread) => {
+                const isSelected = thread.id === selectedThreadId;
+                const statusInfo = getHumanStatus(thread.status);
+                const isLive = thread.id.startsWith("th_");
 
-                  let quoteDisplay: React.ReactNode = "—";
-                  if (thread.quoteTotal != null && thread.currency) {
-                    quoteDisplay = (
-                      <span className="font-mono font-medium text-foreground">
-                        {formatMoney(thread.quoteTotal, thread.currency)}
+                return (
+                  <div
+                    key={thread.id}
+                    onClick={() => setSelectedThreadId(thread.id)}
+                    className={cn(
+                      "cursor-pointer rounded-lg border p-3.5 transition-all text-left",
+                      isSelected
+                        ? "border-primary bg-primary/5 shadow-xs ring-1 ring-primary/25"
+                        : "border-border/80 bg-surface hover:border-border hover:bg-muted/30"
+                    )}
+                  >
+                    {/* Top Row: Sender + Relative Time */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-semibold text-xs text-foreground truncate">
+                          {thread.senderName || thread.senderEmail}
+                        </span>
+                        {thread.organisation && (
+                          <span className="text-[11px] text-muted-foreground truncate hidden sm:inline">
+                            • {thread.organisation}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+                        {formatRelativeTime(thread.lastMessageAt || thread.updatedAt)}
                       </span>
-                    );
-                  } else if (thread.status === "pricing" || thread.status === "extracting") {
-                    quoteDisplay = (
-                      <span className="text-xs text-primary font-medium inline-flex items-center gap-1">
-                        <ArrowsClockwise className="h-3 w-3 animate-spin" />
-                        Calculating...
-                      </span>
-                    );
-                  } else if (thread.status === "awaiting_reply") {
-                    quoteDisplay = (
-                      <span className="text-xs text-muted-foreground italic">
-                        Pending reply
-                      </span>
-                    );
-                  }
+                    </div>
 
-                  return (
-                    <TableRow
-                      key={thread.id}
-                      onClick={() => router.push(`/threads/${thread.id}`)}
-                      className="group cursor-pointer border-b border-border transition-colors hover:bg-muted/40"
+                    {/* Subject Line */}
+                    <p
+                      className={cn(
+                        "mt-1 text-xs font-medium line-clamp-1",
+                        isSelected ? "text-primary" : "text-foreground"
+                      )}
                     >
-                      {/* Status Column */}
-                      <TableCell className="py-3.5">
-                        <div className="flex flex-col gap-1.5 items-start">
-                          <div className="flex items-center gap-2">
-                            <StatusDot status={thread.status} />
-                            <Badge variant={statusInfo.variant} className="text-[11px] font-medium">
-                              {statusInfo.label}
-                            </Badge>
-                          </div>
-                          {thread.id.startsWith("th_") ? (
-                            <Badge variant="primary" className="text-[9px] py-0 px-1 font-mono tracking-tight">
-                              Live Inbound
-                            </Badge>
-                          ) : (
-                            <Badge variant="neutral" className="text-[9px] py-0 px-1 font-mono tracking-tight text-muted-foreground">
-                              Demo Seed
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
+                      {thread.subject}
+                    </p>
 
-                      {/* Sender Column */}
-                      <TableCell className="py-3.5">
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-foreground text-sm leading-tight">
-                            {thread.senderName || "Unknown Sender"}
-                          </span>
-                          <span className="text-xs text-muted-foreground mt-0.5 truncate max-w-[220px]">
-                            {thread.senderEmail}
-                            {thread.organisation ? ` • ${thread.organisation}` : ""}
-                          </span>
-                        </div>
-                      </TableCell>
-
-                      {/* Subject + Message Count Column */}
-                      <TableCell className="py-3.5">
-                        <div className="flex items-center gap-2 max-w-md">
-                          <span className="font-medium text-foreground text-sm line-clamp-1 group-hover:text-primary transition-colors">
-                            {thread.subject}
-                          </span>
+                    {/* Bottom Metadata Row: Badges, Status, and Amount */}
+                    <div className="mt-2.5 flex items-center justify-between gap-2 pt-2 border-t border-border/40">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {/* Live vs Demo Badge */}
+                        {isLive ? (
+                          <Badge
+                            variant="primary"
+                            className="text-[9px] py-0 px-1 font-mono tracking-tight"
+                          >
+                            Live Inbound
+                          </Badge>
+                        ) : (
                           <Badge
                             variant="neutral"
-                            className="shrink-0 text-[10px] py-0 px-1.5 font-mono text-muted-foreground flex items-center gap-1"
+                            className="text-[9px] py-0 px-1 font-mono tracking-tight text-muted-foreground"
                           >
+                            Demo Record
+                          </Badge>
+                        )}
+
+                        {/* Human Status Badge */}
+                        <Badge variant={statusInfo.variant} className="text-[9px] py-0 px-1.5 font-medium">
+                          {statusInfo.label}
+                        </Badge>
+                      </div>
+
+                      {/* Quoted Amount or Message Count */}
+                      <div className="flex items-center gap-2">
+                        {thread.quoteTotal != null && thread.currency ? (
+                          <span className="text-xs font-semibold font-mono text-foreground">
+                            {formatMoney(thread.quoteTotal, thread.currency)}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono">
                             <ChatCircleText className="h-3 w-3" />
                             {thread.messageCount}
-                          </Badge>
-                        </div>
-                        {thread.status === "failed" && thread.statusDetail && (
-                          <p className="mt-1 text-xs text-danger line-clamp-1">
-                            {thread.statusDetail}
-                          </p>
+                          </span>
                         )}
-                      </TableCell>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-                      {/* Request Type Column */}
-                      <TableCell className="py-3.5">
-                        <Badge variant={typeInfo.variant} className="text-[11px] capitalize">
-                          {typeInfo.label}
-                        </Badge>
-                      </TableCell>
-
-                      {/* Last Activity Column */}
-                      <TableCell className="py-3.5 text-xs text-muted-foreground whitespace-nowrap">
-                        <span title={formatDateTime(thread.lastMessageAt || thread.updatedAt)}>
-                          {formatRelativeTime(thread.lastMessageAt || thread.updatedAt)}
-                        </span>
-                      </TableCell>
-
-                      {/* Quote Amount Column */}
-                      <TableCell numeric className="py-3.5 text-sm tabular">
-                        {quoteDisplay}
-                      </TableCell>
-
-                      {/* Row Click Indicator */}
-                      <TableCell className="py-3.5 text-right pr-3">
-                        <CaretRight className="h-4 w-4 text-muted-foreground opacity-30 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all inline-block" />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </Card>
+        {/* Right Pane: Selected Thread Detail & Timeline */}
+        <div className="lg:col-span-7">
+          {selectedThread ? (
+            <SelectedThreadPanel thread={selectedThread} />
+          ) : (
+            <div className="flex h-full min-h-[400px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+              <Tray className="h-10 w-10 text-muted-foreground/40 mb-3" />
+              <h3 className="text-sm font-semibold text-foreground">No thread selected</h3>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                Select an inbound email conversation from the list to review the thread timeline, extracted requirements, and proposal.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Selected Thread Panel Component
+// ---------------------------------------------------------------------------
+
+function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
+  const { data: messages, isLoading: messagesLoading } = useThreadMessages(thread.id);
+  const { data: requirements, isLoading: reqsLoading } = useThreadRequirements(thread.id);
+
+  const statusInfo = getHumanStatus(thread.status);
+  const isLive = thread.id.startsWith("th_");
+
+  // Format extracted parameters helper
+  const extractedHosts = requirements?.fields.find((f) => f.key === "host_count")?.value;
+  const extractedNetwork = requirements?.fields.find((f) => f.key === "network_device_count")?.value;
+  const extractedSynthetic = requirements?.fields.find((f) => f.key === "synthetic_monitors_count")?.value;
+  const extractedRum = requirements?.fields.find((f) => f.key === "rum_pageviews_monthly")?.value;
+  const extractedLogs = requirements?.fields.find((f) => f.key === "applogs_gb_monthly")?.value;
+  const extractedBilling = requirements?.fields.find((f) => f.key === "billing_cycle")?.value;
+
+  const missingFields = requirements?.fields.filter((f) => f.state === "missing") ?? [];
+
+  return (
+    <Card className="border-border bg-surface shadow-xs flex flex-col h-full overflow-hidden">
+      {/* Thread Detail Header */}
+      <CardHeader className="p-4 border-b border-border bg-surface-sunken/40 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              {isLive ? (
+                <Badge variant="primary" className="text-[10px] font-mono">
+                  Live Inbound
+                </Badge>
+              ) : (
+                <Badge variant="neutral" className="text-[10px] font-mono text-muted-foreground">
+                  Demo Record
+                </Badge>
+              )}
+              <div className="flex items-center gap-1.5">
+                <StatusDot status={thread.status} />
+                <Badge variant={statusInfo.variant} className="text-[11px] font-medium">
+                  {statusInfo.label}
+                </Badge>
+              </div>
+              <span className="text-[11px] font-mono text-muted-foreground">
+                #{thread.id}
+              </span>
+            </div>
+            <h2 className="text-base font-bold text-foreground tracking-tight leading-snug">
+              {thread.subject}
+            </h2>
+          </div>
+
+          {/* Action Links */}
+          <div className="flex items-center gap-2 shrink-0">
+            {thread.quoteId && (
+              <>
+                <Button variant="default" size="sm" asChild className="h-8 gap-1.5 text-xs shadow-xs">
+                  <Link href={`/proposals/${thread.quoteId}`}>
+                    <span>View Proposal</span>
+                    <ArrowSquareOut className="h-3.5 w-3.5" />
+                  </Link>
+                </Button>
+                <Button variant="outline" size="sm" asChild className="h-8 gap-1.5 text-xs" title="Download Official Vector PDF">
+                  <a href={`/api/v1/quotes/${thread.quoteId}/pdf`} download={`Quote24x7-Proposal-${thread.quoteId}.pdf`}>
+                    <FilePdf className="h-3.5 w-3.5 text-danger" />
+                    <span>PDF</span>
+                  </a>
+                </Button>
+              </>
+            )}
+            <Button variant="ghost" size="sm" asChild className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground">
+              <Link href={`/threads/${thread.id}`} title="Inspect Operator Diagnostics">
+                <span>Details</span>
+                <CaretRight className="h-3.5 w-3.5 ml-1" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+
+        {/* Sender details row */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground pt-1 border-t border-border/40">
+          <div className="flex items-center gap-1">
+            <User className="h-3.5 w-3.5 text-foreground/70" />
+            <span className="font-medium text-foreground">{thread.senderName || "Unknown"}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <EnvelopeSimple className="h-3.5 w-3.5 text-foreground/70" />
+            <a href={`mailto:${thread.senderEmail}`} className="hover:underline">
+              {thread.senderEmail}
+            </a>
+          </div>
+          {thread.organisation && (
+            <div className="flex items-center gap-1">
+              <Buildings className="h-3.5 w-3.5 text-foreground/70" />
+              <span>{thread.organisation}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1 ml-auto font-mono text-[11px]">
+            <Calendar className="h-3.5 w-3.5" />
+            <span>{formatDateTime(thread.lastMessageAt || thread.updatedAt)}</span>
+          </div>
+        </div>
+      </CardHeader>
+
+      {/* Extracted Workload Sizing Strip */}
+      <div className="px-4 py-2.5 bg-surface border-b border-border text-xs">
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <span className="font-semibold text-[11px] uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <GearSix className="h-3.5 w-3.5 text-primary" />
+            Extracted Monitoring Sizing
+          </span>
+          {thread.quoteTotal != null && thread.currency && (
+            <span className="font-mono font-bold text-foreground text-xs">
+              Total: {formatMoney(thread.quoteTotal, thread.currency)} ({thread.currency})
+            </span>
+          )}
+        </div>
+
+        {reqsLoading ? (
+          <Skeleton className="h-6 w-full" />
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {extractedHosts != null && (
+              <span className="inline-flex items-center gap-1 rounded bg-muted/60 border border-border px-2 py-0.5 text-[11px] text-foreground font-mono">
+                <HardDrives className="h-3 w-3 text-primary" />
+                {String(extractedHosts)} Hosts
+              </span>
+            )}
+            {extractedNetwork != null && (
+              <span className="inline-flex items-center gap-1 rounded bg-muted/60 border border-border px-2 py-0.5 text-[11px] text-foreground font-mono">
+                <Network className="h-3 w-3 text-primary" />
+                {String(extractedNetwork)} Network Devices
+              </span>
+            )}
+            {extractedSynthetic != null && (
+              <span className="inline-flex items-center gap-1 rounded bg-muted/60 border border-border px-2 py-0.5 text-[11px] text-foreground font-mono">
+                <Globe className="h-3 w-3 text-primary" />
+                {String(extractedSynthetic)} Synthetic
+              </span>
+            )}
+            {extractedRum != null && (
+              <span className="inline-flex items-center gap-1 rounded bg-muted/60 border border-border px-2 py-0.5 text-[11px] text-foreground font-mono">
+                <FileText className="h-3 w-3 text-primary" />
+                {Number(extractedRum) >= 1_000_000
+                  ? `${(Number(extractedRum) / 1_000_000).toFixed(0)}M`
+                  : Number(extractedRum).toLocaleString()}{" "}
+                RUM Views/mo
+              </span>
+            )}
+            {extractedLogs != null && (
+              <span className="inline-flex items-center gap-1 rounded bg-muted/60 border border-border px-2 py-0.5 text-[11px] text-foreground font-mono">
+                <Database className="h-3 w-3 text-primary" />
+                {String(extractedLogs)} GB Logs/mo
+              </span>
+            )}
+            {extractedBilling && (
+              <span className="inline-flex items-center gap-1 rounded bg-muted/60 border border-border px-2 py-0.5 text-[11px] text-foreground font-mono capitalize">
+                {String(extractedBilling)} Billing
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Clarification Alert if missing items */}
+        {missingFields.length > 0 && thread.status === "awaiting_reply" && (
+          <div className="mt-2 rounded border border-warning/40 bg-warning-soft/20 p-2 text-[11px] text-warning-soft-foreground flex items-center gap-2">
+            <ClockCountdown className="h-4 w-4 shrink-0 text-warning" />
+            <span>
+              <strong>Clarification Sent:</strong> Awaiting buyer clarification for{" "}
+              {missingFields.map((f) => f.label).join(", ")}.
+            </span>
+          </div>
+        )}
+
+        {/* Review Alert if failed/unsupported */}
+        {(thread.status === "failed" || thread.status === "unsupported") && (
+          <div className="mt-2 rounded border border-danger/40 bg-danger-soft/20 p-2 text-[11px] text-danger-soft-foreground flex items-center gap-2">
+            <WarningOctagon className="h-4 w-4 shrink-0 text-danger" />
+            <span>
+              <strong>Attention Required:</strong> {thread.statusDetail || "Custom enterprise review needed."}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Message Timeline */}
+      <CardContent className="p-4 flex-1 overflow-y-auto space-y-4 max-h-[520px]">
+        {messagesLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        ) : !messages || messages.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-8">
+            No messages recorded in this conversation yet.
+          </p>
+        ) : (
+          messages.map((msg) => {
+            const isInbound = msg.direction === "inbound";
+
+            return (
+              <div
+                key={msg.id}
+                className={cn(
+                  "rounded-lg border p-3.5 space-y-2 transition-all",
+                  isInbound
+                    ? "border-border/80 bg-surface/90"
+                    : "border-primary/20 bg-primary-soft/10"
+                )}
+              >
+                {/* Message Header */}
+                <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={cn(
+                        "flex h-6 w-6 items-center justify-center rounded-full text-xs",
+                        isInbound
+                          ? "bg-muted text-muted-foreground"
+                          : "bg-primary text-primary-foreground"
+                      )}
+                    >
+                      {isInbound ? (
+                        <ArrowDownLeft className="h-3 w-3" />
+                      ) : (
+                        <PaperPlaneTilt className="h-3 w-3" />
+                      )}
+                    </div>
+                    <div>
+                      <span className="font-semibold text-xs text-foreground">
+                        {isInbound ? msg.fromName || msg.fromAddress : "Quote24x7 AI Assistant"}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground ml-2">
+                        {isInbound ? `to ${msg.toAddresses[0] || "Quote24x7"}` : `to ${msg.toAddresses[0]}`}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground font-mono" title={formatDateTime(msg.occurredAt)}>
+                    {formatRelativeTime(msg.occurredAt)}
+                  </span>
+                </div>
+
+                {/* Message Body */}
+                <div className="font-sans text-xs text-foreground/90 whitespace-pre-wrap leading-relaxed">
+                  {msg.bodyText}
+                </div>
+
+                {/* Attachments if any */}
+                {msg.attachments && msg.attachments.length > 0 && (
+                  <div className="pt-2 border-t border-border/40 flex flex-wrap gap-2">
+                    {msg.attachments.map((att, idx) => (
+                      <div
+                        key={idx}
+                        className="inline-flex items-center gap-1.5 rounded border border-border bg-surface px-2 py-1 text-xs"
+                      >
+                        <Paperclip className="h-3 w-3 text-muted-foreground" />
+                        <span className="font-medium text-[11px] text-foreground">{att.name}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          ({(att.sizeBytes / 1024).toFixed(0)} KB)
+                        </span>
+                        {thread.quoteId && (
+                          <a
+                            href={`/api/v1/quotes/${thread.quoteId}/pdf`}
+                            download={att.name}
+                            className="ml-1 text-[10px] text-primary hover:underline font-medium"
+                          >
+                            Download
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+

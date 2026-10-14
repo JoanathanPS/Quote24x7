@@ -6,7 +6,6 @@ import { useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Tray,
-  EnvelopeSimple,
   Receipt,
   Database,
   PaperPlaneTilt,
@@ -28,24 +27,18 @@ interface NavItem {
   isActive: (pathname: string) => boolean;
 }
 
-const NAV_ITEMS: NavItem[] = [
+const PRIMARY_NAV_ITEMS: NavItem[] = [
   {
     name: "Inbox",
     href: "/",
     icon: Tray,
-    isActive: (pathname) => pathname === "/",
-  },
-  {
-    name: "Threads",
-    href: "/",
-    icon: EnvelopeSimple,
     isActive: (pathname) => pathname === "/" || pathname.startsWith("/threads"),
   },
   {
-    name: "Quotes",
-    href: "/quotes",
+    name: "Configurations",
+    href: "/configurations",
     icon: Receipt,
-    isActive: (pathname) => pathname.startsWith("/quotes"),
+    isActive: (pathname) => pathname.startsWith("/configurations") || pathname.startsWith("/quotes"),
   },
   {
     name: "Catalogue",
@@ -53,6 +46,9 @@ const NAV_ITEMS: NavItem[] = [
     icon: Database,
     isActive: (pathname) => pathname.startsWith("/catalogue"),
   },
+];
+
+const SECONDARY_NAV_ITEMS: NavItem[] = [
   {
     name: "Deliveries",
     href: "/deliveries",
@@ -112,15 +108,10 @@ function getVerificationBadge(status?: VerificationStatus) {
         className: "bg-info-soft text-info-soft-foreground border-info/30",
       };
     case "screenshot_derived":
-      return {
-        label: "Screenshot",
-        className: "bg-warning-soft text-warning-soft-foreground border-warning/30",
-      };
-    case "synthetic_test":
     default:
       return {
-        label: "Synthetic",
-        className: "bg-neutral-soft text-neutral-soft-foreground border-border",
+        label: "Demo Benchmark",
+        className: "bg-muted text-muted-foreground border-border text-[10px]",
       };
   }
 }
@@ -157,7 +148,7 @@ function SidebarContent({ onItemClick, isMobile }: SidebarContentProps) {
               Quote<span className="text-primary">24x7</span>
             </Link>
             <span className="rounded border border-border bg-neutral-soft px-1.5 py-0.5 text-[10px] font-medium text-neutral-soft-foreground">
-              Local Development
+              Local
             </span>
           </div>
           {isMobile && (
@@ -174,7 +165,7 @@ function SidebarContent({ onItemClick, isMobile }: SidebarContentProps) {
 
         {/* Navigation list */}
         <nav aria-label="Main Navigation" className="space-y-1 p-3">
-          {NAV_ITEMS.map((item) => {
+          {PRIMARY_NAV_ITEMS.map((item) => {
             const active = item.isActive(pathname);
             const Icon = item.icon;
 
@@ -187,7 +178,7 @@ function SidebarContent({ onItemClick, isMobile }: SidebarContentProps) {
                 className={cn(
                   "group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                   active
-                    ? "bg-primary-soft text-primary-soft-foreground"
+                    ? "bg-primary-soft text-primary-soft-foreground font-semibold"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
@@ -197,6 +188,43 @@ function SidebarContent({ onItemClick, isMobile }: SidebarContentProps) {
                     "h-4 w-4 shrink-0 transition-colors",
                     active
                       ? "text-primary"
+                      : "text-subtle-foreground group-hover:text-foreground"
+                  )}
+                />
+                <span>{item.name}</span>
+              </Link>
+            );
+          })}
+
+          <div className="pt-3 pb-1">
+            <div className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+              Operations &amp; Diagnostics
+            </div>
+          </div>
+
+          {SECONDARY_NAV_ITEMS.map((item) => {
+            const active = item.isActive(pathname);
+            const Icon = item.icon;
+
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                onClick={onItemClick}
+                data-active={active}
+                className={cn(
+                  "group flex items-center gap-3 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                  active
+                    ? "bg-muted text-foreground font-semibold"
+                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                )}
+              >
+                <Icon
+                  weight={active ? "bold" : "regular"}
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0 transition-colors",
+                    active
+                      ? "text-foreground"
                       : "text-subtle-foreground group-hover:text-foreground"
                   )}
                 />

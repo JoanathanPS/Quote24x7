@@ -236,6 +236,13 @@ class SessionStore {
   }
 
   // --- Quotes ---
+  getQuotes(): Quote[] {
+    this.ensureInitialized();
+    return Array.from(this.quotes.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
+
   getQuote(quoteId: string): Quote | undefined {
     this.ensureInitialized();
     return this.quotes.get(quoteId);
