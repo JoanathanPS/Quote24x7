@@ -10,6 +10,7 @@ import { buildQuote } from "../pricing/quote-builder.ts";
 import { extractRequirements } from "../extraction/extractor.ts";
 import { emptyDemand } from "../pricing/engine.ts";
 import { verifyWebhookSignature } from "./resend-inbound.ts";
+import { buildThreadingHeaders } from "./resend-outbound.ts";
 
 test("Roundtrip 1: Inbound email with complete requirements generates quote, PDF, and outbound delivery", async () => {
   const providerMessageId = `test_roundtrip_${Date.now()}_1`;
@@ -801,3 +802,243 @@ test("Resend Inbound: Inbound webhook event (type: 'email.received') processes s
   assert.equal(result.quote.status, "validated");
   assert.equal(result.pdfGenerated, true);
 });
+
+test("Threading Headers: Outbound reply builds valid In-Reply-To and References headers", async () => {
+  const threadId = `th_threading_${Date.now()}`;
+  const msg1Id = `msg_inbound_${Date.now()}_1`;
+  const msg2Id = `msg_inbound_${Date.now()}_2`;
+
+  store.saveThread({
+    id: threadId,
+    provider: "resend",
+    providerThreadId: msg1Id,
+    senderEmail: "buyer@threading.example.com",
+    senderName: "Buyer",
+    organisation: "Threading Corp",
+    subject: "Inquiry on monitoring",
+    status: "awaiting_reply",
+    requestType: "quote",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    lastMessageAt: new Date().toISOString(),
+    messageCount: 1,
+    quoteId: null,
+    quoteTotal: null,
+    currency: "INR",
+    statusDetail: null,
+  });
+
+  store.addMessage({
+    id: `msg_${Date.now()}_1`,
+    threadId,
+    providerMessageId: msg1Id,
+    direction: "inbound",
+    fromAddress: "buyer@threading.example.com",
+    fromName: "Buyer",
+    toAddresses: ["quotes@quote24x7.internal"],
+    subject: "Inquiry on monitoring",
+    bodyText: "Need pricing.",
+    occurredAt: new Date().toISOString(),
+    deliveryId: null,
+    securityNotes: [],
+    attachments: [],
+  });
+
+  const headers1 = buildThreadingHeaders(threadId);
+  assert.equal(headers1.inReplyTo, `<${msg1Id}>`);
+  assert.equal(headers1.references, `<${msg1Id}>`);
+  assert.equal(headers1.headers["In-Reply-To"], `<${msg1Id}>`);
+
+  // Add a clarification outbound message and second inbound reply
+  store.addMessage({
+    id: `msg_${Date.now()}_out`,
+    threadId,
+    providerMessageId: `msg_outbound_${Date.now()}`,
+    direction: "outbound",
+    fromAddress: "quotes@quote24x7.internal",
+    fromName: "Quote24x7 Assistant",
+    toAddresses: ["buyer@threading.example.com"],
+    subject: "Re: Inquiry on monitoring [Ref: #" + threadId + "] - Quick Sizing Clarification",
+    bodyText: "How many servers?",
+    occurredAt: new Date().toISOString(),
+    deliveryId: "del_test",
+    securityNotes: [],
+    attachments: [],
+  });
+
+  store.addMessage({
+    id: `msg_${Date.now()}_2`,
+    threadId,
+    providerMessageId: msg2Id,
+    direction: "inbound",
+    fromAddress: "buyer@threading.example.com",
+    fromName: "Buyer",
+    toAddresses: ["quotes@quote24x7.internal"],
+    subject: "Re: Inquiry on monitoring [Ref: #" + threadId + "] - Quick Sizing Clarification",
+    bodyText: "We have 25 servers.",
+    occurredAt: new Date().toISOString(),
+    deliveryId: null,
+    securityNotes: [],
+    attachments: [],
+  });
+
+  const headers2 = buildThreadingHeaders(threadId);
+  assert.equal(headers2.inReplyTo, `<${msg2Id}>`);
+  assert.ok(headers2.references?.includes(`<${msg1Id}>`));
+  assert.ok(headers2.references?.includes(`<${msg2Id}>`));
+});
+
+test("Full-Conversation Retention: Preserves 25 Linux servers, APM, and website accessibility across turns with accurate allowances and demo notice", async () => {
+  const senderEmail = `client_${Date.now()}@turnretention.example.com`;
+
+  // Turn 1: Mentions application monitoring and vague servers
+  const turn1 = await processInboundEmail({
+    providerMessageId: `msg_turn1_${Date.now()}`,
+    from: senderEmail,
+    to: ["quotes@quote24x7.internal"],
+    subject: "Need pricing for monitoring",
+    text: `
+      Hi,
+      We are looking for some monitoring tool for our company. We have servers
+      and some other IT stuff and recently had few issues where things went down.
+      Can you suggest something and tell us how much it will cost? We might need
+      application monitoring also but need to understand pricing first.
+      Thanks
+    `,
+  });
+
+  assert.equal(turn1.actionTaken, "clarification_requested");
+  const threadId = turn1.threadId;
+
+  // Turn 2: Provides 25 Linux servers, business-critical applications, and website accessibility
+  const turn2 = await processInboundEmail({
+    providerMessageId: `msg_turn2_${Date.now()}`,
+    from: senderEmail,
+    to: ["quotes@quote24x7.internal"],
+    subject: `Re: Need pricing for monitoring [Ref: #${threadId}] - Quick Sizing Clarification`,
+    text: `
+      Hi,
+      We have around 25 servers, mostly Linux, and a few applications that are
+      business-critical.
+      Our main concern is finding out quickly when something goes down. We also
+      want to monitor whether our website is accessible, but I'm not sure if
+      that's included or costs extra.
+      Thanks
+    `,
+  });
+
+  assert.equal(turn2.actionTaken, "quoted");
+  assert.ok(turn2.quote);
+
+  // 1. Verify Requirement Profile retains all 3 capabilities across both turns
+  const profile = store.getProfile(threadId);
+  assert.ok(profile);
+  const serverField = profile.fields.find((f) => f.key === "servers");
+  assert.ok(serverField);
+  assert.equal(serverField.value, 25);
+
+  const apmField = profile.fields.find((f) => f.key === "application_monitoring");
+  assert.ok(apmField, "Must retain application monitoring requirement from conversation");
+  assert.match(String(apmField.value), /application/i);
+
+  const websiteField = profile.fields.find((f) => f.key === "website_monitoring");
+  assert.ok(websiteField, "Must retain website accessibility requirement from conversation");
+
+  const basicField = profile.fields.find((f) => f.key === "basic_monitors");
+  assert.ok(basicField);
+  assert.equal(basicField.value, 1, "Must infer at least 1 basic monitor for website check");
+
+  // 2. Verify Quote Option Coverage covers hosts and basic monitors
+  const bestValue = turn2.quote.options.find((o) => o.optionType === "best_value");
+  assert.ok(bestValue);
+  const hostCoverage = bestValue.coverage.find((c) => c.unit === "host_monitor");
+  assert.ok(hostCoverage);
+  assert.equal(hostCoverage.required, 25);
+  assert.equal(hostCoverage.satisfied, true);
+
+  const basicCoverage = bestValue.coverage.find((c) => c.unit === "basic_monitor");
+  assert.ok(basicCoverage);
+  assert.equal(basicCoverage.required, 1);
+  assert.equal(basicCoverage.satisfied, true);
+
+  // 3. Verify Assumptions explain allowances, APM, and demo catalogue status
+  const assumptions = turn2.quote.assumptions;
+  assert.ok(
+    assumptions.some((a) => a.includes("Website Availability Monitoring") && a.includes("basic monitor allowance")),
+    "Assumptions must state website monitoring is covered under basic monitor allowance at INR 0 extra cost"
+  );
+  assert.ok(
+    assumptions.some((a) => a.includes("Application Performance Monitoring (APM)") && a.includes("does not implicitly bundle")),
+    "Assumptions must explain APM is not bundled into base server pricing and specify add-on pack pricing"
+  );
+  assert.ok(
+    assumptions.some((a) => a.includes("Catalogue Notice") && a.includes("non-binding")),
+    "Assumptions must explicitly label demo catalogue pricing as non-binding"
+  );
+});
+
+test("Duplicate Suppression: Webhook replay or identical payload does not generate duplicate quotes", async () => {
+  const senderEmail = `dup_${Date.now()}@suppression.example.com`;
+  const providerMessageId = `msg_dup_${Date.now()}`;
+
+  const payload = {
+    providerMessageId,
+    from: senderEmail,
+    to: ["quotes@quote24x7.internal"],
+    subject: "Migration quote",
+    text: "We need 10 servers and 2 network devices. Annual billing.",
+  };
+
+  const run1 = await processInboundEmail(payload);
+  assert.equal(run1.actionTaken, "quoted");
+  assert.equal(run1.duplicate, false);
+  const initialQuoteId = run1.quote?.id;
+
+  // Immediate replay with same providerMessageId
+  const run2 = await processInboundEmail(payload);
+  assert.equal(run2.duplicate, true);
+  assert.equal(run2.actionTaken, "dropped_loop");
+
+  // Replay with new message ID but identical content on already-completed thread
+  const run3 = await processInboundEmail({
+    ...payload,
+    providerMessageId: `msg_dup_retry_${Date.now()}`,
+    subject: `Re: Migration quote [Ref: #${run1.threadId}]`,
+  });
+  assert.equal(run3.duplicate, true);
+  assert.equal(run3.actionTaken, "dropped_loop");
+
+  // Ensure no second quote was created for this thread
+  const thread = store.getThread(run1.threadId);
+  assert.equal(thread?.quoteId, initialQuoteId);
+});
+
+test("Public Proposal Links: Localhost URLs are eliminated and public base URLs are formatted properly", async () => {
+  const config = getAppConfig();
+
+  // Test when appBaseUrl is default (localhost)
+  assert.equal(config.isPublicAppUrl, false);
+
+  const senderEmail = `publiclink_${Date.now()}@example.com`;
+  const result = await processInboundEmail({
+    providerMessageId: `msg_url_${Date.now()}`,
+    from: senderEmail,
+    to: ["quotes@quote24x7.internal"],
+    subject: "Pricing inquiry",
+    text: "15 servers, 2 network devices. Annual.",
+  });
+
+  assert.equal(result.actionTaken, "quoted");
+  const threadMessages = store.getMessages(result.threadId);
+  const outboundQuoteMsg = threadMessages.find((m) => m.direction === "outbound");
+  assert.ok(outboundQuoteMsg);
+
+  // Must NOT contain localhost
+  assert.equal(
+    outboundQuoteMsg.bodyText.includes("localhost:3000"),
+    false,
+    "Customer email body must not contain localhost URL"
+  );
+  assert.match(outboundQuoteMsg.bodyText, /quotation document/i);
+});
+

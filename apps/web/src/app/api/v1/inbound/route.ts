@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { processInboundEmail, type InboundEmailPayload } from "@/server/email/inbound-processor";
 import { verifyWebhookSignature, fetchInboundEmailContent } from "@/server/email/resend-inbound";
 import { getAppConfig } from "@/server/config";
+import { store } from "@/server/store/session-store";
 
 /**
  * Inbound Email Webhook & Simulator API.
@@ -63,9 +64,21 @@ export async function POST(request: NextRequest) {
     let subject = "";
     let text = "";
     let providerMessageId = "";
+    let rfcMessageId: string | null = null;
+    let headers: Record<string, string> | null = null;
 
     // Resend Inbound webhook format: { type: "email.received", data: { ... } } or { data: { ... } }
     const eventData = (body.data && typeof body.data === "object") ? (body.data as Record<string, unknown>) : body;
+
+    // Early idempotency check for Resend email_id before fetching full email content
+    if (typeof eventData.email_id === "string" && store.isMessageProcessed(eventData.email_id.trim())) {
+      return NextResponse.json({
+        status: "processed",
+        duplicate: true,
+        actionTaken: "dropped_loop",
+        message: `Message with ID "${eventData.email_id}" was already processed. Replay discarded.`,
+      });
+    }
 
     // If metadata-only email.received event (typical for Resend Inbound), fetch full email content
     if (body.type === "email.received" && typeof eventData.email_id === "string" && !eventData.text) {
@@ -77,6 +90,8 @@ export async function POST(request: NextRequest) {
         subject = fetched.subject;
         text = fetched.text;
         providerMessageId = fetched.id;
+        rfcMessageId = fetched.messageId || null;
+        headers = fetched.headers || null;
       }
     }
 
@@ -132,6 +147,13 @@ export async function POST(request: NextRequest) {
       providerMessageId = `sim_msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     }
 
+    if (!rfcMessageId && typeof eventData.message_id === "string") {
+      rfcMessageId = eventData.message_id.trim();
+    }
+    if (!headers && eventData.headers && typeof eventData.headers === "object") {
+      headers = eventData.headers as Record<string, string>;
+    }
+
     if (!from) {
       return NextResponse.json(
         { error: "Missing required 'from' email address in payload." },
@@ -148,12 +170,14 @@ export async function POST(request: NextRequest) {
 
     const payload: InboundEmailPayload = {
       providerMessageId,
+      messageId: rfcMessageId,
       from,
       fromName,
       to,
       subject,
       text,
       html,
+      headers,
       receivedAt:
         typeof eventData.receivedAt === "string"
           ? eventData.receivedAt

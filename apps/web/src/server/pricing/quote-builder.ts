@@ -118,6 +118,22 @@ function buildAssumptions(
     );
   }
 
+  // Explicit Website Monitoring Allowance
+  const hasWebsite = profile.fields.some((f) => f.key === "website_monitoring") || demand.basic_monitor > 0;
+  if (hasWebsite) {
+    assumptions.push(
+      "Website Availability Monitoring: Website uptime and accessibility checks are covered under the base plan subscription's included basic monitor allowance (Lite includes 5, Professional includes 20, Enterprise includes 50) at INR 0 additional cost.",
+    );
+  }
+
+  // Explicit APM Capability & Pack Information
+  const hasApm = profile.fields.some((f) => f.key === "application_monitoring");
+  if (hasApm) {
+    assumptions.push(
+      "Application Performance Monitoring (APM): Server/host monitoring does not implicitly bundle custom APM instances. In the active catalogue, Lite includes 0 APM/advanced monitors, Professional includes 1 included APM/advanced monitor, and Enterprise includes 10 included APM/advanced monitors. Additional APM capacity requires 2-pack Advanced Monitor add-ons (INR 15,390.00/yr per pack) or custom APM licensing once specific runtime instances are confirmed.",
+    );
+  }
+
   const zeroButUnverified = catalogue.notes.find((note) => note.includes("Enterprise plan were not visible"));
   if (zeroButUnverified) {
     assumptions.push(
@@ -129,6 +145,10 @@ function buildAssumptions(
     "Add-on capacity is sold in whole packs, so delivered quantities may exceed the amounts requested.",
   );
 
+  assumptions.push(
+    `Catalogue Notice: Sizing and pricing reflect demo catalogue benchmarks (${catalogue.version}, verification: ${catalogue.verificationStatus}) and are non-binding. Binding quotation and volume licensing are fulfilled via official Site24x7 channels.`,
+  );
+
   return assumptions;
 }
 
@@ -137,6 +157,7 @@ function buildExclusions(catalogue: CatalogueVersion): string[] {
     "Taxes, duties and levies — no verified tax treatment exists for this market in the active catalogue, so none has been applied.",
     "Discounts and promotional pricing — standard catalogue list prices are applied; volume or partner discounts are calculated during official checkout.",
     "Onboarding, professional services, migration and training.",
+    "Unquantified custom APM instances beyond included base entitlements (separate add-on packs apply).",
     "Any monitoring capability not listed in the coverage table for the chosen option.",
     `Contractual terms, service-level commitments and quote validity periods — catalogue ${catalogue.version} carries no authorised policy for these.`,
   ];

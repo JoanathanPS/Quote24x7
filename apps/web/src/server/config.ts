@@ -16,6 +16,8 @@ export interface AppConfig {
   isLiveDispatchEnabled: boolean;
   /** Application base URL for webhooks and links */
   appBaseUrl: string;
+  /** Whether the configured appBaseUrl is a genuinely public hostname (not localhost / loopback) */
+  isPublicAppUrl: boolean;
 }
 
 export function getAppConfig(): AppConfig {
@@ -26,10 +28,16 @@ export function getAppConfig(): AppConfig {
   const testRecipientEmail = process.env.TEST_RECIPIENT_EMAIL?.trim() || null;
   const isLiveDispatchEnabled =
     Boolean(resendApiKey) && process.env.ALLOW_EXTERNAL_DISPATCH === "true";
-  const appBaseUrl =
+  const rawAppBaseUrl =
     process.env.NEXT_PUBLIC_APP_URL?.trim() ||
     process.env.APP_BASE_URL?.trim() ||
-    "http://localhost:3000";
+    "";
+  const isPublicAppUrl =
+    Boolean(rawAppBaseUrl) &&
+    !rawAppBaseUrl.includes("localhost") &&
+    !rawAppBaseUrl.includes("127.0.0.1") &&
+    (rawAppBaseUrl.startsWith("http://") || rawAppBaseUrl.startsWith("https://"));
+  const appBaseUrl = rawAppBaseUrl || "http://localhost:3000";
 
   return {
     resendApiKey,
@@ -38,5 +46,6 @@ export function getAppConfig(): AppConfig {
     testRecipientEmail,
     isLiveDispatchEnabled,
     appBaseUrl,
+    isPublicAppUrl,
   };
 }

@@ -19,12 +19,14 @@ import {
 
 export interface InboundEmailPayload {
   providerMessageId: string;
+  messageId?: string | null;
   from: string;
   fromName?: string | null;
   to: string[];
   subject: string;
   text: string;
   html?: string;
+  headers?: Record<string, string> | null;
   receivedAt?: string;
 }
 
@@ -38,6 +40,8 @@ export interface InboundProcessingResult {
   message?: string;
 }
 
+const inFlightMessageIds = new Set<string>();
+
 /**
  * Core Inbound Email Pipeline for Quote24x7.
  * Receives an email, links it to a thread, extracts requirements,
@@ -50,19 +54,50 @@ export async function processInboundEmail(
   const config = getAppConfig();
   const now = payload.receivedAt || new Date().toISOString();
   const providerMessageId = payload.providerMessageId.trim();
+  const rfcMessageId = payload.messageId?.trim() || null;
 
-  // 1. Idempotency Check
-  if (store.isMessageProcessed(providerMessageId)) {
+  // 1. Idempotency & In-Flight Check
+  const isDuplicateId =
+    inFlightMessageIds.has(providerMessageId) ||
+    store.isMessageProcessed(providerMessageId) ||
+    (rfcMessageId !== null &&
+      (inFlightMessageIds.has(rfcMessageId) || store.isMessageProcessed(rfcMessageId)));
+
+  if (isDuplicateId) {
     // Locate existing thread
     const allThreads = store.getThreads();
-    const existingThread = allThreads.find((t) => t.providerThreadId === providerMessageId) || allThreads[0];
+    const existingThread =
+      allThreads.find(
+        (t) =>
+          t.providerThreadId === providerMessageId ||
+          (rfcMessageId !== null && t.providerThreadId === rfcMessageId)
+      ) || allThreads[0];
     return {
       threadId: existingThread?.id ?? "unknown",
       duplicate: true,
       actionTaken: "dropped_loop",
-      message: `Message with ID "${providerMessageId}" was already processed. Replay discarded.`,
+      message: `Message with ID "${providerMessageId}" is in-flight or was already processed. Replay discarded.`,
     };
   }
+
+  inFlightMessageIds.add(providerMessageId);
+  if (rfcMessageId) inFlightMessageIds.add(rfcMessageId);
+
+  try {
+    return await doProcessInboundEmail(payload, config, now, providerMessageId, rfcMessageId);
+  } finally {
+    inFlightMessageIds.delete(providerMessageId);
+    if (rfcMessageId) inFlightMessageIds.delete(rfcMessageId);
+  }
+}
+
+async function doProcessInboundEmail(
+  payload: InboundEmailPayload,
+  config: ReturnType<typeof getAppConfig>,
+  now: string,
+  providerMessageId: string,
+  rfcMessageId: string | null
+): Promise<InboundProcessingResult> {
 
   // 2. Loop Prevention Check
   const senderEmail = payload.from.trim().toLowerCase();
@@ -176,6 +211,22 @@ function stripQuotedEmail(text: string): string {
     }
   }
 
+  // If thread was already completed with a quote and receives identical duplicate content, discard replay
+  if (thread && thread.status === "completed" && thread.quoteId) {
+    const existingMsgs = store.getMessages(thread.id);
+    const isDuplicateContent = existingMsgs.some(
+      (m) => m.direction === "inbound" && m.bodyText.trim() === payload.text.trim()
+    );
+    if (isDuplicateContent) {
+      return {
+        threadId: thread.id,
+        duplicate: true,
+        actionTaken: "dropped_loop",
+        message: `Thread ${thread.id} was already completed with quote #${thread.quoteId}. Discarding duplicate payload replay.`,
+      };
+    }
+  }
+
   if (!thread) {
     const newThreadId = `th_${Date.now()}`;
     thread = {
@@ -204,7 +255,7 @@ function stripQuotedEmail(text: string): string {
   const inboundMessage: EmailMessage = {
     id: `msg_in_${Date.now()}`,
     threadId: thread.id,
-    providerMessageId,
+    providerMessageId: rfcMessageId || providerMessageId,
     direction: "inbound",
     fromAddress: payload.from,
     fromName: payload.fromName || null,
@@ -219,6 +270,7 @@ function stripQuotedEmail(text: string): string {
 
   store.addMessage(inboundMessage);
   store.markMessageProcessed(providerMessageId);
+  if (rfcMessageId) store.markMessageProcessed(rfcMessageId);
   store.updateThread(thread.id, {
     messageCount: thread.messageCount + 1,
     lastMessageAt: now,
@@ -228,10 +280,23 @@ function stripQuotedEmail(text: string): string {
   // 5. Requirement Extraction & Multi-Turn Merging
   const cleanReplyText = stripQuotedEmail(payload.text);
   const existingProfile = store.getProfile(thread.id);
+
+  // Aggregate all inbound conversation turns from this thread so no earlier requirements are lost
+  const previousInboundTexts = store
+    .getMessages(thread.id)
+    .filter((m) => m.direction === "inbound" && m.id !== inboundMessage.id)
+    .map((m) => stripQuotedEmail(m.bodyText))
+    .filter((txt) => txt.length > 0)
+    .join("\n\n");
+
+  const cumulativeText = previousInboundTexts
+    ? `${previousInboundTexts}\n\n${cleanReplyText}`
+    : cleanReplyText;
+
   const extraction = existingProfile
     ? mergeRequirements({
         existingProfile,
-        replyText: cleanReplyText,
+        replyText: cumulativeText,
         senderEmail: payload.from,
         senderName: payload.fromName || null,
         subject: payload.subject,
@@ -241,7 +306,7 @@ function stripQuotedEmail(text: string): string {
         senderEmail: payload.from,
         senderName: payload.fromName || null,
         subject: payload.subject,
-        bodyText: payload.text,
+        bodyText: cumulativeText,
       });
 
   store.saveProfile(extraction.profile);

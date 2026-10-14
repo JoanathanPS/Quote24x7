@@ -65,12 +65,14 @@ export function verifyWebhookSignature(
 
 export interface RetrievedInboundEmail {
   id: string;
+  messageId?: string | null;
   from: string;
   fromName?: string | null;
   to: string[];
   subject: string;
   text: string;
   html?: string;
+  headers?: Record<string, string> | null;
   receivedAt?: string;
 }
 
@@ -115,14 +117,21 @@ export async function fetchInboundEmailContent(
       data.text ||
       (data.html ? data.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "");
 
+    const rfcMessageId =
+      data.message_id ||
+      data.headers?.["message-id"] ||
+      `<${data.id}@resend.dev>`;
+
     return {
       id: data.id,
+      messageId: rfcMessageId,
       from: fromAddress,
       fromName,
       to: toAddresses,
       subject: data.subject || "Quote Request",
       text: textContent,
       html: data.html || undefined,
+      headers: data.headers || null,
       receivedAt: data.created_at || new Date().toISOString(),
     };
   } catch (err) {

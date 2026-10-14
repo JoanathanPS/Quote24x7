@@ -37,6 +37,47 @@ export interface OutboundDispatchResult {
 }
 
 /**
+ * Resolves standard RFC 2822 / 5322 In-Reply-To and References headers for email threading.
+ * Gathers prior messages from the thread history to maintain email client conversation grouping.
+ */
+export function buildThreadingHeaders(threadId: string): {
+  inReplyTo?: string;
+  references?: string;
+  headers: Record<string, string>;
+} {
+  const messages = store.getMessages(threadId);
+  if (!messages || messages.length === 0) {
+    return { headers: {} };
+  }
+
+  const formatMsgId = (id: string): string => {
+    const trimmed = id.trim();
+    if (trimmed.startsWith("<") && trimmed.endsWith(">")) return trimmed;
+    return `<${trimmed}>`;
+  };
+
+  // Predecessor message IDs (exclude internal unpersisted placeholder IDs)
+  const validPredecessors = messages
+    .filter((m) => Boolean(m.providerMessageId) && !m.providerMessageId.startsWith("local_out_"))
+    .map((m) => formatMsgId(m.providerMessageId));
+
+  // The latest inbound or prior message to reply directly to
+  const lastInbound = [...messages].reverse().find((m) => m.direction === "inbound");
+  const immediateParent = lastInbound || messages[messages.length - 1];
+  const inReplyTo = immediateParent?.providerMessageId
+    ? formatMsgId(immediateParent.providerMessageId)
+    : undefined;
+
+  const references = validPredecessors.length > 0 ? validPredecessors.join(" ") : inReplyTo;
+
+  const headers: Record<string, string> = {};
+  if (inReplyTo) headers["In-Reply-To"] = inReplyTo;
+  if (references) headers["References"] = references;
+
+  return { inReplyTo, references, headers };
+}
+
+/**
  * Resend Outbound Email Service.
  * Transmits commercial quotation proposals with attached PDF documents,
  * or clarification inquiries when material requirements are missing.
@@ -62,7 +103,17 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
 
   const cleanSub = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
   const subject = `Re: ${cleanSub} - Proposal Ref #${input.quote.id} [Ref: #${input.thread.id}]`;
-  const proposalUrl = `${config.appBaseUrl}/proposals/${input.quote.id}`;
+
+  // Safe Public Proposal URL handling
+  const isPublicUrl = config.isPublicAppUrl;
+  const proposalUrl = isPublicUrl ? `${config.appBaseUrl}/proposals/${input.quote.id}` : null;
+  if (!isPublicUrl) {
+    console.warn(
+      `[resend-outbound] Configured appBaseUrl is not a public hostname ("${config.appBaseUrl}"). Omitting raw localhost portal link from quotation email to ${targetRecipient}.`
+    );
+  }
+
+  const { inReplyTo, headers: threadingHeaders } = buildThreadingHeaders(input.thread.id);
 
   // Plain Text Version (Humanized, clear, no internal jargon)
   const textContent = `
@@ -75,9 +126,14 @@ RECOMMENDED CONFIGURATION (Best Value):
 • Total (${input.quote.billingPeriod}): ${bestValue ? formatMoney(bestValue.total, input.quote.currency) : "—"}
 • Sizing Note: ${bestValue?.rankReason ?? "Optimized for your required capacity with minimal excess."}
 ${lowestCost ? `\nLOWEST COMMITMENT OPTION:\n• Plan: ${lowestCost.planName}\n• Total (${input.quote.billingPeriod}): ${formatMoney(lowestCost.total, input.quote.currency)}\n• Note: ${lowestCost.rankReason}\n` : ""}${bestCoverage ? `\nMAXIMUM HEADROOM OPTION:\n• Plan: ${bestCoverage.planName}\n• Total (${input.quote.billingPeriod}): ${formatMoney(bestCoverage.total, input.quote.currency)}\n• Note: ${bestCoverage.headroomNotes?.[0] || bestCoverage.rankReason}\n` : ""}
-INTERACTIVE PROPOSAL & PURCHASE HANDOFF:
+${
+  proposalUrl
+    ? `INTERACTIVE PROPOSAL & PURCHASE HANDOFF:
 You can review the full interactive proposal online, explore capacity allowances, or proceed to order activation here:
-${proposalUrl}
+${proposalUrl}`
+    : `ONLINE PROPOSAL & CAPACITY BREAKDOWN:
+Your official itemized breakdown, capacity allowances, and pricing terms are attached in the accompanying quotation document ("Quote24x7-Proposal-${input.quote.id}.pdf").`
+}
 
 OFFICIAL PDF QUOTATION:
 We have also attached your official quotation PDF ("Quote24x7-Proposal-${input.quote.id}.pdf") containing the itemized component packs, included allowances, and transparent unit rates for your procurement and budgeting records.
@@ -132,9 +188,17 @@ https://www.site24x7.in/
       <div class="note">${bestValue?.rankReason ?? "Optimized for your required capacity with minimal excess."}</div>
     </div>
 
+    ${
+      proposalUrl
+        ? `
     <div class="btn-container">
       <a href="${proposalUrl}" class="btn" target="_blank">View Interactive Proposal Online →</a>
-    </div>
+    </div>`
+        : `
+    <div class="attachment-box" style="margin: 20px 0; background: #eff6ff; border: 1px solid #bfdbfe;">
+      📄 <strong>Itemized Quotation Attached:</strong> Complete capacity breakdown and transparent pricing are detailed in the attached PDF: <code>Quote24x7-Proposal-${input.quote.id}.pdf</code>.
+    </div>`
+    }
 
     ${
       lowestCost
@@ -192,6 +256,7 @@ https://www.site24x7.in/
         subject,
         text: textContent,
         html: htmlContent,
+        headers: Object.keys(threadingHeaders).length > 0 ? threadingHeaders : undefined,
         attachments: [
           {
             filename: `Quote24x7-Proposal-${input.quote.id}.pdf`,
@@ -241,7 +306,7 @@ https://www.site24x7.in/
         status: status === "accepted" ? "queued" : "failed",
         detail:
           mode === "live"
-            ? `Dispatched via Resend API (messageId: ${providerMessageId})`
+            ? `Dispatched via Resend API (messageId: ${providerMessageId}${inReplyTo ? `, In-Reply-To: ${inReplyTo}` : ""})`
             : `Dry-run simulated dispatch (ALLOW_EXTERNAL_DISPATCH is not true)`,
       },
     ],
@@ -383,6 +448,8 @@ https://www.site24x7.in/
   let mode: "live" | "dry_run" = "dry_run";
   let errorMessage: string | undefined;
 
+  const { inReplyTo, headers: threadingHeaders } = buildThreadingHeaders(input.thread.id);
+
   if (config.isLiveDispatchEnabled && config.resendApiKey) {
     try {
       const resend = new Resend(config.resendApiKey);
@@ -392,6 +459,7 @@ https://www.site24x7.in/
         subject,
         text: textContent,
         html: htmlContent,
+        headers: Object.keys(threadingHeaders).length > 0 ? threadingHeaders : undefined,
       });
 
       if (res.error) {
@@ -433,7 +501,7 @@ https://www.site24x7.in/
         status: status === "accepted" ? "queued" : "failed",
         detail:
           mode === "live"
-            ? `Clarification dispatched via Resend (messageId: ${providerMessageId})`
+            ? `Clarification dispatched via Resend (messageId: ${providerMessageId}${inReplyTo ? `, In-Reply-To: ${inReplyTo}` : ""})`
             : "Clarification email queued in demo mode",
       },
     ],
@@ -514,6 +582,8 @@ https://www.site24x7.in/
   let mode: "live" | "dry_run" = "dry_run";
   let errorMessage: string | undefined;
 
+  const { inReplyTo, headers: threadingHeaders } = buildThreadingHeaders(input.thread.id);
+
   if (config.isLiveDispatchEnabled && config.resendApiKey) {
     try {
       const resend = new Resend(config.resendApiKey);
@@ -522,6 +592,7 @@ https://www.site24x7.in/
         to: targetRecipient,
         subject,
         text: textContent,
+        headers: Object.keys(threadingHeaders).length > 0 ? threadingHeaders : undefined,
       });
 
       if (res.error) {
@@ -563,7 +634,7 @@ https://www.site24x7.in/
         status: status === "accepted" ? "queued" : "failed",
         detail:
           mode === "live"
-            ? `Unpriceable notification dispatched via Resend (messageId: ${providerMessageId})`
+            ? `Unpriceable notification dispatched via Resend (messageId: ${providerMessageId}${inReplyTo ? `, In-Reply-To: ${inReplyTo}` : ""})`
             : "Unpriceable notification email queued in demo mode",
       },
     ],

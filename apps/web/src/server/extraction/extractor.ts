@@ -169,15 +169,23 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     });
   }
 
-  // 4. Basic Monitors
+  // 4. Basic Monitors & Website Availability
   let basicCount = 0;
   let basicEvidence: string | null = null;
-  const basicMentioned = /\b(?:basic|ping|port|standard|website\s+uptime)\s*monitors?\b/i.test(text);
-  const basicMatch = text.match(/(\d+)\s*(?:basic|ping|port|standard)\s*monitors?/i);
+  const basicCountMatch =
+    text.match(/(\d+)\s*(?:basic|ping|port|standard|website(?:\s+uptime|\s+availability)?)\s*monitors?/i) ||
+    text.match(/(?:basic|ping|port|standard|website(?:\s+uptime)?)\s*(?:monitors?|checks?)\s*(?:count|total|:|=)\s*(\d+)/i);
 
-  if (basicMatch && basicMatch[1]) {
-    basicCount = parseInt(basicMatch[1], 10);
-    basicEvidence = basicMatch[0].trim();
+  const websiteAvailabilityMentioned =
+    /\b(?:website(?:\s+is|\s+being)?\s+accessible|website\s+uptime|website\s+availability|website\s+accessibility|check\s+(?:our\s+)?website|monitor(?:\s+whether)?\s+(?:our\s+)?website)\b/i.test(text) ||
+    /\b(?:monitor(?:ing)?\s+(?:our\s+)?website)\b/i.test(text);
+
+  const basicMentioned =
+    /\b(?:basic|ping|port|standard)\s*monitors?\b/i.test(text) || websiteAvailabilityMentioned;
+
+  if (basicCountMatch && basicCountMatch[1]) {
+    basicCount = parseInt(basicCountMatch[1], 10);
+    basicEvidence = basicCountMatch[0].trim();
     fields.push({
       key: "basic_monitors",
       label: "Basic Monitors",
@@ -185,6 +193,24 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       value: basicCount,
       unit: "monitors",
       state: "provided",
+      confidence: 0.95,
+      evidence: basicEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
+  } else if (websiteAvailabilityMentioned) {
+    // Customer asked to check whether website is accessible without a specific count -> 1 basic website check
+    basicCount = 1;
+    const webMatch = text.match(/\b(?:website(?:\s+is|\s+being)?\s+accessible|website\s+uptime|website\s+availability|website\s+accessibility|monitor(?:\s+whether)?\s+(?:our\s+)?website)\b/i);
+    basicEvidence = webMatch ? webMatch[0].trim() : "website accessibility monitoring";
+    fields.push({
+      key: "basic_monitors",
+      label: "Basic Monitors",
+      group: "applications",
+      value: 1,
+      unit: "monitors",
+      state: "inferred",
       confidence: 0.92,
       evidence: basicEvidence,
       conflictWith: null,
@@ -205,6 +231,46 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       conflictWith: null,
       previousValue: null,
       materialToPricing: true,
+    });
+  }
+
+  // Explicit Website Monitoring feature field for visibility in requirement profile
+  if (websiteAvailabilityMentioned) {
+    const webEvidenceMatch = text.match(/\b(?:website(?:\s+is|\s+being)?\s+accessible|website\s+uptime|website\s+availability|website\s+accessibility|monitor(?:\s+whether)?\s+(?:our\s+)?website)\b/i);
+    fields.push({
+      key: "website_monitoring",
+      label: "Website Availability Monitoring",
+      group: "applications",
+      value: "Website uptime & accessibility checks",
+      unit: "checks",
+      state: "provided",
+      confidence: 0.95,
+      evidence: webEvidenceMatch ? webEvidenceMatch[0].trim() : (basicEvidence || "website accessible"),
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: false,
+    });
+  }
+
+  // 4b. Application Performance Monitoring (APM Insight)
+  const apmMentioned =
+    /\b(?:application(?:\s+performance)?\s+monitoring|apm(?:\s+insight)?|business-critical\s+applications?|applications?\s+(?:that\s+are\s+)?business-critical)\b/i.test(text);
+
+  if (apmMentioned) {
+    const apmMatch = text.match(/\b(?:application(?:\s+performance)?\s+monitoring|apm(?:\s+insight)?|business-critical\s+applications?|applications?\s+(?:that\s+are\s+)?business-critical|few\s+applications\s+that\s+are\s+business-critical)\b/i);
+    const apmEvidence = apmMatch ? apmMatch[0].trim() : "application monitoring";
+    fields.push({
+      key: "application_monitoring",
+      label: "Application Performance Monitoring (APM)",
+      group: "applications",
+      value: "Business-critical application monitoring requested (unquantified instance count)",
+      unit: "applications",
+      state: "provided",
+      confidence: 0.9,
+      evidence: apmEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: false, // Does not block quote generation; base plans include APM or explain add-ons
     });
   }
 
@@ -457,8 +523,14 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     applog_gb: applogGb,
   };
 
+  const hasWebsite = fields.some((f) => f.key === "website_monitoring");
+  const hasApm = fields.some((f) => f.key === "application_monitoring");
+  const extraNotes: string[] = [];
+  if (hasWebsite) extraNotes.push("website availability monitoring");
+  if (hasApm) extraNotes.push("business-critical APM");
+
   const summary = isComplete
-    ? `Customer requests monitoring for ${serverCount ?? 0} servers, ${networkCount} network devices, ${advancedCount} advanced monitors, ${rumPageviews ? `${rumPageviews} RUM views` : "standard RUM"}, and ${applogGb ? `${applogGb}GB logs` : "standard logs"}.`
+    ? `Customer requests monitoring for ${serverCount ?? 0} servers, ${networkCount} network devices, ${advancedCount} advanced monitors, ${rumPageviews ? `${rumPageviews} RUM views` : "standard RUM"}, and ${applogGb ? `${applogGb}GB logs` : "standard logs"}${extraNotes.length > 0 ? ` (including ${extraNotes.join(" and ")})` : ""}.`
     : "Inquiry lacks required server/host counts for deterministic plan sizing.";
 
   const profile: RequirementProfile = {
@@ -530,6 +602,8 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
     "basic_monitors",
     "rum_pageviews",
     "applogs_volume",
+    "website_monitoring",
+    "application_monitoring",
     "billing_period",
     "currency",
   ];
@@ -577,6 +651,19 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
       mergedFields.push({ ...replyField });
     } else if (existingField) {
       mergedFields.push({ ...existingField });
+    }
+  }
+
+  // Preserve any additional fields from earlier turns or reply
+  const processedKeys = new Set(allKeys);
+  for (const existingField of existingProfile.fields) {
+    if (!processedKeys.has(existingField.key) && !mergedFields.some((f) => f.key === existingField.key)) {
+      mergedFields.push({ ...existingField });
+    }
+  }
+  for (const replyField of replyExtraction.profile.fields) {
+    if (!processedKeys.has(replyField.key) && !mergedFields.some((f) => f.key === replyField.key)) {
+      mergedFields.push({ ...replyField });
     }
   }
 
@@ -680,8 +767,14 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
     applog_gb: applogGb,
   };
 
+  const hasWebsite = mergedFields.some((f) => f.key === "website_monitoring");
+  const hasApm = mergedFields.some((f) => f.key === "application_monitoring");
+  const extraNotes: string[] = [];
+  if (hasWebsite) extraNotes.push("website availability monitoring");
+  if (hasApm) extraNotes.push("business-critical APM");
+
   const summary = isComplete
-    ? `Customer requests monitoring for ${serverCount} servers, ${networkCount} network devices, ${advancedCount} advanced monitors, ${rumPageviews ? `${rumPageviews} RUM views` : "standard RUM"}, and ${applogGb ? `${applogGb}GB logs` : "standard logs"}.`
+    ? `Customer requests monitoring for ${serverCount} servers, ${networkCount} network devices, ${advancedCount} advanced monitors, ${rumPageviews ? `${rumPageviews} RUM views` : "standard RUM"}, and ${applogGb ? `${applogGb}GB logs` : "standard logs"}${extraNotes.length > 0 ? ` (including ${extraNotes.join(" and ")})` : ""}.`
     : `Inquiry partially clarified (round ${existingProfile.clarificationRound + 1}); still missing: ${missingMaterialFields.join(", ")}.`;
 
   const profile: RequirementProfile = {
