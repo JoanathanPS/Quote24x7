@@ -1,0 +1,479 @@
+/**
+ * Quote24x7 domain model.
+ *
+ * These types mirror the persistence model in `docs/claude-code-prompt.md` §12
+ * and are the contract between the operational console and the processing
+ * backend. The console reads them through `src/lib/api-client.ts`; today that
+ * client is served by Next route handlers over seeded fixtures, and later by
+ * the FastAPI service, without the UI changing.
+ *
+ * Money rule: every amount in this file is an INTEGER COUNT OF MINOR UNITS
+ * (paise for INR, cents for USD). JavaScript has no decimal type, so binary
+ * floating point is never used for currency anywhere in this project. Values
+ * are converted to a display string only at the rendering edge.
+ */
+
+// ---------------------------------------------------------------------------
+// Primitives
+// ---------------------------------------------------------------------------
+
+/** Amount in minor units. 971_100_00 === ₹971,100.00 */
+export type MinorUnits = number;
+
+export type CurrencyCode = "INR" | "USD" | "EUR" | "GBP";
+
+export type MarketCode = "IN" | "US" | "EU" | "UK";
+
+export type BillingPeriod = "monthly" | "annual";
+
+export type IsoDateTime = string;
+
+// ---------------------------------------------------------------------------
+// Pricing catalogue
+// ---------------------------------------------------------------------------
+
+/**
+ * How much trust a price deserves. Nothing in this repository may be
+ * `company_authorized` — that status is reserved for a price book supplied by
+ * the project owner.
+ */
+export type VerificationStatus =
+  | "company_authorized"
+  | "public_verified"
+  | "screenshot_derived"
+  | "synthetic_test";
+
+export type CatalogueStatus = "draft" | "validated" | "active" | "retired";
+
+export interface SourceReference {
+  /** Stable key referenced by plans, add-ons and line items. */
+  id: string;
+  title: string;
+  /** Page, document or screenshot file the value came from. */
+  locator: string;
+  url: string | null;
+  retrievedAt: IsoDateTime;
+  verificationStatus: VerificationStatus;
+  /** Anything that makes this source less than authoritative. */
+  caveats: string[];
+}
+
+/** Billable units the pricing engine understands. */
+export type UnitKind =
+  | "basic_monitor"
+  | "advanced_monitor"
+  | "host_monitor"
+  | "network_component"
+  | "rum_pageview"
+  | "applog_gb"
+  | "synthetic_run";
+
+export interface Entitlement {
+  unit: UnitKind;
+  /** Quantity included in the plan base price. `null` = plan does not support this unit at all. */
+  included: number | null;
+}
+
+export interface Plan {
+  id: string;
+  name: string;
+  /** One-line positioning used in option cards and the quote document. */
+  summary: string;
+  basePrice: MinorUnits;
+  billingPeriod: BillingPeriod;
+  entitlements: Entitlement[];
+  /** Capability flags shown as coverage, e.g. "Application performance monitoring". */
+  capabilities: string[];
+  /** Add-on ids this plan is allowed to combine with. */
+  allowedAddOnIds: string[];
+  pollingFrequency: string;
+  monitoringLocations: number | null;
+  sourceId: string;
+}
+
+export interface AddOnPack {
+  id: string;
+  name: string;
+  unit: UnitKind;
+  /** Units delivered by one pack. Excess demand is covered by whole packs only. */
+  packSize: number;
+  /** `null` when the source did not give a price — the engine must then refuse to quote. */
+  packPrice: MinorUnits | null;
+  billingPeriod: BillingPeriod;
+  sourceId: string;
+  /** Plan ids this pack price applies to; empty = all plans that allow it. */
+  appliesToPlanIds: string[];
+}
+
+export interface CatalogueVersion {
+  id: string;
+  version: string;
+  market: MarketCode;
+  currency: CurrencyCode;
+  status: CatalogueStatus;
+  verificationStatus: VerificationStatus;
+  contentHash: string;
+  effectiveFrom: IsoDateTime;
+  effectiveTo: IsoDateTime | null;
+  createdAt: IsoDateTime;
+  activatedAt: IsoDateTime | null;
+  plans: Plan[];
+  addOns: AddOnPack[];
+  sources: SourceReference[];
+  /** Validation findings produced at import time. */
+  validation: CatalogueValidationReport;
+  notes: string[];
+}
+
+export interface CatalogueValidationReport {
+  checkedAt: IsoDateTime;
+  passed: boolean;
+  errors: CatalogueFinding[];
+  warnings: CatalogueFinding[];
+}
+
+export interface CatalogueFinding {
+  code: string;
+  message: string;
+  /** Plan id, add-on id or source id the finding relates to. */
+  subject: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Email threads and messages
+// ---------------------------------------------------------------------------
+
+export type ThreadStatus =
+  | "received"
+  | "extracting"
+  | "awaiting_reply"
+  | "pricing"
+  | "document_generation"
+  | "sending"
+  | "completed"
+  | "failed"
+  | "unsupported";
+
+export type RequestType = "quote" | "proposal" | "clarification" | "unknown";
+
+export interface EmailThread {
+  id: string;
+  provider: string;
+  providerThreadId: string | null;
+  senderEmail: string;
+  senderName: string | null;
+  organisation: string | null;
+  subject: string;
+  status: ThreadStatus;
+  requestType: RequestType;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+  lastMessageAt: IsoDateTime;
+  messageCount: number;
+  /** Set only when a valid quote exists; never a placeholder. */
+  quoteId: string | null;
+  quoteTotal: MinorUnits | null;
+  currency: CurrencyCode | null;
+  /** Operator-safe explanation for failed / unsupported threads. */
+  statusDetail: string | null;
+}
+
+export type MessageDirection = "inbound" | "outbound";
+
+export interface EmailMessage {
+  id: string;
+  threadId: string;
+  providerMessageId: string;
+  direction: MessageDirection;
+  fromAddress: string;
+  fromName: string | null;
+  toAddresses: string[];
+  subject: string;
+  /** Already sanitised server-side: scripts, remote images and trackers stripped. */
+  bodyText: string;
+  occurredAt: IsoDateTime;
+  /** Outbound only. */
+  deliveryId: string | null;
+  /** Set when ingress flagged the message, e.g. a prompt-injection attempt. */
+  securityNotes: string[];
+  attachments: MessageAttachment[];
+}
+
+export interface MessageAttachment {
+  name: string;
+  contentType: string;
+  sizeBytes: number;
+  /** Attachments are stored and listed but never parsed or executed in Phase 1. */
+  scanned: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Requirement extraction
+// ---------------------------------------------------------------------------
+
+export type FieldState = "provided" | "inferred" | "missing" | "conflicting";
+
+export interface RequirementField {
+  key: string;
+  label: string;
+  /** Grouping used by the thread detail screen. */
+  group: "infrastructure" | "applications" | "commercial" | "context";
+  value: number | string | null;
+  unit: string | null;
+  state: FieldState;
+  /** 0–1. Only meaningful for `provided` and `inferred`. */
+  confidence: number | null;
+  /** Verbatim span from the buyer's email supporting the value. */
+  evidence: string | null;
+  /** Populated for `conflicting` fields. */
+  conflictWith: string | null;
+  /** Populated when a later message superseded an earlier value. */
+  previousValue: number | string | null;
+  /** Whether a missing value would change the price, driving the clarification policy. */
+  materialToPricing: boolean;
+}
+
+export interface RequirementProfile {
+  id: string;
+  threadId: string;
+  version: number;
+  supersedesProfileId: string | null;
+  createdAt: IsoDateTime;
+  extractorModel: string;
+  /** Null until a model is configured; fixtures record the fixture generator instead. */
+  extractorRunId: string | null;
+  fields: RequirementField[];
+  summary: string;
+  /** Material gaps the clarification policy selected, in asking order. */
+  pendingQuestions: ClarificationQuestion[];
+  answeredQuestions: ClarificationQuestion[];
+  /** Rounds already spent, against the configured limit. */
+  clarificationRound: number;
+}
+
+export interface ClarificationQuestion {
+  id: string;
+  fieldKeys: string[];
+  question: string;
+  reason: string;
+  askedAt: IsoDateTime | null;
+  answeredAt: IsoDateTime | null;
+  answerSummary: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Quotes
+// ---------------------------------------------------------------------------
+
+export type QuoteStatus =
+  | "estimate"
+  | "validated"
+  | "sent"
+  | "delivery_failed"
+  | "superseded";
+
+export type OptionType = "best_value" | "lowest_cost" | "best_coverage";
+
+/** How confident the system is that the amounts may be shown to a buyer. */
+export type PricingStatus =
+  | "demo_unverified"
+  | "research_estimate"
+  | "authorized";
+
+export interface QuoteLineItem {
+  id: string;
+  /** Pricing rule that produced the line, for audit. */
+  ruleId: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  unitPrice: MinorUnits;
+  lineTotal: MinorUnits;
+  /** Quantity already covered by the plan base price. */
+  includedQuantity: number | null;
+  sourceId: string;
+}
+
+export interface CoverageRow {
+  unit: UnitKind;
+  label: string;
+  required: number;
+  included: number;
+  viaAddOns: number;
+  total: number;
+  /** True when total >= required. */
+  satisfied: boolean;
+}
+
+export interface QuoteOption {
+  id: string;
+  quoteId: string;
+  optionType: OptionType;
+  planId: string;
+  planName: string;
+  /** Deterministic, data-derived reason — not model prose. */
+  rankReason: string;
+  subtotal: MinorUnits;
+  /** Null when tax treatment for the market is not verified. */
+  taxTotal: MinorUnits | null;
+  total: MinorUnits;
+  valid: boolean;
+  unavailabilityReason: string | null;
+  lineItems: QuoteLineItem[];
+  coverage: CoverageRow[];
+  /** Headroom beyond the stated requirement, used to justify Best Coverage. */
+  headroomNotes: string[];
+}
+
+export interface CalculationStep {
+  step: number;
+  ruleId: string;
+  description: string;
+  /** Human-readable arithmetic, e.g. "ceil((80 - 20) / 10) = 6 packs". */
+  computation: string;
+  resultMinor: MinorUnits | null;
+}
+
+export interface Quote {
+  id: string;
+  threadId: string;
+  requirementProfileId: string;
+  catalogueVersionId: string;
+  catalogueVersion: string;
+  calculationVersion: string;
+  status: QuoteStatus;
+  pricingStatus: PricingStatus;
+  market: MarketCode;
+  currency: CurrencyCode;
+  billingPeriod: BillingPeriod;
+  createdAt: IsoDateTime;
+  /** Only set when a verified validity policy is configured. */
+  expiresAt: IsoDateTime | null;
+  options: QuoteOption[];
+  assumptions: string[];
+  exclusions: string[];
+  calculationTrace: CalculationStep[];
+  /** Integrity checks run after calculation, before any document is produced. */
+  integrityChecks: IntegrityCheck[];
+  documents: QuoteDocument[];
+  /** Why fewer than three options exist, when that is the case. */
+  optionCountNote: string | null;
+}
+
+export interface IntegrityCheck {
+  id: string;
+  label: string;
+  passed: boolean;
+  detail: string;
+}
+
+export type DocumentType = "quote" | "proposal";
+
+export interface QuoteDocument {
+  id: string;
+  quoteId: string;
+  documentType: DocumentType;
+  fileName: string;
+  contentHash: string;
+  pageCount: number;
+  createdAt: IsoDateTime;
+  /** Null until a server-side renderer is wired up; the console previews from quote data. */
+  storageKey: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Delivery
+// ---------------------------------------------------------------------------
+
+export type DeliveryStatus =
+  | "queued"
+  | "accepted"
+  | "delivered"
+  | "bounced"
+  | "complained"
+  | "failed"
+  | "suppressed";
+
+export interface DeliveryEvent {
+  at: IsoDateTime;
+  status: DeliveryStatus | "retry_scheduled";
+  detail: string;
+}
+
+export interface DeliveryRecord {
+  id: string;
+  threadId: string;
+  quoteId: string | null;
+  provider: string;
+  providerMessageId: string | null;
+  recipient: string;
+  subject: string;
+  status: DeliveryStatus;
+  attemptCount: number;
+  maxAttempts: number;
+  lastErrorCode: string | null;
+  /** Operator-safe message. Never contains credentials or full message bodies. */
+  lastErrorMessage: string | null;
+  nextRetryAt: IsoDateTime | null;
+  retryEligible: boolean;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+  events: DeliveryEvent[];
+}
+
+// ---------------------------------------------------------------------------
+// Operations / health
+// ---------------------------------------------------------------------------
+
+export interface OverviewMetrics {
+  windowLabel: string;
+  emailsReceived: number;
+  quotesGenerated: number;
+  pendingClarifications: number;
+  deliveryFailures: number;
+  threadsByStatus: Record<ThreadStatus, number>;
+  /** Daily buckets for the activity chart; real counts from seeded threads. */
+  activity: ActivityBucket[];
+  medianProcessingSeconds: number | null;
+  deadLetterCount: number;
+}
+
+export interface ActivityBucket {
+  date: string;
+  received: number;
+  quoted: number;
+  clarified: number;
+}
+
+export type IntegrationState = "configured" | "demo_mode" | "not_configured" | "error";
+
+export interface IntegrationStatus {
+  id: string;
+  name: string;
+  category: "inbound_email" | "outbound_email" | "ai" | "database" | "documents" | "storage";
+  state: IntegrationState;
+  /** What the console actually knows, phrased so it never overstates readiness. */
+  detail: string;
+  /** Environment variable names only — never values. */
+  requiredEnvVars: string[];
+  docsPath: string | null;
+}
+
+export type HealthLevel = "ok" | "degraded" | "down" | "unknown";
+
+export interface SystemHealth {
+  overall: HealthLevel;
+  checkedAt: IsoDateTime;
+  components: HealthComponent[];
+  /** Global pause on automated outbound sending. */
+  outboundSendingPaused: boolean;
+  environment: "local" | "staging" | "production";
+}
+
+export interface HealthComponent {
+  id: string;
+  name: string;
+  level: HealthLevel;
+  detail: string;
+  latencyMs: number | null;
+}
