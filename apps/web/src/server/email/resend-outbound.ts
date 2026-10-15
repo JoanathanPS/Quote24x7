@@ -4,6 +4,24 @@ import { getAppConfig } from "../config.ts";
 import { store } from "../store/session-store.ts";
 import { formatMoney } from "../pricing/money.ts";
 
+/**
+ * Escapes text that originates outside this module before it is placed in an
+ * HTML email body.
+ *
+ * Both of the values this is applied to are ultimately customer-controlled: a
+ * display name taken from an email header, and clarification questions now
+ * authored by the AI sales engineer while reading an untrusted customer
+ * message. Neither may be allowed to inject markup into mail we send.
+ */
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export interface SendQuoteEmailInput {
   thread: EmailThread;
   quote: Quote;
@@ -178,7 +196,7 @@ https://www.site24x7.in/
       <div class="ref">Proposal Reference #${input.quote.id}  •  Billing: ${input.quote.billingPeriod}</div>
     </div>
 
-    <p>Hi ${input.recipientName || "there"},</p>
+    <p>Hi ${escapeHtml(input.recipientName || "there")},</p>
     <p>Thank you for reaching out about your Site24x7 monitoring setup. Based on your stated infrastructure requirements, we've designed a tailored configuration to cover your workload.</p>
 
     <div class="card highlight">
@@ -393,7 +411,7 @@ https://www.site24x7.in/
     .split("\n")
     .map((q) => q.trim().replace(/^[-•*]\s*/, "").replace(/^\d+\.\s*/, ""))
     .filter((q) => q.length > 0)
-    .map((q) => `<li style="margin-bottom: 8px;">${q}</li>`)
+    .map((q) => `<li style="margin-bottom: 8px;">${escapeHtml(q)}</li>`)
     .join("");
 
   const htmlContent = `
@@ -421,7 +439,7 @@ https://www.site24x7.in/
       <div class="ref">Conversation #${input.thread.id}</div>
     </div>
 
-    <p>Hi ${input.recipientName || "there"},</p>
+    <p>Hi ${escapeHtml(input.recipientName || "there")},</p>
     <p>Thank you for reaching out regarding Site24x7 monitoring. To configure the best-value plan and accurately provision any required add-on capacity for your infrastructure, could you clarify a few details?</p>
 
     <div class="card">

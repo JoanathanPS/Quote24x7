@@ -451,15 +451,14 @@ export function scoreCandidate(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Three-option ranking — rule RANK-v1
-// ---------------------------------------------------------------------------
-
-/** a is better value than b when a costs less per point of delivered capacity. */
+/**
+ * a is better value than b when a delivers higher utility (coverage score) per rupee.
+ * Uses exact cross-multiplication: a.score / a.total vs b.score / b.total
+ */
 function betterValue(a: Candidate, b: Candidate): number {
-  const left = a.total * b.coveragePoints;
-  const right = b.total * a.coveragePoints;
-  if (left !== right) return left - right;
+  const left = a.coverageScore * b.total;
+  const right = b.coverageScore * a.total;
+  if (left !== right) return right - left; // higher ratio (score * other.total) comes first
   if (a.total !== b.total) return a.total - b.total;
   return a.plan.id.localeCompare(b.plan.id);
 }
@@ -476,17 +475,11 @@ function broadest(a: Candidate, b: Candidate): number {
   return a.plan.id.localeCompare(b.plan.id);
 }
 
-const RANKERS: Record<OptionType, (a: Candidate, b: Candidate) => number> = {
-  best_value: betterValue,
-  lowest_cost: cheapest,
-  best_coverage: broadest,
-};
-
 const RANK_REASONS: Record<OptionType, (candidate: Candidate) => string> = {
   best_value: (candidate) =>
-    `Lowest cost per unit of delivered capacity among valid configurations (${candidate.coveragePoints} capacity points for the quoted total).`,
+    `Recommended configuration: optimal balance of core monitoring capacity, feature breadth, and growth headroom (${candidate.coveragePoints} capacity points for the quoted total).`,
   lowest_cost: (candidate) =>
-    `Cheapest configuration that still meets every stated minimum, using ${candidate.addOnPackCount} add-on pack(s).`,
+    `Cheapest configuration meeting every stated minimum, using ${candidate.addOnPackCount} add-on pack(s) (lowest valid total commitment).`,
   best_coverage: (candidate) =>
     `Widest supported coverage among valid configurations: ${candidate.plan.capabilities.length} capability areas, ${candidate.plan.pollingFrequency} polling.`,
 };
@@ -498,10 +491,18 @@ export interface RankedOptions {
 }
 
 /**
- * Selects up to three distinct options. Slots are filled in priority order and
- * a plan is never reused, so two cards can never show the same configuration
- * under different headings. When a slot cannot be filled with a distinct valid
- * candidate the slot is dropped and the reason is recorded.
+ * Selects up to three distinct options with strict cost and value invariants:
+ * 1. "lowest_cost" ALWAYS represents the lowest valid total price across all candidates.
+ * 2. "best_value" represents the recommended configuration with the optimal balance
+ *    of capability, headroom, and cost efficiency.
+ * 3. "best_coverage" represents maximum headroom and polling frequency.
+ *
+ * Invariants guaranteed:
+ * - A plan is never reused across multiple slots.
+ * - lowest_cost.total <= best_value.total (when both present).
+ * - lowest_cost.total <= best_coverage.total (when both present).
+ * - When candidates overlap in price at the minimum, best_value receives the
+ *   candidate with the higher coverage score, ensuring lowest_cost is never more expensive.
  */
 export function rankOptions(
   candidates: readonly Candidate[],
@@ -511,22 +512,71 @@ export function rankOptions(
   const valid = candidates.filter((candidate) => candidate.valid);
   const rejected = candidates.filter((candidate) => !candidate.valid);
 
-  const used = new Set<string>();
-  const options: QuoteOption[] = [];
-  const slots: OptionType[] = ["best_value", "lowest_cost", "best_coverage"];
+  if (valid.length === 0) {
+    return {
+      options: [],
+      rejected,
+      optionCountNote:
+        "No configuration in the active catalogue satisfies this request. No price is shown rather than an invented one.",
+    };
+  }
 
-  for (const slot of slots) {
-    const pick = [...valid].sort(RANKERS[slot]).find((candidate) => !used.has(candidate.plan.id));
-    if (!pick) continue;
-    used.add(pick.plan.id);
-    options.push(toQuoteOption(pick, slot, demand, quoteId));
+  // If only 1 valid candidate exists:
+  // Present as "best_value" (the primary recommended card across views).
+  if (valid.length === 1) {
+    const pick = valid[0]!;
+    const options: QuoteOption[] = [toQuoteOption(pick, "best_value", demand, quoteId)];
+    const optionCountNote =
+      "Only 1 genuinely distinct valid configuration exists for this request. The remaining plans either lack a capability the request needs, or have no priced add-on to cover the shortfall. Options are not invented to reach three.";
+    return { options, rejected, optionCountNote };
+  }
+
+  // 1. Identify the candidate with the absolute minimum total price.
+  const sortedByPrice = [...valid].sort(cheapest);
+  const minTotal = sortedByPrice[0]!.total;
+  const cheapestGroup = valid.filter((c) => c.total === minTotal);
+
+  let lowestCostCandidate: Candidate;
+  let bestValueCandidate: Candidate;
+  let remainingForCoverage: Candidate[];
+
+  if (cheapestGroup.length > 1) {
+    // Overlapping prices at the minimum:
+    // The candidate with higher coverage score is assigned to "best_value",
+    // while another minimum-price candidate is assigned to "lowest_cost".
+    // Both share the exact minimum price, ensuring lowest_cost is never more expensive.
+    const sortedCheapestGroup = [...cheapestGroup].sort(betterValue);
+    bestValueCandidate = sortedCheapestGroup[0]!;
+    lowestCostCandidate = sortedCheapestGroup[1]!;
+    remainingForCoverage = valid.filter(
+      (c) => c.plan.id !== bestValueCandidate.plan.id && c.plan.id !== lowestCostCandidate.plan.id,
+    );
+  } else {
+    // Differently priced candidates:
+    // "lowest_cost" is unconditionally the absolute cheapest valid configuration.
+    lowestCostCandidate = sortedByPrice[0]!;
+    const remainingForValue = valid.filter((c) => c.plan.id !== lowestCostCandidate.plan.id);
+    bestValueCandidate = [...remainingForValue].sort(betterValue)[0]!;
+    remainingForCoverage = remainingForValue.filter((c) => c.plan.id !== bestValueCandidate.plan.id);
+  }
+
+  // 3. "best_coverage": widest coverage among remaining unused candidates
+  const bestCoverageCandidate =
+    remainingForCoverage.length > 0 ? [...remainingForCoverage].sort(broadest)[0]! : null;
+
+  // Build the options array:
+  // Primary recommendation (best_value) is first, followed by lowest_cost and best_coverage.
+  const options: QuoteOption[] = [
+    toQuoteOption(bestValueCandidate, "best_value", demand, quoteId),
+    toQuoteOption(lowestCostCandidate, "lowest_cost", demand, quoteId),
+  ];
+
+  if (bestCoverageCandidate) {
+    options.push(toQuoteOption(bestCoverageCandidate, "best_coverage", demand, quoteId));
   }
 
   let optionCountNote: string | null = null;
-  if (valid.length === 0) {
-    optionCountNote =
-      "No configuration in the active catalogue satisfies this request. No price is shown rather than an invented one.";
-  } else if (options.length < 3) {
+  if (options.length < 3) {
     optionCountNote =
       `Only ${options.length} genuinely distinct valid configuration${options.length === 1 ? " exists" : "s exist"} ` +
       `for this request. The remaining plans either lack a capability the request needs, or have no priced add-on ` +
@@ -669,6 +719,19 @@ export function runIntegrityChecks(
       : hasOptions
         ? "A non-integer amount was produced — the quote is not trustworthy."
         : "No options available to evaluate minor unit integrity.",
+  });
+
+  const lowestCostOpt = options.find((o) => o.optionType === "lowest_cost");
+  const lowestCostIsMinimum =
+    !lowestCostOpt ||
+    options.every((o) => lowestCostOpt.total <= o.total);
+  checks.push({
+    id: "lowest-cost-is-minimum",
+    label: "Lowest cost option total is less than or equal to all other option prices",
+    passed: lowestCostIsMinimum,
+    detail: lowestCostIsMinimum
+      ? "Lowest cost option represents the true minimum commitment across all presented configurations."
+      : "Lowest cost option has a higher price than another option — recommendation ranking failed.",
   });
 
   const notAuthorised = catalogue.verificationStatus !== "company_authorized";

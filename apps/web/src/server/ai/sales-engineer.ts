@@ -1,0 +1,659 @@
+import type {
+  AiAction,
+  AiDecisionRecord,
+  AiFailureCategory,
+  AiValidationOutcome,
+  CatalogueVersion,
+  ClarificationQuestion,
+  EmailMessage,
+  EmailThread,
+  ProductCategory,
+  RequirementField,
+  RequirementProfile,
+} from "@/types/domain";
+
+import { getAppConfig } from "../config.ts";
+import { DEMAND_UNITS, UNIT_LABELS, type DemandUnit, type PricingDemand } from "../pricing/engine.ts";
+import {
+  extractRequirements,
+  mergeRequirements,
+  type ExtractionResult,
+} from "../extraction/extractor.ts";
+import { buildSalesContext, deriveSupportedCategories } from "./context-builder.ts";
+import { QUANTITY_BOUNDS, type AiDecisionOutput } from "./decision-schema.ts";
+import { geminiProvider, type AiProvider } from "./gemini-provider.ts";
+
+/**
+ * The AI sales engineer.
+ *
+ * Three parties with strictly separated authority:
+ *
+ *   Gemini            decides what the customer needs and what to do next.
+ *   This module        validates that decision against the catalogue and
+ *                      corrects or escalates it when it does not hold up.
+ *   The pricing engine owns every amount, untouched by either of the above.
+ *
+ * The rules-based extractor is always run, for two reasons: it supplies the
+ * commercial metadata the AI schema deliberately omits (currency, billing
+ * period, organisation), and it is the fallback result, already computed, for
+ * the moment the provider is unavailable.
+ */
+
+export const MAX_CLARIFICATION_ROUNDS = 3;
+
+/**
+ * Whether asking another question would exceed the clarification allowance.
+ *
+ * `roundsSpent` is the round already recorded on the stored profile, so the
+ * question about to be asked would be round `roundsSpent + 1`. Reaching
+ * MAX_CLARIFICATION_ROUNDS stops the loop, which allows two clarification
+ * emails and escalates on the third unresolved turn. This matches the
+ * behaviour the pipeline had before the AI was introduced.
+ */
+function clarificationLimitReached(roundsSpent: number): boolean {
+  return roundsSpent + 1 >= MAX_CLARIFICATION_ROUNDS;
+}
+
+/** Maps a billable unit onto the requirement-profile field key used across the app. */
+const UNIT_FIELD_KEYS: Record<DemandUnit, { key: string; label: string; unit: string; group: RequirementField["group"] }> = {
+  host_monitor: { key: "servers", label: "Server / Host Monitors", unit: "servers", group: "infrastructure" },
+  network_component: { key: "network_devices", label: "Network Devices", unit: "devices", group: "infrastructure" },
+  advanced_monitor: { key: "advanced_monitors", label: "Advanced / Synthetic Monitors", unit: "monitors", group: "applications" },
+  basic_monitor: { key: "basic_monitors", label: "Basic Monitors", unit: "monitors", group: "applications" },
+  rum_pageview: { key: "rum_pageviews", label: "RUM Pageviews", unit: "pageviews/month", group: "applications" },
+  applog_gb: { key: "applogs_volume", label: "AppLogs Volume", unit: "GB/month", group: "applications" },
+};
+
+const FIELD_KEY_TO_UNIT = new Map<string, DemandUnit>(
+  (Object.entries(UNIT_FIELD_KEYS) as Array<[DemandUnit, { key: string }]>).map(([unit, meta]) => [meta.key, unit]),
+);
+
+/** Keywords that tie a follow-up question to the unit it is asking about. */
+const QUESTION_UNIT_HINTS: Array<{ unit: DemandUnit; match: RegExp }> = [
+  { unit: "host_monitor", match: /\b(server|host|vm|virtual machine|instance|node|machine)/i },
+  { unit: "network_component", match: /\b(network|switch|router|firewall|interface)/i },
+  { unit: "advanced_monitor", match: /\b(synthetic|advanced|transaction|browser check)/i },
+  { unit: "basic_monitor", match: /\b(basic|ping|port|uptime|website count|how many (?:websites|urls|sites))/i },
+  { unit: "rum_pageview", match: /\b(rum|real user|pageview|page view)/i },
+  { unit: "applog_gb", match: /\b(log|applog)/i },
+];
+
+export interface SalesEngineerInput {
+  thread: EmailThread;
+  /** Current inbound message, quoted reply chain already stripped. */
+  latestMessageText: string;
+  /** Cumulative inbound text, used by the rules extractor so it never loses earlier turns. */
+  cumulativeText: string;
+  priorMessages: EmailMessage[];
+  existingProfile: RequirementProfile | undefined;
+  catalogue: CatalogueVersion;
+  senderEmail: string;
+  senderName: string | null;
+  subject: string;
+}
+
+export interface SalesDecision {
+  /** Auditable record of what was decided and by whom. Persisted by the caller. */
+  record: AiDecisionRecord;
+  /** Consumed by the existing pipeline exactly as the rules extractor's output was. */
+  extraction: ExtractionResult;
+  action: AiAction;
+}
+
+/**
+ * Why the AI path cannot be used right now, or null when it can.
+ *
+ * Exported so the console and tests can state the reason precisely instead of
+ * collapsing every cause into "AI off".
+ */
+export interface AiAvailability {
+  available: boolean;
+  category: AiFailureCategory | null;
+  detail: string | null;
+}
+
+export function getAiAvailability(): AiAvailability {
+  const config = getAppConfig();
+
+  if (!config.geminiApiKey) {
+    return {
+      available: false,
+      category: "not_configured",
+      detail: "GEMINI_API_KEY is not configured; the rules-based engine decided this thread.",
+    };
+  }
+  if (process.env.DISABLE_AI === "true") {
+    return {
+      available: false,
+      category: "disabled_by_flag",
+      detail: "AI is disabled by DISABLE_AI=true; the rules-based engine decided this thread.",
+    };
+  }
+  if (!config.isAiEnabled) {
+    return {
+      available: false,
+      category: "disabled_by_flag",
+      detail:
+        "AI is blocked in the automated test runtime so tests cannot spend API credits; " +
+        "the rules-based engine decided this thread.",
+    };
+  }
+  return { available: true, category: null, detail: null };
+}
+
+/**
+ * Runs the sales engineer for one inbound message.
+ *
+ * Never throws: every provider or validation failure resolves to a usable
+ * decision from the rules fallback, with the reason recorded.
+ *
+ * An explicitly supplied `provider` is itself the configuration decision and
+ * is always used — that is how tests exercise the AI path without credentials.
+ * When none is supplied, the live Gemini adapter is used only if the
+ * environment genuinely permits it.
+ */
+export async function decideNextAction(
+  input: SalesEngineerInput,
+  provider?: AiProvider,
+): Promise<SalesDecision> {
+  // Always compute the deterministic result. It is both the fallback and the
+  // source of the commercial metadata the AI schema does not cover.
+  const rulesResult = input.existingProfile
+    ? mergeRequirements({
+        existingProfile: input.existingProfile,
+        replyText: input.cumulativeText,
+        senderEmail: input.senderEmail,
+        senderName: input.senderName,
+        subject: input.subject,
+      })
+    : extractRequirements({
+        threadId: input.thread.id,
+        senderEmail: input.senderEmail,
+        senderName: input.senderName,
+        subject: input.subject,
+        bodyText: input.cumulativeText,
+      });
+
+  if (input.latestMessageText.trim().length === 0) {
+    return buildFallbackDecision(input, rulesResult, "empty_input", "Inbound message had no usable body text.");
+  }
+
+  let activeProvider = provider;
+  if (!activeProvider) {
+    const availability = getAiAvailability();
+    if (!availability.available) {
+      return buildFallbackDecision(
+        input,
+        rulesResult,
+        availability.category ?? "not_configured",
+        availability.detail ?? "AI provider unavailable.",
+      );
+    }
+    activeProvider = geminiProvider;
+  }
+
+  const context = buildSalesContext({
+    thread: input.thread,
+    latestMessageText: input.latestMessageText,
+    priorMessages: input.priorMessages,
+    existingProfile: input.existingProfile,
+    catalogue: input.catalogue,
+  });
+
+  const result = await activeProvider.generateDecision({
+    systemInstruction: context.systemInstruction,
+    userPrompt: context.userPrompt,
+  });
+
+  if (!result.ok) {
+    return buildFallbackDecision(input, rulesResult, result.category, result.detail, result.latencyMs);
+  }
+
+  return buildAiDecision(input, rulesResult, result.decision, result.model, result.latencyMs);
+}
+
+// ---------------------------------------------------------------------------
+// AI path
+// ---------------------------------------------------------------------------
+
+function buildAiDecision(
+  input: SalesEngineerInput,
+  rulesResult: ExtractionResult,
+  output: AiDecisionOutput,
+  model: string,
+  latencyMs: number,
+): SalesDecision {
+  const supportedCategories = deriveSupportedCategories(input.catalogue);
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // --- Guard 1: every recommended category must be deliverable ------------
+  const unsupportedCategories = output.recommendedProductCategories.filter(
+    (category) => !supportedCategories.includes(category),
+  );
+  const acceptedCategories = output.recommendedProductCategories.filter((category) =>
+    supportedCategories.includes(category),
+  );
+  for (const category of unsupportedCategories) {
+    errors.push(
+      `Recommended category "${category}" is not deliverable by any plan in catalogue ${input.catalogue.version}.`,
+    );
+  }
+
+  // --- Guard 2: referenced plan ids must exist ----------------------------
+  const knownPlanIds = new Set(input.catalogue.plans.map((plan) => plan.id));
+  const unknownPlanIds = output.referencedPlanIds.filter((planId) => !knownPlanIds.has(planId));
+  for (const planId of unknownPlanIds) {
+    // Advisory field only — the engine ranks plans itself, so this cannot
+    // affect a price. Recorded so hallucinated ids stay visible.
+    warnings.push(`Referenced plan id "${planId}" does not exist in the active catalogue and was ignored.`);
+  }
+
+  // --- Guard 3: quantities must be plausible whole numbers ----------------
+  const aiQuantities = new Map<DemandUnit, { quantity: number; basis: "stated" | "inferred"; evidence: string; confidence: number }>();
+  for (const requirement of output.knownRequirements) {
+    const bound = QUANTITY_BOUNDS[requirement.unit];
+    if (!Number.isSafeInteger(requirement.quantity) || requirement.quantity < 0) {
+      errors.push(`Quantity for ${UNIT_LABELS[requirement.unit]} was not a whole non-negative number.`);
+      continue;
+    }
+    if (requirement.quantity > bound) {
+      errors.push(
+        `Quantity for ${UNIT_LABELS[requirement.unit]} (${requirement.quantity.toLocaleString("en-IN")}) exceeds the sanity bound of ${bound.toLocaleString("en-IN")} and needs human confirmation.`,
+      );
+      continue;
+    }
+    // Last value wins if the model emitted a unit twice; both are recorded.
+    if (aiQuantities.has(requirement.unit)) {
+      warnings.push(`${UNIT_LABELS[requirement.unit]} was reported more than once; the last value was used.`);
+    }
+    aiQuantities.set(requirement.unit, {
+      quantity: requirement.quantity,
+      basis: requirement.basis,
+      evidence: requirement.evidence,
+      confidence: requirement.confidence,
+    });
+  }
+
+  // --- Guard 4: no requirement may be lost to model omission --------------
+  // Anything already established stays established unless the model supplied a
+  // replacement for that same unit. A forgetful model cannot shrink the demand.
+  const retainedFields = new Map<string, RequirementField>();
+  for (const field of input.existingProfile?.fields ?? []) {
+    if (field.state === "provided" || field.state === "inferred") {
+      retainedFields.set(field.key, field);
+    }
+  }
+
+  const blockingUnits = new Set<DemandUnit>();
+  for (const missing of output.missingRequirements) {
+    // A unit the model also reported a quantity for is not missing.
+    if (aiQuantities.has(missing.unit)) {
+      warnings.push(
+        `${UNIT_LABELS[missing.unit]} was listed as both known and missing; the known quantity was used.`,
+      );
+      continue;
+    }
+    // Nor is one already established in an earlier turn.
+    const fieldKey = UNIT_FIELD_KEYS[missing.unit].key;
+    if (retainedFields.has(fieldKey)) {
+      warnings.push(
+        `${UNIT_LABELS[missing.unit]} was listed as missing but is already established; the established value was kept.`,
+      );
+      continue;
+    }
+    if (missing.blocksPricing) blockingUnits.add(missing.unit);
+  }
+
+  // --- Build the demand ---------------------------------------------------
+  const demand: PricingDemand = { ...emptyPricingDemand() };
+  const fields: RequirementField[] = [];
+
+  for (const unit of DEMAND_UNITS) {
+    const meta = UNIT_FIELD_KEYS[unit];
+    const fromAi = aiQuantities.get(unit);
+    const retained = retainedFields.get(meta.key);
+
+    if (fromAi) {
+      demand[unit] = fromAi.quantity;
+      fields.push({
+        key: meta.key,
+        label: meta.label,
+        group: meta.group,
+        value: fromAi.quantity,
+        unit: meta.unit,
+        state: fromAi.basis === "stated" ? "provided" : "inferred",
+        confidence: fromAi.confidence,
+        evidence: fromAi.evidence || null,
+        conflictWith: null,
+        previousValue:
+          retained && retained.value !== fromAi.quantity ? retained.value : retained?.previousValue ?? null,
+        materialToPricing: true,
+      });
+      continue;
+    }
+
+    if (retained) {
+      demand[unit] = Number(retained.value) || 0;
+      fields.push({ ...retained });
+      continue;
+    }
+
+    if (blockingUnits.has(unit)) {
+      fields.push({
+        key: meta.key,
+        label: meta.label,
+        group: meta.group,
+        value: null,
+        unit: meta.unit,
+        state: "missing",
+        confidence: null,
+        evidence: null,
+        conflictWith: null,
+        previousValue: null,
+        materialToPricing: true,
+      });
+    }
+  }
+
+  // Carry forward non-quantity context fields (website monitoring, APM flags,
+  // currency, billing period) from the established profile and the rules pass,
+  // so the profile the operator sees is not thinner than before.
+  for (const field of mergeContextFields(input.existingProfile, rulesResult)) {
+    if (!fields.some((existing) => existing.key === field.key)) {
+      fields.push(field);
+    }
+  }
+
+  // --- Guard 5: drop any question that is already answered ----------------
+  const knownFieldKeys = new Set(
+    fields.filter((field) => field.state === "provided" || field.state === "inferred").map((field) => field.key),
+  );
+  const acceptedQuestions: string[] = [];
+  for (const question of output.followUpQuestions) {
+    const askedUnits = QUESTION_UNIT_HINTS.filter((hint) => hint.match.test(question)).map((hint) => hint.unit);
+    const allAlreadyKnown =
+      askedUnits.length > 0 && askedUnits.every((unit) => knownFieldKeys.has(UNIT_FIELD_KEYS[unit].key));
+    if (allAlreadyKnown) {
+      warnings.push(`Dropped a follow-up question that asked for information already on file: "${truncateForLog(question)}"`);
+      continue;
+    }
+    acceptedQuestions.push(question);
+  }
+
+  // --- Guard 6: resolve the action ----------------------------------------
+  const roundsSpent = input.existingProfile?.clarificationRound ?? 0;
+  const hasPrimaryWorkload = DEMAND_UNITS.some((unit) => demand[unit] > 0);
+  const missingMaterialFields = fields
+    .filter((field) => field.state === "missing" && field.materialToPricing)
+    .map((field) => field.key);
+
+  let action: AiAction = output.action;
+  const humanReviewReasons = [...output.humanReviewReasons];
+
+  if (errors.length > 0) {
+    // A failed guard is never acted on as given. The model's confidence does
+    // not override deterministic validation.
+    action = "human_review";
+    humanReviewReasons.push(...errors);
+  } else if (clarificationLimitReached(roundsSpent) && action === "ask_follow_up") {
+    action = "human_review";
+    humanReviewReasons.push(
+      `Clarification limit reached (${roundsSpent + 1} of ${MAX_CLARIFICATION_ROUNDS} rounds) with requirements still incomplete.`,
+    );
+  } else if (action === "prepare_quote" && missingMaterialFields.length > 0) {
+    // Safe correction rather than escalation: the model wanted to quote but a
+    // price-affecting quantity is genuinely unknown, so ask for it.
+    action = "ask_follow_up";
+    warnings.push(
+      `Model chose prepare_quote while ${missingMaterialFields.join(", ")} remained unknown; corrected to ask_follow_up.`,
+    );
+  } else if (action === "prepare_quote" && !hasPrimaryWorkload) {
+    action = "ask_follow_up";
+    warnings.push("Model chose prepare_quote with no billable quantity in the configuration; corrected to ask_follow_up.");
+  } else if (action === "ask_follow_up" && acceptedQuestions.length === 0) {
+    if (hasPrimaryWorkload && missingMaterialFields.length === 0) {
+      action = "prepare_quote";
+      warnings.push("Model chose ask_follow_up but had no outstanding question; corrected to prepare_quote.");
+    } else {
+      action = "human_review";
+      humanReviewReasons.push("No answerable follow-up question could be formed, and the request cannot be sized as it stands.");
+    }
+  }
+
+  const suggestedQuestion: ClarificationQuestion | null =
+    action === "ask_follow_up" && acceptedQuestions.length > 0
+      ? {
+          id: `cq_${Date.now()}`,
+          fieldKeys: missingMaterialFields.length > 0 ? missingMaterialFields : [...knownFieldKeys].slice(0, 1),
+          question: acceptedQuestions.join("\n"),
+          reason: output.reasoningSummary,
+          askedAt: new Date().toISOString(),
+          answeredAt: null,
+          answerSummary: null,
+        }
+      : null;
+
+  const profile: RequirementProfile = {
+    id: `prof_${Date.now()}`,
+    threadId: input.thread.id,
+    version: (input.existingProfile?.version ?? 0) + 1,
+    supersedesProfileId: input.existingProfile?.id ?? null,
+    createdAt: new Date().toISOString(),
+    extractorModel: `gemini:${model}`,
+    extractorRunId: `ai_${Date.now()}`,
+    fields,
+    summary: output.customerSummary,
+    pendingQuestions: suggestedQuestion
+      ? [...carryPendingQuestions(input.existingProfile, knownFieldKeys), suggestedQuestion]
+      : [],
+    answeredQuestions: resolveAnsweredQuestions(input.existingProfile, knownFieldKeys),
+    clarificationRound: action === "ask_follow_up" ? roundsSpent + 1 : roundsSpent,
+  };
+
+  const validation: AiValidationOutcome = {
+    passed: errors.length === 0,
+    errors,
+    warnings,
+    unsupportedCategories,
+    unknownPlanIds,
+  };
+
+  const record: AiDecisionRecord = {
+    id: `aid_${Date.now()}`,
+    threadId: input.thread.id,
+    profileId: profile.id,
+    createdAt: new Date().toISOString(),
+    source: "gemini",
+    model,
+    action,
+    originalAction: action === output.action ? null : output.action,
+    customerSummary: output.customerSummary,
+    identifiedNeeds: output.identifiedNeeds,
+    recommendedCategories: acceptedCategories,
+    referencedPlanIds: output.referencedPlanIds.filter((planId) => knownPlanIds.has(planId)),
+    assumptions: output.assumptions,
+    followUpQuestions: acceptedQuestions,
+    reasoningSummary: output.reasoningSummary,
+    confidence: output.confidence,
+    humanReviewReasons,
+    validation,
+    failureCategory: null,
+    failureDetail: null,
+    latencyMs,
+    catalogueVersion: input.catalogue.version,
+  };
+
+  return {
+    record,
+    action,
+    extraction: {
+      profile,
+      demand,
+      isComplete: action === "prepare_quote",
+      missingMaterialFields,
+      suggestedQuestion,
+      organization: rulesResult.organization,
+      billingPeriod: rulesResult.billingPeriod,
+      currency: rulesResult.currency,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fallback path
+// ---------------------------------------------------------------------------
+
+/**
+ * Wraps the rules-based result as a decision.
+ *
+ * The rules engine's own judgement is preserved exactly: its completeness
+ * check decides whether to quote or ask, and its generated question is used
+ * verbatim. The record states plainly that Gemini did not decide this thread.
+ */
+function buildFallbackDecision(
+  input: SalesEngineerInput,
+  rulesResult: ExtractionResult,
+  category: AiFailureCategory,
+  detail: string,
+  latencyMs: number | null = null,
+): SalesDecision {
+  const roundsSpent = input.existingProfile?.clarificationRound ?? 0;
+  const humanReviewReasons: string[] = [];
+
+  let action: AiAction;
+  if (rulesResult.isComplete) {
+    action = "prepare_quote";
+  } else if (clarificationLimitReached(roundsSpent)) {
+    action = "human_review";
+    humanReviewReasons.push(
+      `Clarification limit reached (${roundsSpent + 1} of ${MAX_CLARIFICATION_ROUNDS} rounds); still missing: ${rulesResult.missingMaterialFields.join(", ")}.`,
+    );
+  } else if (rulesResult.suggestedQuestion) {
+    action = "ask_follow_up";
+  } else {
+    action = "human_review";
+    humanReviewReasons.push("The rules-based engine could not size this request and had no question to ask.");
+  }
+
+  const record: AiDecisionRecord = {
+    id: `aid_${Date.now()}`,
+    threadId: input.thread.id,
+    profileId: rulesResult.profile.id,
+    createdAt: new Date().toISOString(),
+    source: "rules_fallback",
+    model: null,
+    action,
+    originalAction: null,
+    customerSummary: rulesResult.profile.summary,
+    identifiedNeeds: deriveNeedsFromDemand(rulesResult.demand),
+    recommendedCategories: deriveCategoriesFromDemand(rulesResult.demand, input.catalogue),
+    referencedPlanIds: [],
+    assumptions: [],
+    followUpQuestions: rulesResult.suggestedQuestion ? [rulesResult.suggestedQuestion.question] : [],
+    reasoningSummary:
+      `Decided by the deterministic rules engine, not by Gemini. ${truncateForLog(detail, 200)} ` +
+      `Pattern extraction found ${rulesResult.missingMaterialFields.length} unresolved material field(s).`,
+    confidence: null,
+    humanReviewReasons,
+    validation: {
+      passed: true,
+      errors: [],
+      warnings: [`AI path unavailable (${category}); deterministic fallback used.`],
+      unsupportedCategories: [],
+      unknownPlanIds: [],
+    },
+    failureCategory: category,
+    failureDetail: detail,
+    latencyMs,
+    catalogueVersion: input.catalogue.version,
+  };
+
+  return { record, action, extraction: rulesResult };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function emptyPricingDemand(): PricingDemand {
+  return {
+    basic_monitor: 0,
+    advanced_monitor: 0,
+    host_monitor: 0,
+    network_component: 0,
+    rum_pageview: 0,
+    applog_gb: 0,
+  };
+}
+
+/** Non-quantity fields worth preserving: capability flags and commercial metadata. */
+function mergeContextFields(
+  existingProfile: RequirementProfile | undefined,
+  rulesResult: ExtractionResult,
+): RequirementField[] {
+  const output: RequirementField[] = [];
+  const seen = new Set<string>();
+
+  const consider = (field: RequirementField) => {
+    if (FIELD_KEY_TO_UNIT.has(field.key)) return; // quantities are owned by the AI path
+    if (seen.has(field.key)) return;
+    if (field.state === "missing") return;
+    seen.add(field.key);
+    output.push({ ...field });
+  };
+
+  for (const field of existingProfile?.fields ?? []) consider(field);
+  for (const field of rulesResult.profile.fields) consider(field);
+
+  return output;
+}
+
+/** Questions still unanswered after this turn's merge. */
+function carryPendingQuestions(
+  existingProfile: RequirementProfile | undefined,
+  knownFieldKeys: Set<string>,
+): ClarificationQuestion[] {
+  return (existingProfile?.pendingQuestions ?? []).filter(
+    (question) => !question.fieldKeys.every((key) => knownFieldKeys.has(key)),
+  );
+}
+
+/** Previously pending questions whose fields are now known become answered. */
+function resolveAnsweredQuestions(
+  existingProfile: RequirementProfile | undefined,
+  knownFieldKeys: Set<string>,
+): ClarificationQuestion[] {
+  if (!existingProfile) return [];
+  const newlyAnswered = existingProfile.pendingQuestions
+    .filter((question) => question.fieldKeys.length > 0 && question.fieldKeys.every((key) => knownFieldKeys.has(key)))
+    .map((question) => ({
+      ...question,
+      answeredAt: new Date().toISOString(),
+      answerSummary: `Resolved from the customer's reply for: ${question.fieldKeys.join(", ")}.`,
+    }));
+  return [...existingProfile.answeredQuestions, ...newlyAnswered];
+}
+
+function deriveNeedsFromDemand(demand: PricingDemand): string[] {
+  return DEMAND_UNITS.filter((unit) => demand[unit] > 0).map(
+    (unit) => `${UNIT_LABELS[unit]}: ${demand[unit].toLocaleString("en-IN")}`,
+  );
+}
+
+function deriveCategoriesFromDemand(demand: PricingDemand, catalogue: CatalogueVersion): ProductCategory[] {
+  const supported = deriveSupportedCategories(catalogue);
+  const derived: ProductCategory[] = [];
+  if (demand.host_monitor > 0) derived.push("infrastructure_monitoring");
+  if (demand.network_component > 0) derived.push("network_monitoring");
+  if (demand.basic_monitor > 0) derived.push("website_monitoring");
+  if (demand.advanced_monitor > 0) derived.push("synthetic_monitoring");
+  if (demand.rum_pageview > 0) derived.push("real_user_monitoring");
+  if (demand.applog_gb > 0) derived.push("log_management");
+  return derived.filter((category) => supported.includes(category));
+}
+
+function truncateForLog(text: string, limit = 120): string {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return collapsed.length > limit ? `${collapsed.slice(0, limit)}...` : collapsed;
+}

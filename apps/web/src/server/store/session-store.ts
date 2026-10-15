@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type {
+  AiDecisionRecord,
   DeliveryRecord,
   EmailMessage,
   EmailThread,
@@ -20,6 +21,8 @@ interface PersistedState {
   quotes: Array<[string, Quote]>;
   deliveries: DeliveryRecord[];
   processedMessageIds: string[];
+  /** Optional: absent in stores written before AI decisions were recorded. */
+  aiDecisions?: AiDecisionRecord[];
 }
 
 /**
@@ -33,6 +36,7 @@ class SessionStore {
   private profiles: Map<string, RequirementProfile> = new Map(); // keyed by threadId
   private quotes: Map<string, Quote> = new Map(); // keyed by quoteId
   private deliveries: Map<string, DeliveryRecord> = new Map(); // keyed by deliveryId
+  private aiDecisions: Map<string, AiDecisionRecord[]> = new Map(); // keyed by threadId
   private processedMessageIds: Set<string> = new Set(); // for idempotency
   private initialized = false;
 
@@ -60,6 +64,10 @@ class SessionStore {
       for (const list of this.messages.values()) {
         allMessages.push(...list);
       }
+      const allAiDecisions: AiDecisionRecord[] = [];
+      for (const list of this.aiDecisions.values()) {
+        allAiDecisions.push(...list);
+      }
       const data: PersistedState = {
         threads: Array.from(this.threads.values()),
         messages: allMessages,
@@ -67,6 +75,7 @@ class SessionStore {
         quotes: Array.from(this.quotes.entries()),
         deliveries: Array.from(this.deliveries.values()),
         processedMessageIds: Array.from(this.processedMessageIds),
+        aiDecisions: allAiDecisions,
       };
       const tmpPath = `${filePath}.tmp`;
       fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf8");
@@ -82,6 +91,7 @@ class SessionStore {
     this.profiles.clear();
     this.quotes.clear();
     this.deliveries.clear();
+    this.aiDecisions.clear();
     this.processedMessageIds.clear();
     this.initialized = false;
     this.ensureInitialized();
@@ -117,6 +127,11 @@ class SessionStore {
           }
           for (const id of parsed.processedMessageIds || []) {
             this.processedMessageIds.add(id);
+          }
+          for (const decision of parsed.aiDecisions || []) {
+            const existing = this.aiDecisions.get(decision.threadId) ?? [];
+            existing.push(decision);
+            this.aiDecisions.set(decision.threadId, existing);
           }
           return;
         }
@@ -262,6 +277,40 @@ class SessionStore {
     return updated;
   }
 
+  // --- AI Sales-Engineer Decisions ---
+
+  /** Every decision recorded for a thread, oldest first. */
+  getAiDecisions(threadId: string): AiDecisionRecord[] {
+    this.ensureInitialized();
+    const records = this.aiDecisions.get(threadId) ?? [];
+    return [...records].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+  }
+
+  /** The decision that most recently governed a thread. */
+  getLatestAiDecision(threadId: string): AiDecisionRecord | undefined {
+    const records = this.getAiDecisions(threadId);
+    return records[records.length - 1];
+  }
+
+  getAllAiDecisions(): AiDecisionRecord[] {
+    this.ensureInitialized();
+    const all: AiDecisionRecord[] = [];
+    for (const list of this.aiDecisions.values()) {
+      all.push(...list);
+    }
+    return all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  saveAiDecision(decision: AiDecisionRecord): void {
+    this.ensureInitialized();
+    const existing = this.aiDecisions.get(decision.threadId) ?? [];
+    existing.push({ ...decision });
+    this.aiDecisions.set(decision.threadId, existing);
+    this.persistToDisk();
+  }
+
   // --- Idempotency ---
   isMessageProcessed(providerMessageId: string): boolean {
     this.ensureInitialized();
@@ -347,6 +396,13 @@ class SessionStore {
     const threads = this.getThreads();
     const deliveries = this.getDeliveries();
 
+    // Observed latency of the most recent genuine Gemini call, if there was one.
+    // Never a fabricated figure: null until the provider has actually answered.
+    const lastAiCall = this.getAllAiDecisions().find(
+      (decision) => decision.source === "gemini" && decision.latencyMs !== null
+    );
+    const aiLatency = lastAiCall?.latencyMs ?? null;
+
     const components: HealthComponent[] = [
       {
         id: "pricing-engine",
@@ -379,6 +435,18 @@ class SessionStore {
         level: "ok",
         detail: "Deterministic multi-capability pattern extractor (version quote24x7-extractor-v1.0.0; local execution)",
         latencyMs: null,
+      },
+      {
+        id: "ai-sales-engineer",
+        name: "AI Sales Engineer (Gemini)",
+        // Degraded, not down: the pipeline keeps working on the rules engine.
+        level: config.isAiEnabled ? "ok" : "degraded",
+        detail: config.isAiEnabled
+          ? `Gemini configured (model ${config.geminiModel}); AI decides requirements and next action, with the rules engine as fallback`
+          : config.geminiApiKey
+            ? "AI disabled by DISABLE_AI=true; all threads decided by the deterministic rules engine"
+            : "GEMINI_API_KEY not configured; all threads decided by the deterministic rules engine",
+        latencyMs: aiLatency,
       },
       {
         id: "pdf-renderer",
@@ -443,6 +511,19 @@ class SessionStore {
         detail: "JSON file-backed persistent repository at .data/session-store.json",
         requiredEnvVars: [],
         docsPath: "docs/integrations/database.md",
+      },
+      {
+        id: "int_ai_gemini",
+        name: "Google Gemini (AI Sales Engineer)",
+        category: "ai",
+        state: config.isAiEnabled ? "configured" : config.geminiApiKey ? "demo_mode" : "not_configured",
+        detail: config.isAiEnabled
+          ? `Model ${config.geminiModel}. Interprets requirements and chooses the next action; all amounts remain with the deterministic pricing engine.`
+          : config.geminiApiKey
+            ? `Key present but AI is switched off by DISABLE_AI=true. Rules-based fallback is handling every thread.`
+            : "No GEMINI_API_KEY. Rules-based fallback is handling every thread; no AI call is being attempted.",
+        requiredEnvVars: ["GEMINI_API_KEY", "GEMINI_MODEL"],
+        docsPath: "docs/integrations/ai-provider.md",
       },
     ];
   }

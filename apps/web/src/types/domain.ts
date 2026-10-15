@@ -477,3 +477,95 @@ export interface HealthComponent {
   detail: string;
   latencyMs: number | null;
 }
+
+// ---------------------------------------------------------------------------
+// AI sales-engineer decisions
+// ---------------------------------------------------------------------------
+
+/** What the sales engineer decided to do next with a thread. */
+export type AiAction = "ask_follow_up" | "prepare_quote" | "human_review";
+
+/** Which component actually produced the decision that was acted on. */
+export type DecisionSource = "gemini" | "rules_fallback";
+
+/** Why the AI path was not used, or not trusted. Safe for operator display. */
+export type AiFailureCategory =
+  | "not_configured"
+  | "disabled_by_flag"
+  | "timeout"
+  | "rate_limited"
+  | "provider_error"
+  | "unsupported_model"
+  | "invalid_output"
+  | "schema_violation"
+  | "empty_input";
+
+/** Monitoring categories the sales engineer may recommend. Each is checked against the catalogue. */
+export type ProductCategory =
+  | "infrastructure_monitoring"
+  | "website_monitoring"
+  | "synthetic_monitoring"
+  | "application_performance_monitoring"
+  | "real_user_monitoring"
+  | "log_management"
+  | "network_monitoring"
+  | "msp";
+
+/**
+ * Outcome of validating a model decision against the catalogue and the
+ * deterministic engine. Recorded whether it passed or failed, so an operator
+ * can see what the AI proposed and what the system allowed.
+ */
+export interface AiValidationOutcome {
+  passed: boolean;
+  /** Blocking problems. A non-empty list means the AI decision was not acted on as given. */
+  errors: string[];
+  /** Non-blocking corrections, e.g. an unsupported category that was dropped. */
+  warnings: string[];
+  /** Categories the model asked for that no plan in the catalogue can deliver. */
+  unsupportedCategories: ProductCategory[];
+  /** Plan ids the model referenced that do not exist in the active catalogue. */
+  unknownPlanIds: string[];
+}
+
+/**
+ * A persisted record of one sales-engineering decision.
+ *
+ * Holds the auditable decision and its provenance. It deliberately does not
+ * hold API keys, raw provider payloads, or hidden model reasoning traces —
+ * `reasoningSummary` is the concise, model-authored explanation that was
+ * explicitly requested as an auditable output.
+ */
+export interface AiDecisionRecord {
+  id: string;
+  threadId: string;
+  /** Profile version this decision was made against. */
+  profileId: string | null;
+  createdAt: IsoDateTime;
+  source: DecisionSource;
+  /** Model identifier when source is "gemini"; null for the rules fallback. */
+  model: string | null;
+  action: AiAction;
+  /** The action the model asked for, when validation changed it. */
+  originalAction: AiAction | null;
+  customerSummary: string;
+  identifiedNeeds: string[];
+  recommendedCategories: ProductCategory[];
+  /** Catalogue plan ids the model referenced. Advisory only — ranking stays deterministic. */
+  referencedPlanIds: string[];
+  assumptions: string[];
+  followUpQuestions: string[];
+  reasoningSummary: string;
+  /** Model self-reported confidence, 0–1. Null for the rules fallback. */
+  confidence: number | null;
+  humanReviewReasons: string[];
+  validation: AiValidationOutcome;
+  /** Set when the AI path was attempted and did not produce a usable decision. */
+  failureCategory: AiFailureCategory | null;
+  /** Operator-safe error summary. Never contains credentials or full prompts. */
+  failureDetail: string | null;
+  /** Wall-clock duration of the provider call, when one was made. */
+  latencyMs: number | null;
+  /** Catalogue version the decision was validated against. */
+  catalogueVersion: string | null;
+}

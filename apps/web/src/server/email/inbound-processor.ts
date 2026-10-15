@@ -1,4 +1,6 @@
 import type {
+  AiFailureCategory,
+  DecisionSource,
   EmailMessage,
   EmailThread,
   Quote,
@@ -8,8 +10,9 @@ import { getAppConfig } from "../config.ts";
 import { store } from "../store/session-store.ts";
 import { loadActiveCatalogue } from "../catalogue/loader.ts";
 import { buildQuote } from "../pricing/quote-builder.ts";
-import { extractRequirements, mergeRequirements } from "../extraction/extractor.ts";
 import { renderQuotePdf } from "../documents/pdf-renderer.ts";
+import { decideNextAction } from "../ai/sales-engineer.ts";
+import type { AiProvider } from "../ai/gemini-provider.ts";
 import {
   sendQuoteEmail,
   sendClarificationEmail,
@@ -38,18 +41,29 @@ export interface InboundProcessingResult {
   pdfGenerated?: boolean;
   outboundResult?: OutboundDispatchResult;
   message?: string;
+  /** Which component decided this thread: the AI sales engineer or the rules fallback. */
+  decisionSource?: DecisionSource;
+  /** Model identifier when the AI decided; null when the fallback did. */
+  decisionModel?: string | null;
+  /** Set when the AI path was attempted and could not be used. */
+  aiFailureCategory?: AiFailureCategory | null;
 }
 
 const inFlightMessageIds = new Set<string>();
 
 /**
  * Core Inbound Email Pipeline for Quote24x7.
- * Receives an email, links it to a thread, extracts requirements,
- * calculates pricing options against the active catalogue, generates a proposal PDF,
- * and transmits the outbound reply via Resend.
+ * Receives an email, links it to a thread, runs the AI sales engineer (with the
+ * deterministic rules engine as fallback), calculates pricing options against
+ * the active catalogue, generates a proposal PDF, and transmits the outbound
+ * reply via Resend.
+ *
+ * `provider` is an injection seam for tests. Production passes nothing and the
+ * live Gemini adapter is used.
  */
 export async function processInboundEmail(
-  payload: InboundEmailPayload
+  payload: InboundEmailPayload,
+  provider?: AiProvider
 ): Promise<InboundProcessingResult> {
   const config = getAppConfig();
   const now = payload.receivedAt || new Date().toISOString();
@@ -84,7 +98,7 @@ export async function processInboundEmail(
   if (rfcMessageId) inFlightMessageIds.add(rfcMessageId);
 
   try {
-    return await doProcessInboundEmail(payload, config, now, providerMessageId, rfcMessageId);
+    return await doProcessInboundEmail(payload, config, now, providerMessageId, rfcMessageId, provider);
   } finally {
     inFlightMessageIds.delete(providerMessageId);
     if (rfcMessageId) inFlightMessageIds.delete(rfcMessageId);
@@ -96,7 +110,8 @@ async function doProcessInboundEmail(
   config: ReturnType<typeof getAppConfig>,
   now: string,
   providerMessageId: string,
-  rfcMessageId: string | null
+  rfcMessageId: string | null,
+  aiProvider?: AiProvider
 ): Promise<InboundProcessingResult> {
 
   // 2. Loop Prevention Check
@@ -277,14 +292,19 @@ function stripQuotedEmail(text: string): string {
     status: "extracting",
   });
 
-  // 5. Requirement Extraction & Multi-Turn Merging
+  // 5. AI Sales Engineer (Gemini first, deterministic rules engine as fallback)
   const cleanReplyText = stripQuotedEmail(payload.text);
   const existingProfile = store.getProfile(thread.id);
+  const catalogue = loadActiveCatalogue();
 
-  // Aggregate all inbound conversation turns from this thread so no earlier requirements are lost
-  const previousInboundTexts = store
+  const priorMessages = store
     .getMessages(thread.id)
-    .filter((m) => m.direction === "inbound" && m.id !== inboundMessage.id)
+    .filter((m) => m.id !== inboundMessage.id);
+
+  // The rules engine works from cumulative inbound text so a regex pass never
+  // loses an earlier turn. Gemini receives the structured history instead.
+  const previousInboundTexts = priorMessages
+    .filter((m) => m.direction === "inbound")
     .map((m) => stripQuotedEmail(m.bodyText))
     .filter((txt) => txt.length > 0)
     .join("\n\n");
@@ -293,61 +313,71 @@ function stripQuotedEmail(text: string): string {
     ? `${previousInboundTexts}\n\n${cleanReplyText}`
     : cleanReplyText;
 
-  const extraction = existingProfile
-    ? mergeRequirements({
-        existingProfile,
-        replyText: cumulativeText,
-        senderEmail: payload.from,
-        senderName: payload.fromName || null,
-        subject: payload.subject,
-      })
-    : extractRequirements({
-        threadId: thread.id,
-        senderEmail: payload.from,
-        senderName: payload.fromName || null,
-        subject: payload.subject,
-        bodyText: cumulativeText,
-      });
+  const threadForAi = store.getThread(thread.id) ?? thread;
+
+  const decision = await decideNextAction(
+    {
+      thread: threadForAi,
+      latestMessageText: cleanReplyText,
+      cumulativeText,
+      priorMessages,
+      existingProfile,
+      catalogue,
+      senderEmail: payload.from,
+      senderName: payload.fromName || null,
+      subject: payload.subject,
+    },
+    aiProvider
+  );
+
+  const extraction = decision.extraction;
 
   store.saveProfile(extraction.profile);
+  store.saveAiDecision(decision.record);
+
+  const decisionMeta = {
+    decisionSource: decision.record.source,
+    decisionModel: decision.record.model,
+    aiFailureCategory: decision.record.failureCategory,
+  } as const;
 
   if (extraction.organization && !thread.organisation) {
     store.updateThread(thread.id, { organisation: extraction.organization });
   }
 
-  // 6. Branch: Material Gap vs Priceable Request
-  if (!extraction.isComplete && extraction.suggestedQuestion) {
-    // If maximum clarification rounds reached (e.g. > 3), terminate loop and escalate
-    if (extraction.profile.clarificationRound >= 3) {
-      const detail = `Clarification round limit reached (round ${extraction.profile.clarificationRound}); requirements remain incomplete for: ${extraction.missingMaterialFields.join(", ")}.`;
-      store.updateThread(thread.id, {
-        status: "unsupported",
-        statusDetail: detail,
-      });
+  // 6. Branch on the validated decision
+  if (decision.action === "human_review") {
+    const reasons =
+      decision.record.humanReviewReasons.length > 0
+        ? decision.record.humanReviewReasons
+        : ["This request needs a sales engineer to review it before a quotation can be issued."];
 
-      const unpriceableResult = await sendUnpriceableNotificationEmail({
-        thread,
-        rejectionReasons: [
-          `Multiple clarification attempts were unable to resolve required sizing parameters: ${extraction.missingMaterialFields.join(", ")}.`,
-          "A sales engineer will review your inquiry manually to complete your quotation.",
-        ],
-        recipientEmail: payload.from,
-        recipientName: payload.fromName,
-      });
+    const detail = `Escalated for human review by ${decision.record.source}: ${reasons[0]}`;
+    store.updateThread(thread.id, { status: "unsupported", statusDetail: detail });
 
-      return {
-        threadId: thread.id,
-        duplicate: false,
-        actionTaken: "unsupported",
-        outboundResult: unpriceableResult,
-        message: detail,
-      };
-    }
+    const reviewResult = await sendUnpriceableNotificationEmail({
+      thread,
+      rejectionReasons: [...reasons, "A sales engineer will review your inquiry and follow up directly."],
+      recipientEmail: payload.from,
+      recipientName: payload.fromName,
+    });
 
-    // Missing material requirements -> Send clarification question
+    return {
+      threadId: thread.id,
+      duplicate: false,
+      actionTaken: "unsupported",
+      outboundResult: reviewResult,
+      message: detail,
+      ...decisionMeta,
+    };
+  }
+
+  if (decision.action === "ask_follow_up" && extraction.suggestedQuestion) {
     store.updateThread(thread.id, {
       status: "awaiting_reply",
-      statusDetail: `Awaiting clarification on: ${extraction.missingMaterialFields.join(", ")} (round ${extraction.profile.clarificationRound})`,
+      statusDetail:
+        `Awaiting clarification (round ${extraction.profile.clarificationRound}, decided by ${decision.record.source})` +
+        `${extraction.missingMaterialFields.length > 0 ? ` on: ${extraction.missingMaterialFields.join(", ")}` : ""}`,
     });
 
     const clarificationResult = await sendClarificationEmail({
@@ -362,14 +392,18 @@ function stripQuotedEmail(text: string): string {
       duplicate: false,
       actionTaken: "clarification_requested",
       outboundResult: clarificationResult,
-      message: `Material fields missing (${extraction.missingMaterialFields.join(", ")}). Clarification inquiry dispatched.`,
+      message: `Clarification dispatched by ${decision.record.source}${
+        extraction.missingMaterialFields.length > 0
+          ? ` for: ${extraction.missingMaterialFields.join(", ")}`
+          : ""
+      }.`,
+      ...decisionMeta,
     };
   }
 
   // 7. Deterministic Pricing Execution
   store.updateThread(thread.id, { status: "pricing" });
 
-  const catalogue = loadActiveCatalogue();
   const quoteId = `qt_${Date.now()}`;
 
   const { quote, rejected } = buildQuote({
@@ -416,6 +450,7 @@ function stripQuotedEmail(text: string): string {
       pdfGenerated: false,
       outboundResult: dispatchResult,
       message: `Failed closed: Request cannot be quoted automatically. ${rejectionReasons.join("; ")}`,
+      ...decisionMeta,
     };
   }
 
@@ -475,5 +510,6 @@ function stripQuotedEmail(text: string): string {
     pdfGenerated: true,
     outboundResult: dispatchResult,
     message: `Calculated quote #${quote.id} and dispatched quotation PDF to ${dispatchResult.dispatchedTo}.`,
+    ...decisionMeta,
   };
 }
