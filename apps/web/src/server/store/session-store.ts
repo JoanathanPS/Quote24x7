@@ -177,7 +177,7 @@ class SessionStore {
       try {
         const raw = fs.readFileSync(filePath, "utf8");
         const parsed = JSON.parse(raw) as PersistedState;
-        if (Array.isArray(parsed.threads) && parsed.threads.length > 0) {
+        if (Array.isArray(parsed.threads)) {
           this.loadState(parsed);
           return;
         }
@@ -200,7 +200,7 @@ class SessionStore {
         try {
           const raw = fs.readFileSync(bp, "utf8");
           const parsed = JSON.parse(raw) as PersistedState;
-          if (Array.isArray(parsed.threads) && parsed.threads.length > 0) {
+          if (Array.isArray(parsed.threads)) {
             this.loadState(parsed);
             // Write snapshot to storage path (/tmp on Vercel) so subsequent operations can update it
             this.persistToDisk();

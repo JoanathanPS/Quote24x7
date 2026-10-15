@@ -980,18 +980,18 @@ test("Pipeline: a duplicate inbound event does not trigger a second Gemini call 
   assert.equal(decisions.length, 1, "a replay must not record a second decision");
 });
 
-test("Pipeline: outbound stays restricted to the configured test recipient", async () => {
-  const config = getAppConfig();
+test("Pipeline: outbound sends directly to the customer address", async () => {
   const provider = okProvider({
     knownRequirements: [
       { unit: "host_monitor", quantity: 25, basis: "stated", evidence: "25 servers", confidence: 0.95 },
     ],
   });
 
+  const senderEmail = "someone.external@not-our-domain.example.com";
   const result = await processInboundEmail(
     {
       providerMessageId: `ai_recipient_${Date.now()}`,
-      from: "someone.external@not-our-domain.example.com",
+      from: senderEmail,
       fromName: "External Person",
       to: ["quotes@quote24x7.internal"],
       subject: "Quote please",
@@ -1001,13 +1001,11 @@ test("Pipeline: outbound stays restricted to the configured test recipient", asy
   );
 
   assert.ok(result.outboundResult);
-  if (config.testRecipientEmail) {
-    assert.equal(
-      result.outboundResult.dispatchedTo,
-      config.testRecipientEmail,
-      "the test-recipient safeguard must redirect outbound mail",
-    );
-  }
+  assert.equal(
+    result.outboundResult.dispatchedTo,
+    senderEmail,
+    "outbound mail must be dispatched directly to the inquirer",
+  );
 });
 
 test("Email safety: AI-authored question text cannot inject markup into outbound HTML", async () => {

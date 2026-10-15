@@ -152,13 +152,9 @@ export function validateOutboundPolicy(
     };
   }
 
-  // 3. Test mode check: send only to an allowlist
+  // 3. Test mode check (optional TEST_ALLOWLIST filter if set)
   const isTestMode = !config.isLiveDispatchEnabled || isTestRuntime();
   if (isTestMode) {
-    if (config.testRecipientEmail) {
-      return { targetRecipient: config.testRecipientEmail.trim(), isBlocked: false };
-    }
-
     const allowlistEnv = process.env.TEST_ALLOWLIST?.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) ?? [];
     if (allowlistEnv.length > 0 && !allowlistEnv.includes(cleanIntended)) {
       return {

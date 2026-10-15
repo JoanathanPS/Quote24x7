@@ -10,8 +10,6 @@ export interface AppConfig {
   outboundFromEmail: string;
   /** Webhook signing secret for verifying incoming Resend webhooks */
   resendWebhookSecret: string | null;
-  /** Designated safe test recipient email. If set, emails in test mode only send here */
-  testRecipientEmail: string | null;
   /** Whether live outbound dispatch to Resend is enabled */
   isLiveDispatchEnabled: boolean;
   /** Application base URL for webhooks and links */
@@ -57,19 +55,16 @@ export function getAppConfig(): AppConfig {
   const outboundFromEmail =
     process.env.OUTBOUND_FROM_EMAIL?.trim() || "Quote24x7 <onboarding@resend.dev>";
   const resendWebhookSecret = process.env.RESEND_WEBHOOK_SECRET?.trim() || null;
-  const rawTestRecipient = process.env.TEST_RECIPIENT_EMAIL?.trim();
-  const testRecipientEmail =
-    rawTestRecipient &&
-    rawTestRecipient !== "false" &&
-    rawTestRecipient !== "none" &&
-    rawTestRecipient !== '""'
-      ? rawTestRecipient
-      : null;
   const isLiveDispatchEnabled =
     Boolean(resendApiKey) && process.env.ALLOW_EXTERNAL_DISPATCH === "true";
+
+  // Vercel automatically exposes VERCEL_URL (e.g. quote24x7.vercel.app).
+  // Check NEXT_PUBLIC_APP_URL -> APP_BASE_URL -> VERCEL_URL -> localhost:3000.
+  const vercelUrl = (process.env.VERCEL_URL || process.env.NEXT_PUBLIC_VERCEL_URL)?.trim();
   const rawAppBaseUrl =
     process.env.NEXT_PUBLIC_APP_URL?.trim() ||
     process.env.APP_BASE_URL?.trim() ||
+    (vercelUrl ? (vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`) : "") ||
     "";
   const isPublicAppUrl =
     Boolean(rawAppBaseUrl) &&
@@ -94,7 +89,6 @@ export function getAppConfig(): AppConfig {
     resendApiKey,
     outboundFromEmail,
     resendWebhookSecret,
-    testRecipientEmail,
     isLiveDispatchEnabled,
     appBaseUrl,
     isPublicAppUrl,

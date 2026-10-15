@@ -24,15 +24,15 @@ export async function GET() {
       resendApiKeyPrefix: config.resendApiKey ? `${config.resendApiKey.substring(0, 7)}...` : null,
       isLiveDispatchEnabled: config.isLiveDispatchEnabled,
       outboundFromEmail: config.outboundFromEmail,
-      testRecipientEmail: config.testRecipientEmail,
       resendWebhookSecretConfigured: Boolean(config.resendWebhookSecret),
       appBaseUrl: config.appBaseUrl,
+      isPublicAppUrl: config.isPublicAppUrl,
     },
     dispatchMode: config.isLiveDispatchEnabled ? "LIVE_RESEND" : "SAFE_DRY_RUN",
     instructions: {
       postToTrigger: "Send a POST request to this endpoint with an optional JSON body to test the workflow.",
       sampleBody: {
-        from: config.testRecipientEmail || "client@example.com",
+        from: "client@example.com",
         fromName: "Engineering Lead",
         subject: "Site24x7 Quote Request for Production Infrastructure",
         text: "Hi Quote24x7 team, we need monitoring for 80 Linux servers, 15 Cisco switches, 4 synthetic transaction monitors, 2M monthly pageviews for RUM, and 50GB logs per month. Annual billing please.",
@@ -54,7 +54,6 @@ export async function POST(request: NextRequest) {
 
     const recipient =
       (typeof body.from === "string" && body.from.trim()) ||
-      config.testRecipientEmail ||
       "test-recipient@example.com";
 
     const fromName =

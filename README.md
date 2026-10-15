@@ -46,14 +46,13 @@ Copy `.env.example` to `.env.local`:
 cp .env.example .env.local
 ```
 
-Configure your Resend API credentials:
+Configure your credentials:
 ```env
 RESEND_API_KEY=re_...
 OUTBOUND_FROM_EMAIL="Quote24x7 <quotes@yourdomain.com>"
 RESEND_WEBHOOK_SECRET=whsec_...
-TEST_RECIPIENT_EMAIL=your-email@example.com
 ALLOW_EXTERNAL_DISPATCH=true
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+GEMINI_API_KEY=...
 ```
 
 ### 3. Run Development Server
