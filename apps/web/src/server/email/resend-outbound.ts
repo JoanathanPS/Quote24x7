@@ -1,6 +1,6 @@
 import { Resend } from "resend";
 import type { CurrencyCode, DeliveryRecord, EmailMessage, EmailThread, Quote } from "@/types/domain";
-import { getAppConfig, isTestRuntime } from "../config.ts";
+import { getAppConfig, isTestRuntime, formatFromEmail } from "../config.ts";
 import { store } from "../store/session-store.ts";
 import { dryRunStore } from "../store/dryrun-store.ts";
 import { formatMoney } from "../pricing/money.ts";
@@ -361,7 +361,7 @@ https://quotes.joanathan.in/
       const resend = new Resend(config.resendApiKey);
 
       const res = await resend.emails.send({
-        from: config.outboundFromEmail,
+        from: formatFromEmail(config.outboundFromEmail),
         to: targetRecipient,
         subject,
         text: textContent,
@@ -599,7 +599,7 @@ https://quotes.joanathan.in/
     try {
       const resend = new Resend(config.resendApiKey);
       const res = await resend.emails.send({
-        from: config.outboundFromEmail,
+        from: formatFromEmail(config.outboundFromEmail),
         to: targetRecipient,
         subject,
         text: textContent,
@@ -746,7 +746,7 @@ https://quotes.joanathan.in/
     try {
       const resend = new Resend(config.resendApiKey);
       const res = await resend.emails.send({
-        from: config.outboundFromEmail,
+        from: formatFromEmail(config.outboundFromEmail),
         to: targetRecipient,
         subject,
         text: textContent,

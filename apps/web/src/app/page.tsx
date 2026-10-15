@@ -145,7 +145,7 @@ export default function InboxPage() {
   );
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 pb-8 lg:h-[calc(100vh-5.5rem)] lg:flex lg:flex-col lg:overflow-hidden">
+    <div className="mx-auto max-w-7xl w-full flex-1 min-h-0 flex flex-col space-y-3">
       {/* Top Header */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-3 shrink-0">
         <div>
@@ -231,7 +231,7 @@ export default function InboxPage() {
       </div>
 
       {/* Split Pane: Thread List (Left) + Detail & Timeline (Right) */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 min-h-[500px] lg:flex-1 lg:min-h-0">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 flex-1 min-h-0">
         {/* Left Pane: Thread List */}
         <div className="lg:col-span-5 flex flex-col min-h-0 h-full">
           {threadsLoading ? (

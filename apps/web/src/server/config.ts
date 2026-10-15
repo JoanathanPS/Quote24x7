@@ -56,14 +56,33 @@ export function isTestRuntime(): boolean {
   );
 }
 
+/**
+ * Normalizes email strings into RFC 5322 compliant "Name <email@domain>" or "email@domain"
+ * format without invalid outer quotes or escaped characters that cause Resend validation errors.
+ */
+export function formatFromEmail(raw: string): string {
+  let cleaned = (raw || "").trim();
+  // Strip all leading and trailing quotes, double quotes, and backslashes
+  cleaned = cleaned.replace(/^["'\\]+|["'\\]+$/g, "").trim();
+
+  // Extract display name and email if angle brackets exist
+  const angleMatch = cleaned.match(/^(.*?)\s*<([^>]+)>\s*$/);
+  if (angleMatch && angleMatch[1] !== undefined && angleMatch[2] !== undefined) {
+    const name = angleMatch[1].replace(/^["'\\]+|["'\\]+$/g, "").trim();
+    const email = angleMatch[2].replace(/^["'\\]+|["'\\]+$/g, "").trim();
+    return name ? `${name} <${email}>` : email;
+  }
+
+  return cleaned;
+}
+
 export function getAppConfig(): AppConfig {
   const resendApiKey = process.env.RESEND_API_KEY?.trim() || null;
-  let rawOutboundFrom = (process.env.OUTBOUND_FROM_EMAIL || "").trim();
-  // Strip surrounding quotes if copied verbatim from .env files or docs
-  rawOutboundFrom = rawOutboundFrom.replace(/^["']|["']$/g, "").trim();
+  const rawOutboundFrom = process.env.OUTBOUND_FROM_EMAIL || "";
+  const cleanedFrom = formatFromEmail(rawOutboundFrom);
   const outboundFromEmail =
-    rawOutboundFrom && rawOutboundFrom.includes("@")
-      ? rawOutboundFrom
+    cleanedFrom && cleanedFrom.includes("@")
+      ? cleanedFrom
       : "Quote24x7 <quotes@joanathan.in>";
   const resendWebhookSecret = process.env.RESEND_WEBHOOK_SECRET?.trim() || null;
   const isLiveDispatchEnabled =

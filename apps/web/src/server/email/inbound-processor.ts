@@ -134,6 +134,7 @@ export function classifyInboundEmail(
   };
 
   const senderEmail = payload.from.replace(/^.*?<([^>]+)>.*$/, "$1").trim().toLowerCase();
+  const cleanSystemEmail = systemSenderEmail.replace(/^.*?<([^>]+)>.*$/, "$1").trim().toLowerCase();
   const fromName = (payload.fromName || "").toLowerCase();
   const lowerSubject = payload.subject.toLowerCase();
   const lowerText = payload.text.toLowerCase();
@@ -153,7 +154,7 @@ export function classifyInboundEmail(
     return { drop: true, reason: `Precedence header indicates automated/bulk: ${precedence}` };
   }
 
-  // 3. noreply / mailer-daemon / bounce / postmaster
+  // 3. noreply / mailer-daemon / bounce / postmaster / self-loop / test sinks
   if (
     senderEmail.startsWith("noreply@") ||
     senderEmail.startsWith("no-reply@") ||
@@ -162,13 +163,17 @@ export function classifyInboundEmail(
     senderEmail.startsWith("postmaster@") ||
     senderEmail.startsWith("bounce@") ||
     senderEmail.startsWith("bounces@") ||
+    senderEmail === "delivered@resend.dev" ||
     fromName.includes("no-reply") ||
     fromName.includes("noreply") ||
     fromName.includes("mailer-daemon") ||
     fromName.includes("postmaster") ||
-    senderEmail.includes(systemSenderEmail.toLowerCase())
+    (cleanSystemEmail.length > 0 &&
+      (senderEmail === cleanSystemEmail ||
+        senderEmail.includes(cleanSystemEmail) ||
+        cleanSystemEmail.includes(senderEmail)))
   ) {
-    return { drop: true, reason: `Sender is automated or noreply/mailer-daemon address: ${senderEmail}` };
+    return { drop: true, reason: `Sender is automated, bounce, or system sender address: ${senderEmail}` };
   }
 
   // 4. List headers (List-Id, List-Unsubscribe, etc.)
