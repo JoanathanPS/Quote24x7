@@ -3,9 +3,6 @@
 import * as React from "react";
 import {
   Database,
-  UploadSimple,
-  Copy,
-  Check,
   Warning,
   XCircle,
   FileText,
@@ -15,7 +12,6 @@ import {
   Info,
   Package,
   Stack,
-  GitCommit,
   MagnifyingGlass,
 } from "@phosphor-icons/react";
 
@@ -52,14 +48,6 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
 
 function getVerificationBadge(status: VerificationStatus): {
   label: string;
@@ -104,36 +92,9 @@ export default function CataloguePage() {
   const { data: catalogues, isLoading, error, refetch } = useCatalogues();
   const catalogue: CatalogueVersion | undefined = catalogues?.[0];
 
-  const [copiedHash, setCopiedHash] = React.useState(false);
-  const [importDialogOpen, setImportDialogOpen] = React.useState(false);
-  const [importFile, setImportFile] = React.useState<File | null>(null);
-  const [importStatus, setImportStatus] = React.useState<string | null>(null);
-
   // Search filters
   const [planSearch, setPlanSearch] = React.useState("");
   const [addOnSearch, setAddOnSearch] = React.useState("");
-
-  const handleCopyHash = () => {
-    if (!catalogue?.contentHash) return;
-    navigator.clipboard.writeText(catalogue.contentHash);
-    setCopiedHash(true);
-    setTimeout(() => setCopiedHash(false), 2000);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setImportFile(e.target.files[0]);
-      setImportStatus(null);
-    }
-  };
-
-  const handleSimulateImport = () => {
-    if (!importFile) return;
-    setImportStatus("validating");
-    setTimeout(() => {
-      setImportStatus("done");
-    }, 1200);
-  };
 
   const filteredPlans = React.useMemo(() => {
     if (!catalogue?.plans) return [];
@@ -167,9 +128,8 @@ export default function CataloguePage() {
             <Skeleton className="h-8 w-64" />
             <Skeleton className="h-4 w-96" />
           </div>
-          <Skeleton className="h-9 w-36" />
+          <Skeleton className="h-9 w-24" />
         </div>
-        <Skeleton className="h-32 w-full rounded-xl" />
         <Skeleton className="h-96 w-full rounded-xl" />
       </div>
     );
@@ -180,7 +140,7 @@ export default function CataloguePage() {
       <EmptyState
         icon={XCircle}
         title="Failed to load catalogue"
-        description="The versioned pricing catalogue could not be loaded from disk or API."
+        description="The pricing catalogue could not be loaded from disk or API."
         action={
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <ArrowsClockwise className="h-4 w-4 mr-1.5" />
@@ -190,8 +150,6 @@ export default function CataloguePage() {
       />
     );
   }
-
-  const verification = getVerificationBadge(catalogue.verificationStatus);
 
   return (
     <div className="space-y-6 pb-12">
@@ -205,7 +163,7 @@ export default function CataloguePage() {
             </h1>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Versioned Site24x7 pricing rules, plans, entitlements, add-ons, and provenance records.
+            Site24x7 subscription plans and add-on pricing catalogue.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -218,107 +176,8 @@ export default function CataloguePage() {
             <ArrowsClockwise className="h-4 w-4 mr-1.5" />
             Refresh
           </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => {
-              setImportFile(null);
-              setImportStatus(null);
-              setImportDialogOpen(true);
-            }}
-            className="h-9"
-          >
-            <UploadSimple className="h-4 w-4 mr-1.5" weight="bold" />
-            Import Catalogue
-          </Button>
         </div>
       </div>
-
-      {/* Active Version Banner */}
-      <Card className="border-border bg-surface shadow-xs overflow-hidden">
-        <div className="p-5 sm:p-6 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="success" className="px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider">
-                {catalogue.status}
-              </Badge>
-              <Badge variant={verification.variant} className="px-2.5 py-0.5 text-xs">
-                {verification.label}
-              </Badge>
-              <Badge variant="neutral" className="font-mono text-xs">
-                {catalogue.market} / {catalogue.currency}
-              </Badge>
-              <span className="text-xs text-muted-foreground">
-                Effective: {formatDateTime(catalogue.effectiveFrom)}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground font-mono">
-                v{catalogue.version}
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 border-t border-border/50 text-xs">
-            <div>
-              <span className="text-muted-foreground block mb-0.5">Content Hash (SHA-256)</span>
-              <div className="flex items-center gap-1.5 font-mono text-foreground bg-muted/50 px-2 py-1 rounded border border-border/40 select-all">
-                <GitCommit className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate" title={catalogue.contentHash}>
-                  {catalogue.contentHash}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleCopyHash}
-                  className="ml-auto text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded"
-                  title="Copy content hash"
-                >
-                  {copiedHash ? (
-                    <Check className="h-3.5 w-3.5 text-success" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <span className="text-muted-foreground block mb-0.5">Catalogue ID</span>
-              <div className="font-mono text-foreground bg-muted/50 px-2 py-1 rounded border border-border/40">
-                {catalogue.id}
-              </div>
-            </div>
-
-            <div>
-              <span className="text-muted-foreground block mb-0.5">Plans / Add-Ons</span>
-              <div className="text-foreground bg-muted/50 px-2 py-1 rounded border border-border/40 font-medium">
-                {catalogue.plans.length} base plans • {catalogue.addOns.length} add-on packs
-              </div>
-            </div>
-
-            <div>
-              <span className="text-muted-foreground block mb-0.5">Sources Registered</span>
-              <div className="text-foreground bg-muted/50 px-2 py-1 rounded border border-border/40 font-medium">
-                {catalogue.sources.length} captured references
-              </div>
-            </div>
-          </div>
-
-          {/* Reference Catalogue Info Banner */}
-          <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3.5 text-xs text-muted-foreground">
-            <Info className="h-4 w-4 shrink-0 text-primary mt-0.5" />
-            <div className="leading-relaxed space-y-0.5">
-              <p className="font-medium text-foreground">
-                Pricing Reference Catalogue (v{catalogue.version})
-              </p>
-              <p>
-                Standard catalogue rates, entitlements, and add-on pack sizes used by Quote24x7 to assemble configurations and proposals.
-              </p>
-            </div>
-          </div>
-        </div>
-      </Card>
 
       {/* Tabbed Navigation */}
       <Tabs defaultValue="plans" className="w-full space-y-4">
@@ -765,106 +624,6 @@ export default function CataloguePage() {
           ))}
         </TabsContent>
       </Tabs>
-
-      {/* Import Catalogue Dialog */}
-      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UploadSimple className="h-5 w-5 text-primary" weight="bold" />
-              Import Pricing Catalogue
-            </DialogTitle>
-            <DialogDescription>
-              Upload a versioned JSON price book. Validations will run prior to activation.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2 text-xs">
-            <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-2">
-              <span className="font-semibold text-foreground block">
-                Validation Rules Enforced on Import:
-              </span>
-              <ul className="space-y-1.5 list-disc list-inside text-muted-foreground">
-                <li>
-                  <strong className="text-foreground">Schema Conformance:</strong> Strict JSON matching for plans, add-ons, and sources.
-                </li>
-                <li>
-                  <strong className="text-foreground">Provenance Tracking:</strong> Every price must reference a valid source ID.
-                </li>
-                <li>
-                  <strong className="text-foreground">Single Billing Period:</strong> Mixed billing periods inside a single catalogue version are rejected.
-                </li>
-                <li>
-                  <strong className="text-foreground">Verification Integrity:</strong> Unverified sources cannot claim company_authorized status.
-                </li>
-                <li>
-                  <strong className="text-foreground">Unpriced Add-ons:</strong> Add-ons missing unit prices generate warnings and require configuration guards.
-                </li>
-              </ul>
-            </div>
-
-            {/* Dropzone */}
-            <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
-              <input
-                type="file"
-                id="catalogue-file"
-                accept=".json"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              <label
-                htmlFor="catalogue-file"
-                className="cursor-pointer flex flex-col items-center justify-center gap-2"
-              >
-                <UploadSimple className="h-8 w-8 text-muted-foreground" />
-                <span className="font-medium text-foreground">
-                  {importFile ? importFile.name : "Choose JSON file or drag here"}
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  Accepts .json files containing valid CatalogueFile definitions
-                </span>
-              </label>
-            </div>
-
-            {importStatus === "validating" && (
-              <div className="flex items-center gap-2 text-primary bg-primary-soft p-3 rounded-md">
-                <ArrowsClockwise className="h-4 w-4 animate-spin shrink-0" />
-                <span>Parsing schema and running integrity validations...</span>
-              </div>
-            )}
-
-            {importStatus === "done" && (
-              <div className="flex items-start gap-2 text-warning bg-warning-soft/70 p-3 rounded-md">
-                <Warning className="h-4 w-4 shrink-0 text-warning mt-0.5" weight="fill" />
-                <div className="space-y-1">
-                  <span className="font-medium text-foreground">Import Simulation Complete</span>
-                  <p className="text-muted-foreground text-[11px]">
-                    Catalogue validated successfully. In this console environment, active catalogue activation is locked to demo mode to ensure audit integrity.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setImportDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="default"
-              size="sm"
-              disabled={!importFile || importStatus === "validating"}
-              onClick={handleSimulateImport}
-            >
-              Validate & Import
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
