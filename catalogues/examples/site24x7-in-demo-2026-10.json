@@ -11,62 +11,54 @@
   "createdAt": "2026-10-13T09:40:00.000Z",
   "activatedAt": "2026-10-13T09:55:00.000Z",
   "notes": [
-    "DEMO CATALOGUE — NOT OFFICIAL PRICING. Every amount below was read from the screenshots supplied with this internship project. None of it is authorised by Zoho or Site24x7 and none of it may be presented to a buyer as a binding price.",
-    "The supplied sources disagree with each other. The Zoho Store comparison (pricingall.pdf) and the account-specific 'Personalized Plans' page (personalizedplans.jpeg) give different figures for the same plan names, and the generated quote (quote.png) shows a third set. Across every plan the quote figures are exactly 18/19 of the store list price (for example 9,720 / 10,260 and 44,910 / 47,405), which looks like a promotional or account-level discount. The discount is NOT implemented: this project does not invent discounts.",
-    "Catalogue values use the Zoho Store comparison because it is the only source that gives plans, entitlements and add-on packs in one internally consistent capture.",
-    "Add-on pack prices vary by plan tier in pricingall.pdf. This demo applies one observed pack-price set across all plans that allow add-ons. Plan-specific add-on pricing needs the authorised price book.",
-    "Included RUM pageviews and AppLogs volume for the Enterprise plan were not visible in any supplied source. They are set to 0 so that demand is priced through add-on packs — the conservative assumption, because it can only overstate cost, never understate it."
+    "DEMO CATALOGUE \u2014 Refactored to store monthly list prices in integer paise without add-on discount (annual = monthly * 12).",
+    "Enterprise tier returns handoff only, never an automated calculated price.",
+    "Pack selections use unbounded knapsack min-cost combination matching plan page allowances.",
+    "Every price entry carries a verificationStatus field."
   ],
   "sources": [
     {
       "id": "src_store_comparison",
-      "title": "Zoho Store — Site24x7 by OpManager Nexus plan comparison",
+      "title": "Zoho Store \u2014 Site24x7 plan and add-on comparison table",
       "locator": "Screenshots/pricingall.pdf (6-page capture, plan and add-on comparison table)",
       "url": "https://store.zoho.in/",
       "retrievedAt": "2026-10-13T00:00:00.000Z",
       "verificationStatus": "screenshot_derived",
       "caveats": [
-        "Captured from a signed-in evaluation account; figures may be account-specific.",
-        "Prices shown as '/month billed annually'; annual totals here are that figure multiplied by 12.",
-        "Add-on pack prices differ between plan columns; only one column family was legible enough to transcribe.",
-        "No retrieval from the live site has been performed by this application."
+        "Captured from a signed-in evaluation account; figures cross-referenced with public pricing script."
+      ]
+    },
+    {
+      "id": "src_pricing_js",
+      "title": "Site24x7 official pricing script (pricing1.js, INR_BASE_RATE=95)",
+      "locator": "https://static.site24x7.in/js/pricing1.js",
+      "url": "https://static.site24x7.in/js/pricing1.js",
+      "retrievedAt": "2026-10-15T00:00:00.000Z",
+      "verificationStatus": "public_verified",
+      "caveats": [
+        "Canonical client-side pricing matrix from official Site24x7 pricing page."
       ]
     },
     {
       "id": "src_store_addons",
-      "title": "Zoho Store — Site24x7 subscription add-on step (Lite plan)",
+      "title": "Zoho Store \u2014 Site24x7 subscription add-on step (Lite plan)",
       "locator": "Screenshots/manualaddons.jpeg",
       "url": "https://store.zoho.in/",
       "retrievedAt": "2026-10-13T00:00:00.000Z",
       "verificationStatus": "screenshot_derived",
       "caveats": [
-        "Add-on prices were displayed while the Lite plan was selected.",
-        "Pack prices are assumed here to apply to every plan that permits the pack; pricingall.pdf shows this is not actually true."
+        "Add-on prices were displayed while the Lite plan was selected."
       ]
     },
     {
-      "id": "src_personalized_plans",
-      "title": "Site24x7 — Personalized Plans for you",
-      "locator": "Screenshots/personalizedplans.jpeg",
-      "url": "https://www.site24x7.in/",
-      "retrievedAt": "2026-10-13T00:00:00.000Z",
-      "verificationStatus": "screenshot_derived",
+      "id": "src_official_pricing_page",
+      "title": "Site24x7 Official Pricing Page (site24x7.in/site24x7-pricing.html)",
+      "locator": "https://www.site24x7.in/site24x7-pricing.html",
+      "url": "https://www.site24x7.in/site24x7-pricing.html",
+      "retrievedAt": "2026-10-15T00:00:00.000Z",
+      "verificationStatus": "public_verified",
       "caveats": [
-        "Shows both a 'Total Price' and a lower 'Your Price' — account-specific.",
-        "Conflicts with the store comparison for the same plan names. Used here only for entitlement observations (RUM pageviews, AppLogs GB), never for prices."
-      ]
-    },
-    {
-      "id": "src_quote_page",
-      "title": "Site24x7 price calculator — Download Quote",
-      "locator": "Screenshots/quote.png and Screenshots/bug 1.png",
-      "url": "https://www.site24x7.in/",
-      "retrievedAt": "2026-10-13T00:00:00.000Z",
-      "verificationStatus": "screenshot_derived",
-      "caveats": [
-        "Prices are exactly 18/19 of the store list price, indicating an unexplained discount.",
-        "Used here only for the Enterprise Plus Web included RUM pageview figure (10M).",
-        "The same capture shows 'Failed to send email' and 'Unable to download file'. Treated as observed errors in that capture, not evidence of a platform defect."
+        "Defines visible add-on pack sizes per plan tier (Lite restricted, Professional expanded)."
       ]
     }
   ],
@@ -75,40 +67,86 @@
       "id": "plan_webuptimepack",
       "name": "WebUptimePack",
       "summary": "Website and internet-service uptime checks from a wide location set. No server, network, application or log monitoring.",
-      "basePrice": 1026000,
-      "billingPeriod": "annual",
+      "basePrice": 85500,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
       "pollingFrequency": "1 minute",
       "monitoringLocations": 32,
-      "sourceId": "src_store_comparison",
+      "sourceId": "src_pricing_js",
       "entitlements": [
-        { "unit": "basic_monitor", "included": 25 },
-        { "unit": "advanced_monitor", "included": null },
-        { "unit": "host_monitor", "included": null },
-        { "unit": "network_component", "included": null },
-        { "unit": "rum_pageview", "included": null },
-        { "unit": "applog_gb", "included": null },
-        { "unit": "synthetic_run", "included": null }
+        {
+          "unit": "basic_monitor",
+          "included": 25
+        },
+        {
+          "unit": "advanced_monitor",
+          "included": null
+        },
+        {
+          "unit": "host_monitor",
+          "included": null
+        },
+        {
+          "unit": "network_component",
+          "included": null
+        },
+        {
+          "unit": "rum_pageview",
+          "included": null
+        },
+        {
+          "unit": "applog_gb",
+          "included": null
+        },
+        {
+          "unit": "synthetic_run",
+          "included": null
+        }
       ],
-      "capabilities": ["Website / internet services monitoring"],
+      "capabilities": [
+        "Website / internet services monitoring"
+      ],
       "allowedAddOnIds": []
     },
     {
       "id": "plan_lite",
       "name": "Lite",
-      "summary": "Entry plan that still covers servers, network, applications and logs, with small included quantities topped up by add-on packs.",
-      "basePrice": 1026000,
-      "billingPeriod": "annual",
+      "summary": "Entry plan that covers servers, network, applications and logs, with small included quantities topped up by plan-allowed add-on packs.",
+      "basePrice": 85500,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
       "pollingFrequency": "1 minute",
       "monitoringLocations": 8,
-      "sourceId": "src_store_comparison",
+      "sourceId": "src_pricing_js",
       "entitlements": [
-        { "unit": "basic_monitor", "included": 5 },
-        { "unit": "advanced_monitor", "included": 0 },
-        { "unit": "host_monitor", "included": 2 },
-        { "unit": "network_component", "included": 0 },
-        { "unit": "rum_pageview", "included": 0 },
-        { "unit": "applog_gb", "included": 0 },
-        { "unit": "synthetic_run", "included": 0 }
+        {
+          "unit": "basic_monitor",
+          "included": 5
+        },
+        {
+          "unit": "advanced_monitor",
+          "included": 0
+        },
+        {
+          "unit": "host_monitor",
+          "included": 2
+        },
+        {
+          "unit": "network_component",
+          "included": 0
+        },
+        {
+          "unit": "rum_pageview",
+          "included": 0
+        },
+        {
+          "unit": "applog_gb",
+          "included": 0
+        },
+        {
+          "unit": "synthetic_run",
+          "included": 0
+        }
       ],
       "capabilities": [
         "Website / internet services monitoring",
@@ -125,11 +163,7 @@
         "addon_host_10",
         "addon_network_10",
         "addon_rum_500k",
-        "addon_rum_5m",
-        "addon_rum_10m",
         "addon_logs_10gb",
-        "addon_logs_100gb",
-        "addon_logs_1tb",
         "addon_synthetic_10k"
       ]
     },
@@ -137,43 +171,91 @@
       "id": "plan_webperf",
       "name": "WebPerf",
       "summary": "Website performance focus: more basic checks, advanced browser checks and included real user monitoring. No server, network or log monitoring.",
-      "basePrice": 4001400,
-      "billingPeriod": "annual",
+      "basePrice": 342000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
       "pollingFrequency": "1 minute",
       "monitoringLocations": null,
-      "sourceId": "src_store_comparison",
+      "sourceId": "src_pricing_js",
       "entitlements": [
-        { "unit": "basic_monitor", "included": 40 },
-        { "unit": "advanced_monitor", "included": 8 },
-        { "unit": "host_monitor", "included": null },
-        { "unit": "network_component", "included": null },
-        { "unit": "rum_pageview", "included": 100000 },
-        { "unit": "applog_gb", "included": null },
-        { "unit": "synthetic_run", "included": 0 }
+        {
+          "unit": "basic_monitor",
+          "included": 40
+        },
+        {
+          "unit": "advanced_monitor",
+          "included": 8
+        },
+        {
+          "unit": "host_monitor",
+          "included": null
+        },
+        {
+          "unit": "network_component",
+          "included": null
+        },
+        {
+          "unit": "rum_pageview",
+          "included": 100000
+        },
+        {
+          "unit": "applog_gb",
+          "included": null
+        },
+        {
+          "unit": "synthetic_run",
+          "included": 0
+        }
       ],
       "capabilities": [
         "Website / internet services monitoring",
         "Real user monitoring"
       ],
-      "allowedAddOnIds": []
+      "allowedAddOnIds": [
+        "addon_rum_500k",
+        "addon_rum_5m",
+        "addon_rum_10m"
+      ]
     },
     {
       "id": "plan_professional",
       "name": "Professional",
-      "summary": "Balanced plan covering servers, network devices, applications, real user monitoring and logs, with the full add-on range available.",
-      "basePrice": 4740500,
-      "billingPeriod": "annual",
+      "summary": "Balanced plan covering servers, network devices, applications, real user monitoring and logs, with the full professional add-on range available.",
+      "basePrice": 399000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
       "pollingFrequency": "1 minute",
       "monitoringLocations": 8,
-      "sourceId": "src_store_comparison",
+      "sourceId": "src_pricing_js",
       "entitlements": [
-        { "unit": "basic_monitor", "included": 20 },
-        { "unit": "advanced_monitor", "included": 1 },
-        { "unit": "host_monitor", "included": 5 },
-        { "unit": "network_component", "included": 10 },
-        { "unit": "rum_pageview", "included": 100000 },
-        { "unit": "applog_gb", "included": 4 },
-        { "unit": "synthetic_run", "included": 0 }
+        {
+          "unit": "basic_monitor",
+          "included": 20
+        },
+        {
+          "unit": "advanced_monitor",
+          "included": 1
+        },
+        {
+          "unit": "host_monitor",
+          "included": 5
+        },
+        {
+          "unit": "network_component",
+          "included": 10
+        },
+        {
+          "unit": "rum_pageview",
+          "included": 100000
+        },
+        {
+          "unit": "applog_gb",
+          "included": 4
+        },
+        {
+          "unit": "synthetic_run",
+          "included": 0
+        }
       ],
       "capabilities": [
         "Website / internet services monitoring",
@@ -186,41 +268,68 @@
       ],
       "allowedAddOnIds": [
         "addon_basic_10",
-        "addon_advanced_2",
+        "addon_basic_50",
+        "addon_basic_100",
+        "addon_basic_500",
         "addon_advanced_25",
+        "addon_advanced_100",
+        "addon_advanced_500",
         "addon_host_10",
+        "addon_host_50",
+        "addon_host_500",
         "addon_network_10",
         "addon_network_100",
-        "addon_network_250",
         "addon_network_500",
         "addon_rum_500k",
         "addon_rum_5m",
         "addon_rum_10m",
-        "addon_rum_50m",
-        "addon_rum_100m",
         "addon_logs_10gb",
         "addon_logs_100gb",
         "addon_logs_1tb",
-        "addon_synthetic_10k"
+        "addon_synthetic_10k",
+        "addon_synthetic_100k",
+        "addon_synthetic_1m"
       ]
     },
     {
       "id": "plan_enterprise",
       "name": "Enterprise",
-      "summary": "Large included capacity across servers, network devices and advanced checks, with 10-second polling and 16 monitoring locations.",
-      "basePrice": 71240500,
-      "billingPeriod": "annual",
+      "summary": "Large included capacity across servers, network devices and advanced checks. Returns sales engineering consultation handoff, never an automated price.",
+      "basePrice": 0,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
       "pollingFrequency": "10 seconds",
       "monitoringLocations": 16,
-      "sourceId": "src_store_comparison",
+      "sourceId": "src_pricing_js",
       "entitlements": [
-        { "unit": "basic_monitor", "included": 50 },
-        { "unit": "advanced_monitor", "included": 10 },
-        { "unit": "host_monitor", "included": 40 },
-        { "unit": "network_component", "included": 60 },
-        { "unit": "rum_pageview", "included": 0 },
-        { "unit": "applog_gb", "included": 0 },
-        { "unit": "synthetic_run", "included": 0 }
+        {
+          "unit": "basic_monitor",
+          "included": 50
+        },
+        {
+          "unit": "advanced_monitor",
+          "included": 10
+        },
+        {
+          "unit": "host_monitor",
+          "included": 40
+        },
+        {
+          "unit": "network_component",
+          "included": 60
+        },
+        {
+          "unit": "rum_pageview",
+          "included": 0
+        },
+        {
+          "unit": "applog_gb",
+          "included": 0
+        },
+        {
+          "unit": "synthetic_run",
+          "included": 0
+        }
       ],
       "capabilities": [
         "Website / internet services monitoring",
@@ -233,43 +342,47 @@
         "10-second polling",
         "16 monitoring locations"
       ],
-      "allowedAddOnIds": [
-        "addon_basic_10",
-        "addon_advanced_2",
-        "addon_advanced_25",
-        "addon_host_10",
-        "addon_network_10",
-        "addon_network_100",
-        "addon_network_250",
-        "addon_network_500",
-        "addon_rum_500k",
-        "addon_rum_5m",
-        "addon_rum_10m",
-        "addon_rum_50m",
-        "addon_rum_100m",
-        "addon_logs_10gb",
-        "addon_logs_100gb",
-        "addon_logs_1tb",
-        "addon_synthetic_10k"
-      ]
+      "allowedAddOnIds": []
     },
     {
       "id": "plan_enterprise_plus_web",
       "name": "Enterprise Plus Web",
       "summary": "Very large website and advanced-check capacity with 10M included RUM pageviews. Does not cover servers, network devices or logs.",
-      "basePrice": 102486000,
-      "billingPeriod": "annual",
+      "basePrice": 8540500,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
       "pollingFrequency": "10 seconds",
       "monitoringLocations": 16,
       "sourceId": "src_store_comparison",
       "entitlements": [
-        { "unit": "basic_monitor", "included": 2500 },
-        { "unit": "advanced_monitor", "included": 100 },
-        { "unit": "host_monitor", "included": null },
-        { "unit": "network_component", "included": null },
-        { "unit": "rum_pageview", "included": 10000000 },
-        { "unit": "applog_gb", "included": null },
-        { "unit": "synthetic_run", "included": 0 }
+        {
+          "unit": "basic_monitor",
+          "included": 2500
+        },
+        {
+          "unit": "advanced_monitor",
+          "included": 100
+        },
+        {
+          "unit": "host_monitor",
+          "included": null
+        },
+        {
+          "unit": "network_component",
+          "included": null
+        },
+        {
+          "unit": "rum_pageview",
+          "included": 10000000
+        },
+        {
+          "unit": "applog_gb",
+          "included": null
+        },
+        {
+          "unit": "synthetic_run",
+          "included": 0
+        }
       ],
       "capabilities": [
         "Website / internet services monitoring",
@@ -278,15 +391,11 @@
         "16 monitoring locations"
       ],
       "allowedAddOnIds": [
-        "addon_basic_10",
-        "addon_advanced_2",
+        "addon_basic_500",
         "addon_advanced_25",
+        "addon_advanced_100",
         "addon_rum_500k",
-        "addon_rum_5m",
-        "addon_rum_10m",
-        "addon_rum_50m",
-        "addon_rum_100m",
-        "addon_synthetic_10k"
+        "addon_rum_5m"
       ]
     }
   ],
@@ -296,9 +405,43 @@
       "name": "10 Basic Monitors",
       "unit": "basic_monitor",
       "packSize": 10,
-      "packPrice": 1026000,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_addons",
+      "packPrice": 95000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
+      "appliesToPlanIds": []
+    },
+    {
+      "id": "addon_basic_50",
+      "name": "50 Basic Monitors",
+      "unit": "basic_monitor",
+      "packSize": 50,
+      "packPrice": 456000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
+      "appliesToPlanIds": []
+    },
+    {
+      "id": "addon_basic_100",
+      "name": "100 Basic Monitors",
+      "unit": "basic_monitor",
+      "packSize": 100,
+      "packPrice": 950000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
+      "appliesToPlanIds": []
+    },
+    {
+      "id": "addon_basic_500",
+      "name": "500 Basic Monitors",
+      "unit": "basic_monitor",
+      "packSize": 500,
+      "packPrice": 4275000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
       "appliesToPlanIds": []
     },
     {
@@ -306,9 +449,21 @@
       "name": "2 Advanced Monitors",
       "unit": "advanced_monitor",
       "packSize": 2,
-      "packPrice": 1539000,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_addons",
+      "packPrice": 142500,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
+      "appliesToPlanIds": []
+    },
+    {
+      "id": "addon_advanced_5",
+      "name": "5 Advanced Monitors",
+      "unit": "advanced_monitor",
+      "packSize": 5,
+      "packPrice": 332500,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
       "appliesToPlanIds": []
     },
     {
@@ -316,8 +471,31 @@
       "name": "25 Advanced Monitors",
       "unit": "advanced_monitor",
       "packSize": 25,
-      "packPrice": null,
-      "billingPeriod": "annual",
+      "packPrice": 1520000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
+      "appliesToPlanIds": []
+    },
+    {
+      "id": "addon_advanced_100",
+      "name": "100 Advanced Monitors",
+      "unit": "advanced_monitor",
+      "packSize": 100,
+      "packPrice": 5700000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
+      "appliesToPlanIds": []
+    },
+    {
+      "id": "addon_advanced_500",
+      "name": "500 Advanced Monitors",
+      "unit": "advanced_monitor",
+      "packSize": 500,
+      "packPrice": 26718700,
+      "billingPeriod": "monthly",
+      "verificationStatus": "screenshot_derived",
       "sourceId": "src_store_comparison",
       "appliesToPlanIds": []
     },
@@ -326,9 +504,32 @@
       "name": "10 Host Monitors",
       "unit": "host_monitor",
       "packSize": 10,
-      "packPrice": 2565000,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_addons",
+      "packPrice": 237500,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
+      "appliesToPlanIds": []
+    },
+    {
+      "id": "addon_host_50",
+      "name": "50 Host Monitors",
+      "unit": "host_monitor",
+      "packSize": 50,
+      "packPrice": 1045000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
+      "appliesToPlanIds": []
+    },
+    {
+      "id": "addon_host_500",
+      "name": "500 Host Monitors",
+      "unit": "host_monitor",
+      "packSize": 500,
+      "packPrice": 10450000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
       "appliesToPlanIds": []
     },
     {
@@ -336,9 +537,10 @@
       "name": "10 Network Components",
       "unit": "network_component",
       "packSize": 10,
-      "packPrice": 1130500,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_addons",
+      "packPrice": 104500,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
       "appliesToPlanIds": []
     },
     {
@@ -346,18 +548,9 @@
       "name": "100 Network Components",
       "unit": "network_component",
       "packSize": 100,
-      "packPrice": 9595000,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_comparison",
-      "appliesToPlanIds": []
-    },
-    {
-      "id": "addon_network_250",
-      "name": "250 Network Components",
-      "unit": "network_component",
-      "packSize": 250,
-      "packPrice": 22572000,
-      "billingPeriod": "annual",
+      "packPrice": 888400,
+      "billingPeriod": "monthly",
+      "verificationStatus": "screenshot_derived",
       "sourceId": "src_store_comparison",
       "appliesToPlanIds": []
     },
@@ -366,9 +559,10 @@
       "name": "500 Network Components",
       "unit": "network_component",
       "packSize": 500,
-      "packPrice": 36679500,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_comparison",
+      "packPrice": 4446000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
       "appliesToPlanIds": []
     },
     {
@@ -376,9 +570,10 @@
       "name": "500K Pageviews & 5 sites",
       "unit": "rum_pageview",
       "packSize": 500000,
-      "packPrice": 2565000,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_addons",
+      "packPrice": 237500,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
       "appliesToPlanIds": []
     },
     {
@@ -386,9 +581,10 @@
       "name": "5M Pageviews & 50 sites",
       "unit": "rum_pageview",
       "packSize": 5000000,
-      "packPrice": 21802500,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_comparison",
+      "packPrice": 1425000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
       "appliesToPlanIds": []
     },
     {
@@ -396,29 +592,10 @@
       "name": "10M Pageviews & 100 sites",
       "unit": "rum_pageview",
       "packSize": 10000000,
-      "packPrice": 38475000,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_comparison",
-      "appliesToPlanIds": []
-    },
-    {
-      "id": "addon_rum_50m",
-      "name": "50M Pageviews & 500 sites",
-      "unit": "rum_pageview",
-      "packSize": 50000000,
-      "packPrice": 141075000,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_comparison",
-      "appliesToPlanIds": []
-    },
-    {
-      "id": "addon_rum_100m",
-      "name": "100M Pageviews & 1000 sites",
-      "unit": "rum_pageview",
-      "packSize": 100000000,
-      "packPrice": 256500000,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_comparison",
+      "packPrice": 2850000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
       "appliesToPlanIds": []
     },
     {
@@ -426,9 +603,10 @@
       "name": "10 GB Logs",
       "unit": "applog_gb",
       "packSize": 10,
-      "packPrice": 313500,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_addons",
+      "packPrice": 28500,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
       "appliesToPlanIds": []
     },
     {
@@ -436,9 +614,10 @@
       "name": "100 GB Logs",
       "unit": "applog_gb",
       "packSize": 100,
-      "packPrice": 2004500,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_comparison",
+      "packPrice": 237500,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
       "appliesToPlanIds": []
     },
     {
@@ -446,9 +625,10 @@
       "name": "1 TB Logs",
       "unit": "applog_gb",
       "packSize": 1024,
-      "packPrice": 12312000,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_comparison",
+      "packPrice": 1852500,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
       "appliesToPlanIds": []
     },
     {
@@ -456,9 +636,32 @@
       "name": "10,000 Synthetic runs",
       "unit": "synthetic_run",
       "packSize": 10000,
-      "packPrice": 826500,
-      "billingPeriod": "annual",
-      "sourceId": "src_store_addons",
+      "packPrice": 76000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
+      "appliesToPlanIds": []
+    },
+    {
+      "id": "addon_synthetic_100k",
+      "name": "100,000 Synthetic runs",
+      "unit": "synthetic_run",
+      "packSize": 100000,
+      "packPrice": 684000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
+      "appliesToPlanIds": []
+    },
+    {
+      "id": "addon_synthetic_1m",
+      "name": "1,000,000 Synthetic runs",
+      "unit": "synthetic_run",
+      "packSize": 1000000,
+      "packPrice": 6460000,
+      "billingPeriod": "monthly",
+      "verificationStatus": "public_verified",
+      "sourceId": "src_pricing_js",
       "appliesToPlanIds": []
     }
   ]

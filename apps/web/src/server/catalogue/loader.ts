@@ -58,6 +58,12 @@ const planSchema = z.object({
   summary: z.string().min(1),
   basePrice: minorUnits,
   billingPeriod: z.enum(["monthly", "annual"]),
+  verificationStatus: z.enum([
+    "company_authorized",
+    "public_verified",
+    "screenshot_derived",
+    "synthetic_test",
+  ]),
   pollingFrequency: z.string().min(1),
   monitoringLocations: z.number().int().positive().nullable(),
   sourceId: z.string().min(1),
@@ -73,6 +79,12 @@ const addOnSchema = z.object({
   packSize: z.number().int().positive(),
   packPrice: minorUnits.nullable(),
   billingPeriod: z.enum(["monthly", "annual"]),
+  verificationStatus: z.enum([
+    "company_authorized",
+    "public_verified",
+    "screenshot_derived",
+    "synthetic_test",
+  ]),
   sourceId: z.string().min(1),
   appliesToPlanIds: z.array(z.string()),
 });

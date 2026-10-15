@@ -124,7 +124,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     });
   }
 
-  // 3. Advanced / Synthetic Web Monitors
+  // 3. Advanced / Synthetic Web Monitors & APM Applications
   let advancedCount = 0;
   let advancedEvidence: string | null = null;
   const advMentioned =
@@ -136,9 +136,21 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     text.match(/(\d+)\s*(?:synthetic|advanced|transaction)\s*(?:(?:transaction|web|browser)\s+)?(?:monitors?|endpoints?|checks?|urls?|apis?)/i) ||
     text.match(/(?:advanced|synthetic|transaction)\s*(?:monitors?|endpoints?|checks?)\s*(?:count|total|:|=)\s*(\d+)/i);
 
+  const appApmMatch =
+    text.match(/(\d+)\s*(?:[a-z\s]{0,15}?)\b(?:java|node(?:\.js)?|python|\.net|php|ruby|go)?\s*(?:apps?|applications?|apm(?:\s+instances?|\s+monitors?)?)\b/i) ||
+    text.match(/(?:java|node(?:\.js)?|python|\.net|php|ruby|go|apm)\s*(?:apps?|applications?|instances?)\s*(?:count|total|:|=)\s*(\d+)/i);
+
   if (advMatch && advMatch[1]) {
-    advancedCount = parseInt(advMatch[1], 10);
+    advancedCount += parseInt(advMatch[1], 10);
     advancedEvidence = advMatch[0].trim();
+  }
+  if (appApmMatch && appApmMatch[1]) {
+    const appCount = parseInt(appApmMatch[1], 10);
+    advancedCount += appCount;
+    advancedEvidence = advancedEvidence ? `${advancedEvidence}, ${appApmMatch[0].trim()}` : appApmMatch[0].trim();
+  }
+
+  if (advancedCount > 0) {
     fields.push({
       key: "advanced_monitors",
       label: "Advanced / Synthetic Monitors",
@@ -173,8 +185,8 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   let basicCount = 0;
   let basicEvidence: string | null = null;
   const basicCountMatch =
-    text.match(/(\d+)\s*(?:basic|ping|port|standard|website(?:\s+uptime|\s+availability)?)\s*monitors?/i) ||
-    text.match(/(?:basic|ping|port|standard|website(?:\s+uptime)?)\s*(?:monitors?|checks?)\s*(?:count|total|:|=)\s*(\d+)/i);
+    text.match(/(\d+)\s*(?:basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?)?|standard(?:\s+monitors?)?|websites?|urls?|web\s+sites?|website(?:\s+uptime|\s+availability)?(?:\s+monitors?|\s+checks?)?)\b/i) ||
+    text.match(/(?:basic|ping|port|standard|websites?|urls?|web\s+sites?|website(?:\s+uptime)?)\s*(?:monitors?|checks?)\s*(?:count|total|:|=)\s*(\d+)/i);
 
   const websiteAvailabilityMentioned =
     /\b(?:website(?:\s+is|\s+being)?\s+accessible|website\s+uptime|website\s+availability|website\s+accessibility|check\s+(?:our\s+)?website|monitor(?:\s+whether)?\s+(?:our\s+)?website)\b/i.test(text) ||

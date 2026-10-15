@@ -381,44 +381,67 @@ function buildAiDecision(
     acceptedQuestions.push(question);
   }
 
-  // --- Guard 6: resolve the action ----------------------------------------
+  // --- Guard 6: resolve the action (Rule 1: code decides ask vs quote) -----
   const roundsSpent = input.existingProfile?.clarificationRound ?? 0;
   const hasPrimaryWorkload = DEMAND_UNITS.some((unit) => demand[unit] > 0);
   const missingMaterialFields = fields
     .filter((field) => field.state === "missing" && field.materialToPricing)
     .map((field) => field.key);
 
-  let action: AiAction = output.action;
   const humanReviewReasons = [...output.humanReviewReasons];
+  let action: AiAction;
 
   if (errors.length > 0) {
-    // A failed guard is never acted on as given. The model's confidence does
-    // not override deterministic validation.
     action = "human_review";
     humanReviewReasons.push(...errors);
-  } else if (clarificationLimitReached(roundsSpent) && action === "ask_follow_up") {
+  } else if (output.action === "human_review" || humanReviewReasons.length > 0) {
     action = "human_review";
-    humanReviewReasons.push(
-      `Clarification limit reached (${roundsSpent + 1} of ${MAX_CLARIFICATION_ROUNDS} rounds) with requirements still incomplete.`,
-    );
-  } else if (action === "prepare_quote" && missingMaterialFields.length > 0) {
-    // Safe correction rather than escalation: the model wanted to quote but a
-    // price-affecting quantity is genuinely unknown, so ask for it.
-    action = "ask_follow_up";
-    warnings.push(
-      `Model chose prepare_quote while ${missingMaterialFields.join(", ")} remained unknown; corrected to ask_follow_up.`,
-    );
-  } else if (action === "prepare_quote" && !hasPrimaryWorkload) {
-    action = "ask_follow_up";
-    warnings.push("Model chose prepare_quote with no billable quantity in the configuration; corrected to ask_follow_up.");
-  } else if (action === "ask_follow_up" && acceptedQuestions.length === 0) {
-    if (hasPrimaryWorkload && missingMaterialFields.length === 0) {
-      action = "prepare_quote";
-      warnings.push("Model chose ask_follow_up but had no outstanding question; corrected to prepare_quote.");
-    } else {
+  } else if (missingMaterialFields.length > 0 || !hasPrimaryWorkload) {
+    if (clarificationLimitReached(roundsSpent)) {
       action = "human_review";
-      humanReviewReasons.push("No answerable follow-up question could be formed, and the request cannot be sized as it stands.");
+      humanReviewReasons.push(
+        `Clarification limit reached (${roundsSpent + 1} of ${MAX_CLARIFICATION_ROUNDS} rounds) with requirements still incomplete.`,
+      );
+    } else {
+      action = "ask_follow_up";
+      if (output.action === "prepare_quote") {
+        if (missingMaterialFields.length > 0) {
+          warnings.push(
+            `Model chose prepare_quote while ${missingMaterialFields.join(", ")} remained unknown; corrected to ask_follow_up.`,
+          );
+        } else {
+          warnings.push("Model chose prepare_quote with no billable quantity in the configuration; corrected to ask_follow_up.");
+        }
+      }
     }
+  } else {
+    // Requirements are complete and billable workload is present: code quotes
+    action = "prepare_quote";
+    if (output.action === "ask_follow_up") {
+      warnings.push("Model chose ask_follow_up but all required sizing parameters are complete; corrected to prepare_quote.");
+    }
+  }
+
+  // Synthesize a valid question if action is ask_follow_up and model gave none
+  if (action === "ask_follow_up" && acceptedQuestions.length === 0) {
+    const missingDescriptions: string[] = [];
+    if (missingMaterialFields.includes("servers")) {
+      missingDescriptions.push("how many servers or virtual hosts you plan to monitor");
+    }
+    if (missingMaterialFields.includes("network_devices")) {
+      missingDescriptions.push("how many network devices (switches, routers, firewalls) you need to monitor");
+    }
+    if (missingMaterialFields.includes("advanced_monitors")) {
+      missingDescriptions.push("how many synthetic transaction or advanced web/application monitors you require");
+    }
+    if (missingMaterialFields.includes("basic_monitors")) {
+      missingDescriptions.push("how many basic website checks or URLs you require");
+    }
+    if (!hasPrimaryWorkload && missingDescriptions.length === 0) {
+      missingDescriptions.push("the number of servers, websites, or network devices you plan to monitor");
+    }
+    const synthesizedQuestion = `To calculate an accurate Site24x7 quotation, could you please specify ${missingDescriptions.join("; ")}?`;
+    acceptedQuestions.push(synthesizedQuestion);
   }
 
   const suggestedQuestion: ClarificationQuestion | null =

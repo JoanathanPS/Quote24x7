@@ -81,6 +81,7 @@ export interface Plan {
   summary: string;
   basePrice: MinorUnits;
   billingPeriod: BillingPeriod;
+  verificationStatus: VerificationStatus;
   entitlements: Entitlement[];
   /** Capability flags shown as coverage, e.g. "Application performance monitoring". */
   capabilities: string[];
@@ -100,6 +101,7 @@ export interface AddOnPack {
   /** `null` when the source did not give a price — the engine must then refuse to quote. */
   packPrice: MinorUnits | null;
   billingPeriod: BillingPeriod;
+  verificationStatus: VerificationStatus;
   sourceId: string;
   /** Plan ids this pack price applies to; empty = all plans that allow it. */
   appliesToPlanIds: string[];

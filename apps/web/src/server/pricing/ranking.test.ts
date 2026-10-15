@@ -7,7 +7,7 @@ import type { Plan, QuoteOption } from "@/types/domain";
 
 const catalogue = loadActiveCatalogue();
 
-test("Ranking: 25 Linux servers + 1 website check correctly ranks Lowest Cost at ₹87,210 and Best Value at ₹98,705", () => {
+test("Ranking: 25 Linux servers + 1 website check correctly ranks Lowest Cost at ₹7,980 and Best Value at ₹8,740", () => {
   const demand: PricingDemand = {
     host_monitor: 25,
     basic_monitor: 1,
@@ -18,42 +18,37 @@ test("Ranking: 25 Linux servers + 1 website check correctly ranks Lowest Cost at
   };
 
   const candidates = catalogue.plans.map((p) => evaluateCandidate(catalogue, p, demand));
-  const { options } = rankOptions(candidates, demand, "q_rank_25");
+  const { options, rejected } = rankOptions(candidates, demand, "q_rank_25");
 
-  assert.equal(options.length, 3, "Expected 3 distinct options");
+  assert.equal(options.length, 2, "Expected 2 distinct valid options (Lite and Professional)");
   const bestValue = options.find((o) => o.optionType === "best_value");
   const lowestCost = options.find((o) => o.optionType === "lowest_cost");
-  const bestCoverage = options.find((o) => o.optionType === "best_coverage");
 
   assert.ok(bestValue, "best_value must be present");
   assert.ok(lowestCost, "lowest_cost must be present");
-  assert.ok(bestCoverage, "best_coverage must be present");
 
-  // Invariant 1: Lowest cost must be the absolute cheapest valid configuration (Lite at ₹87,210)
+  // Invariant 1: Lowest cost must be the absolute cheapest valid configuration (Lite at ₹7,980)
   assert.equal(lowestCost.planId, "plan_lite", "Lite must be the lowest_cost option");
-  assert.equal(lowestCost.total, 8721000, "Lite total must be 87,210 INR (in minor units)");
+  assert.equal(lowestCost.total, 798000, "Lite total must be 7,980 INR monthly list (798,000 paise)");
 
-  // Invariant 2: Best value must recommend Professional at ₹98,705 (higher capacity/breadth for marginal extra cost)
+  // Invariant 2: Best value must recommend Professional at ₹8,740 (higher capability/breadth for marginal extra cost)
   assert.equal(bestValue.planId, "plan_professional", "Professional must be the best_value option");
-  assert.equal(bestValue.total, 9870500, "Professional total must be 98,705 INR (in minor units)");
+  assert.equal(bestValue.total, 874000, "Professional total must be 8,740 INR monthly list (874,000 paise)");
 
-  // Invariant 3: Best coverage must be Enterprise
-  assert.equal(bestCoverage.planId, "plan_enterprise", "Enterprise must be best_coverage");
-  assert.equal(bestCoverage.total, 71240500, "Enterprise total must be 712,405 INR");
+  // Invariant 3: Enterprise returns handoff, never an automated price
+  const enterpriseRejected = rejected.find((r) => r.plan.id === "plan_enterprise");
+  assert.ok(enterpriseRejected, "Enterprise must be in rejected candidates list");
+  assert.equal(enterpriseRejected.isHandoff, true, "Enterprise must be marked as isHandoff: true");
 
-  // Invariant 4: Lowest Cost is strictly less than or equal to Best Value and Best Coverage
+  // Invariant 4: Lowest Cost is strictly less than or equal to Best Value
   assert.ok(
     lowestCost.total <= bestValue.total,
     `lowest_cost (${lowestCost.total}) must be <= best_value (${bestValue.total})`
   );
-  assert.ok(
-    lowestCost.total <= bestCoverage.total,
-    `lowest_cost (${lowestCost.total}) must be <= best_coverage (${bestCoverage.total})`
-  );
 
-  // Invariant 5: All 3 options are distinct plans
+  // Invariant 5: Both options are distinct plans
   const planIds = new Set(options.map((o) => o.planId));
-  assert.equal(planIds.size, 3, "All options must use distinct plans");
+  assert.equal(planIds.size, 2, "All options must use distinct plans");
 
   // Invariant 6: Integrity checks pass, including lowest-cost-is-minimum
   const checks = runIntegrityChecks(catalogue, options, demand);
@@ -62,7 +57,7 @@ test("Ranking: 25 Linux servers + 1 website check correctly ranks Lowest Cost at
   }
 });
 
-test("Ranking: 5-capability demand ensures lowest_cost <= best_value <= best_coverage", () => {
+test("Ranking: 5-capability demand ensures lowest_cost <= best_value", () => {
   const demand: PricingDemand = {
     host_monitor: 80,
     network_component: 15,
@@ -75,13 +70,11 @@ test("Ranking: 5-capability demand ensures lowest_cost <= best_value <= best_cov
   const candidates = catalogue.plans.map((p) => evaluateCandidate(catalogue, p, demand));
   const { options } = rankOptions(candidates, demand, "q_rank_5cap");
 
-  assert.equal(options.length, 3);
+  assert.equal(options.length, 2, "Expected 2 distinct valid options (Lite and Professional)");
   const bestValue = options.find((o) => o.optionType === "best_value")!;
   const lowestCost = options.find((o) => o.optionType === "lowest_cost")!;
-  const bestCoverage = options.find((o) => o.optionType === "best_coverage")!;
 
   assert.ok(lowestCost.total <= bestValue.total, "lowest_cost must be <= best_value");
-  assert.ok(bestValue.total <= bestCoverage.total, "best_value must be <= best_coverage");
 
   const checks = runIntegrityChecks(catalogue, options, demand);
   assert.ok(checks.every((c) => c.passed), "all integrity checks must pass");
@@ -104,6 +97,7 @@ test("Ranking: Overlapping prices at the minimum assign higher-value candidate t
     summary: "Plan A summary",
     basePrice: 5000000,
     billingPeriod: "annual",
+    verificationStatus: "public_verified",
     pollingFrequency: "1 minute",
     monitoringLocations: 4,
     sourceId: "src_store_comparison",
@@ -118,6 +112,7 @@ test("Ranking: Overlapping prices at the minimum assign higher-value candidate t
     summary: "Plan B summary",
     basePrice: 5000000,
     billingPeriod: "annual",
+    verificationStatus: "public_verified",
     pollingFrequency: "10 seconds",
     monitoringLocations: 16,
     sourceId: "src_store_comparison",

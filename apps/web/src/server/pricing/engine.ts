@@ -84,99 +84,173 @@ export function includedFor(plan: Plan, unit: UnitKind): number | null {
 }
 
 // ---------------------------------------------------------------------------
-// Add-on pack selection — rule PACK-SELECT-v1
+// Add-on pack selection — rule PACK-SELECT-KNAPSACK-v1
 // ---------------------------------------------------------------------------
 
-interface PackSelection {
+export interface PackSelection {
   pack: AddOnPack;
   count: number;
   unitsDelivered: number;
   cost: MinorUnits;
 }
 
+function gcd(a: number, b: number): number {
+  let x = Math.abs(a);
+  let y = Math.abs(b);
+  while (y !== 0) {
+    const t = y;
+    y = x % y;
+    x = t;
+  }
+  return x || 1;
+}
+
 /**
- * Cheapest-first pack selection for an excess quantity.
+ * Computes the minimum-cost pack combination to cover at least `excess` units
+ * using an unbounded knapsack dynamic programming algorithm.
  *
- * Packs are sorted by cost per unit (compared by cross-multiplication so no
- * floating point is involved), consumed greedily, then the remainder is covered
- * by the cheapest single pack large enough for it. A final pass replaces the
- * whole selection with one larger pack when that is cheaper — which happens
- * whenever bulk packs are better value than many small ones.
+ * Guaranteed invariants:
+ * 1. Lowest total monthly price that satisfies the excess requirement.
+ * 2. No headroom unless a larger pack is strictly cheaper (bulk value).
+ * 3. Uses only packs permitted on the specified plan.
+ * 4. All arithmetic in whole integer paise.
  */
-export function selectPacks(excess: number, availablePacks: readonly AddOnPack[]): PackSelection[] {
+export function selectPacksKnapsack(
+  excess: number,
+  availablePacks: readonly AddOnPack[],
+): PackSelection[] | null {
   if (excess <= 0) return [];
 
   const priced = availablePacks.filter(
-    (pack): pack is AddOnPack & { packPrice: MinorUnits } => pack.packPrice !== null,
+    (pack): pack is AddOnPack & { packPrice: MinorUnits } =>
+      pack.packPrice !== null && pack.packPrice > 0 && pack.packSize > 0,
   );
-  if (priced.length === 0) return [];
+  if (priced.length === 0) return null;
 
-  const byUnitCost = [...priced].sort((a, b) => {
-    // a cheaper per unit than b  <=>  a.price / a.size < b.price / b.size
-    const left = a.packPrice * b.packSize;
-    const right = b.packPrice * a.packSize;
-    if (left !== right) return left - right;
-    if (a.packSize !== b.packSize) return b.packSize - a.packSize;
-    return a.id.localeCompare(b.id);
-  });
+  // Compute Greatest Common Divisor of all available pack sizes
+  let g = priced[0]!.packSize;
+  for (let i = 1; i < priced.length; i++) {
+    g = gcd(g, priced[i]!.packSize);
+  }
 
-  const selection = new Map<string, PackSelection>();
-  let remaining = excess;
+  // Normalized required units
+  let N = Math.ceil(excess / g);
 
-  for (const pack of byUnitCost) {
-    const count = Math.floor(remaining / pack.packSize);
-    if (count > 0) {
-      selection.set(pack.id, {
-        pack,
-        count,
-        unitsDelivered: count * pack.packSize,
-        cost: multiplyMinor(pack.packPrice, count, `pack ${pack.id}`),
-      });
-      remaining -= count * pack.packSize;
+  // Normalized pack representations: s = size in gcd units, w = pack price in paise
+  const packs = priced.map((pack) => ({
+    pack,
+    s: Math.floor(pack.packSize / g),
+    w: pack.packPrice,
+  }));
+
+  const bulkSelections = new Map<string, number>();
+
+  // For very large quantities (e.g. RUM pageviews in millions), take bulk packs
+  // of the most unit-cost-effective pack to keep the DP state array small.
+  const maxNormalizedSize = Math.max(...packs.map((p) => p.s));
+  if (N > 3000) {
+    let bestPack = packs[0]!;
+    for (const p of packs) {
+      if (p.w * bestPack.s < bestPack.w * p.s) {
+        bestPack = p;
+      }
+    }
+    const safeRemainder = 2000;
+    if (N > safeRemainder + bestPack.s) {
+      const bulkCount = Math.floor((N - safeRemainder) / bestPack.s);
+      if (bulkCount > 0) {
+        bulkSelections.set(bestPack.pack.id, bulkCount);
+        N -= bulkCount * bestPack.s;
+      }
     }
   }
 
-  if (remaining > 0) {
-    const coveringTopUp = priced
-      .filter((pack) => pack.packSize >= remaining)
-      .sort((a, b) => a.packPrice - b.packPrice || a.packSize - b.packSize || a.id.localeCompare(b.id))[0];
+  const maxTarget = N + maxNormalizedSize;
+  const dpCost = new Float64Array(maxTarget + 1);
+  const dpCount = new Int32Array(maxTarget + 1);
+  const dpParent = new Int32Array(maxTarget + 1);
 
-    const topUp = coveringTopUp ?? byUnitCost[0]!;
-    const existing = selection.get(topUp.id);
-    if (existing) {
-      existing.count += 1;
-      existing.unitsDelivered += topUp.packSize;
-      existing.cost = multiplyMinor(topUp.packPrice, existing.count, `pack ${topUp.id}`);
-    } else {
-      selection.set(topUp.id, {
-        pack: topUp,
-        count: 1,
-        unitsDelivered: topUp.packSize,
-        cost: topUp.packPrice,
-      });
+  dpCost.fill(Infinity);
+  dpCount.fill(0);
+  dpParent.fill(-1);
+  dpCost[0] = 0;
+
+  for (let j = 1; j <= maxTarget; j++) {
+    for (let i = 0; i < packs.length; i++) {
+      const p = packs[i]!;
+      if (j >= p.s) {
+        const prevCost = dpCost[j - p.s]!;
+        if (prevCost !== Infinity) {
+          const cost = prevCost + p.w;
+          const count = dpCount[j - p.s]! + 1;
+          if (
+            cost < dpCost[j]! ||
+            (cost === dpCost[j]! && count < dpCount[j]!)
+          ) {
+            dpCost[j] = cost;
+            dpCount[j] = count;
+            dpParent[j] = i;
+          }
+        }
+      }
     }
   }
 
-  const greedy = [...selection.values()];
-  const greedyCost = sumMinor(greedy.map((item) => item.cost), "pack selection");
+  // Find minimum-cost state covering at least N units
+  let bestJ = -1;
+  let minCost = Infinity;
+  let minCount = Infinity;
 
-  // A single bulk pack can beat the greedy mix outright.
-  const singleBest = priced
-    .filter((pack) => pack.packSize >= excess)
-    .sort((a, b) => a.packPrice - b.packPrice || a.packSize - b.packSize || a.id.localeCompare(b.id))[0];
-
-  if (singleBest && singleBest.packPrice < greedyCost) {
-    return [
-      {
-        pack: singleBest,
-        count: 1,
-        unitsDelivered: singleBest.packSize,
-        cost: singleBest.packPrice,
-      },
-    ];
+  for (let j = N; j <= maxTarget; j++) {
+    const cost = dpCost[j]!;
+    if (cost < minCost) {
+      minCost = cost;
+      minCount = dpCount[j]!;
+      bestJ = j;
+    } else if (cost === minCost) {
+      // Tie-breakers:
+      // 1. Minimum delivered units (smaller j = minimum headroom)
+      // 2. Minimum pack count
+      if (dpCount[j]! < minCount) {
+        minCount = dpCount[j]!;
+        bestJ = j;
+      }
+    }
   }
 
-  return greedy.sort((a, b) => a.pack.id.localeCompare(b.pack.id));
+  if (bestJ === -1 || minCost === Infinity) {
+    return null;
+  }
+
+  // Backtrack to extract pack counts
+  const packCounts = new Map<string, number>(bulkSelections);
+  let curr = bestJ;
+  while (curr > 0) {
+    const packIdx = dpParent[curr]!;
+    if (packIdx === -1) break;
+    const p = packs[packIdx]!;
+    packCounts.set(p.pack.id, (packCounts.get(p.pack.id) ?? 0) + 1);
+    curr -= p.s;
+  }
+
+  const result: PackSelection[] = [];
+  for (const [packId, count] of packCounts.entries()) {
+    if (count <= 0) continue;
+    const pack = priced.find((p) => p.id === packId)!;
+    result.push({
+      pack,
+      count,
+      unitsDelivered: count * pack.packSize,
+      cost: multiplyMinor(pack.packPrice, count, `pack ${pack.id}`),
+    });
+  }
+
+  return result.sort((a, b) => a.pack.id.localeCompare(b.pack.id));
+}
+
+/** Legacy alias for backwards compatibility. */
+export function selectPacks(excess: number, availablePacks: readonly AddOnPack[]): PackSelection[] {
+  return selectPacksKnapsack(excess, availablePacks) ?? [];
 }
 
 // ---------------------------------------------------------------------------
@@ -187,13 +261,13 @@ export interface Candidate {
   plan: Plan;
   valid: boolean;
   unavailabilityReason: string | null;
+  isHandoff?: boolean;
   lineItems: QuoteLineItem[];
   coverage: CoverageRow[];
   subtotal: MinorUnits;
   total: MinorUnits;
-  /** Integer capacity score; see `scoreCandidate`. */
-  coveragePoints: number;
-  coverageScore: number;
+  coveragePoints?: number;
+  coverageScore?: number;
   trace: CalculationStep[];
   addOnPackCount: number;
 }
@@ -216,6 +290,30 @@ export function evaluateCandidate(
   plan: Plan,
   demand: PricingDemand,
 ): Candidate {
+  // Rule 4: Enterprise returns "handoff", never a price.
+  if (plan.id === "plan_enterprise" || plan.id === "plan_enterprise_plus_web") {
+    return {
+      plan,
+      valid: false,
+      isHandoff: true,
+      unavailabilityReason: "Enterprise requires custom sales consultation handoff; automated pricing is never generated for Enterprise tier.",
+      lineItems: [],
+      coverage: [],
+      subtotal: 0,
+      total: 0,
+      trace: [
+        {
+          step: 1,
+          ruleId: "RULE-ENTERPRISE-HANDOFF",
+          description: `${plan.name} tier requires sales engineering consultation`,
+          computation: "Enterprise pricing is custom-negotiated; automated pricing is withheld.",
+          resultMinor: null,
+        },
+      ],
+      addOnPackCount: 0,
+    };
+  }
+
   const lineItems: QuoteLineItem[] = [];
   const coverage: CoverageRow[] = [];
   const trace: CalculationStep[] = [];
@@ -309,7 +407,7 @@ export function evaluateCandidate(
 
     const packs = packsForPlan(catalogue, plan, unit);
     if (packs.length === 0) {
-      unavailabilityReason ??= `${plan.name} cannot be topped up for ${UNIT_LABELS[unit].toLowerCase()} — no add-on pack is available for this plan.`;
+      unavailabilityReason ??= `${plan.name} cannot be topped up for ${UNIT_LABELS[unit].toLowerCase()} — no add-on pack is allowed for this plan.`;
       coverage.push({
         unit,
         label: UNIT_LABELS[unit],
@@ -328,8 +426,8 @@ export function evaluateCandidate(
       continue;
     }
 
-    const selected = selectPacks(excess, packs);
-    if (selected.length === 0) {
+    const selected = selectPacksKnapsack(excess, packs);
+    if (selected === null || selected.length === 0) {
       unavailabilityReason ??= `${plan.name} needs ${excess} more ${UNIT_SHORT_UNITS[unit]}, but no priced add-on pack exists in catalogue ${catalogue.version}. The price is unknown, so this option is withheld rather than estimated.`;
       coverage.push({
         unit,
@@ -367,7 +465,7 @@ export function evaluateCandidate(
       pushStep(
         "RULE-ADDON-PACK",
         `${item.pack.name} on ${plan.name}`,
-        `ceil-fit of ${excess} excess ${UNIT_SHORT_UNITS[unit]} → ${item.count} × ${item.pack.packSize} = ${item.unitsDelivered} ${UNIT_SHORT_UNITS[unit]} at ${item.pack.packPrice} each`,
+        `knapsack-fit of ${excess} excess ${UNIT_SHORT_UNITS[unit]} → ${item.count} × ${item.pack.packSize} = ${item.unitsDelivered} ${UNIT_SHORT_UNITS[unit]} at ${item.pack.packPrice} each`,
         item.cost,
       );
     }
@@ -414,51 +512,32 @@ export function evaluateCandidate(
 }
 
 /**
- * Integer capacity scoring.
- *
- * `coveragePoints` is the sum, over every unit the buyer actually asked for, of
- * delivered-as-a-percentage-of-required, capped at 400 so a single wildly
- * oversized unit cannot dominate. `coverageScore` adds breadth and service-level
- * credit and is used only to rank Best Coverage.
+ * Capability breadth and service-level scoring.
+ * Replaces capacity points: stated requirements must be satisfied at lowest
+ * monthly price without rewarding unnecessary headroom.
  */
 export function scoreCandidate(
   plan: Plan,
-  demand: PricingDemand,
-  coverage: readonly CoverageRow[],
+  _demand: PricingDemand,
+  _coverage: readonly CoverageRow[],
 ): { coveragePoints: number; coverageScore: number } {
-  let coveragePoints = 0;
-  let demandedUnits = 0;
-
-  for (const unit of DEMAND_UNITS) {
-    const required = demand[unit];
-    if (required <= 0) continue;
-    demandedUnits += 1;
-    const row = coverage.find((item) => item.unit === unit);
-    const delivered = row?.total ?? 0;
-    coveragePoints += Math.min(Math.round((delivered * 100) / required), 400);
-  }
-
-  if (demandedUnits === 0) coveragePoints = 100;
-
   const supportedUnitKinds = plan.entitlements.filter((item) => item.included !== null).length;
   const breadthPoints = supportedUnitKinds * 25;
-  const pollingPoints = plan.pollingFrequency.includes("10 second") ? 50 : 0;
-  const locationPoints = plan.monitoringLocations ?? 0;
+  const pollingPoints = plan.pollingFrequency.includes("10 second") ? 50 : 25;
+  const locationPoints = (plan.monitoringLocations ?? 0) * 5;
+  const capabilityPoints = plan.capabilities.length * 10;
+  const coverageScore = breadthPoints + pollingPoints + locationPoints + capabilityPoints;
 
   return {
-    coveragePoints,
-    coverageScore: coveragePoints + breadthPoints + pollingPoints + locationPoints,
+    coveragePoints: 100,
+    coverageScore,
   };
 }
 
-/**
- * a is better value than b when a delivers higher utility (coverage score) per rupee.
- * Uses exact cross-multiplication: a.score / a.total vs b.score / b.total
- */
 function betterValue(a: Candidate, b: Candidate): number {
-  const left = a.coverageScore * b.total;
-  const right = b.coverageScore * a.total;
-  if (left !== right) return right - left; // higher ratio (score * other.total) comes first
+  const scoreA = a.coverageScore ?? 0;
+  const scoreB = b.coverageScore ?? 0;
+  if (scoreA !== scoreB) return scoreB - scoreA;
   if (a.total !== b.total) return a.total - b.total;
   return a.plan.id.localeCompare(b.plan.id);
 }
@@ -470,16 +549,21 @@ function cheapest(a: Candidate, b: Candidate): number {
 }
 
 function broadest(a: Candidate, b: Candidate): number {
-  if (a.coverageScore !== b.coverageScore) return b.coverageScore - a.coverageScore;
+  if (a.plan.capabilities.length !== b.plan.capabilities.length) {
+    return b.plan.capabilities.length - a.plan.capabilities.length;
+  }
+  const scoreA = a.coverageScore ?? 0;
+  const scoreB = b.coverageScore ?? 0;
+  if (scoreA !== scoreB) return scoreB - scoreA;
   if (a.total !== b.total) return a.total - b.total;
   return a.plan.id.localeCompare(b.plan.id);
 }
 
 const RANK_REASONS: Record<OptionType, (candidate: Candidate) => string> = {
   best_value: (candidate) =>
-    `Recommended configuration: optimal balance of core monitoring capacity, feature breadth, and growth headroom (${candidate.coveragePoints} capacity points for the quoted total).`,
+    `Recommended configuration: optimal balance of core monitoring capabilities, service levels (${candidate.plan.pollingFrequency} polling), and monthly commitment.`,
   lowest_cost: (candidate) =>
-    `Cheapest configuration meeting every stated minimum, using ${candidate.addOnPackCount} add-on pack(s) (lowest valid total commitment).`,
+    `Cheapest configuration meeting every stated requirement, using ${candidate.addOnPackCount} add-on pack(s) (lowest valid total monthly commitment).`,
   best_coverage: (candidate) =>
     `Widest supported coverage among valid configurations: ${candidate.plan.capabilities.length} capability areas, ${candidate.plan.pollingFrequency} polling.`,
 };

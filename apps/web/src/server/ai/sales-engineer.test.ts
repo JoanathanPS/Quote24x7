@@ -175,10 +175,12 @@ test("Context: Gemini receives catalogue facts and conversation, but never price
   // No price may leak into the model context.
   const catalogue = loadActiveCatalogue();
   for (const plan of catalogue.plans) {
-    assert.ok(
-      !prompt.includes(String(plan.basePrice)),
-      `plan base price ${plan.basePrice} must not appear in the AI context`,
-    );
+    if (plan.basePrice > 0) {
+      assert.ok(
+        !prompt.includes(String(plan.basePrice)),
+        `plan base price ${plan.basePrice} must not appear in the AI context`,
+      );
+    }
   }
   // Nor may any credential.
   if (config.geminiApiKey) {
