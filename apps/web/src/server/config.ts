@@ -57,7 +57,14 @@ export function getAppConfig(): AppConfig {
   const outboundFromEmail =
     process.env.OUTBOUND_FROM_EMAIL?.trim() || "Quote24x7 <onboarding@resend.dev>";
   const resendWebhookSecret = process.env.RESEND_WEBHOOK_SECRET?.trim() || null;
-  const testRecipientEmail = process.env.TEST_RECIPIENT_EMAIL?.trim() || null;
+  const rawTestRecipient = process.env.TEST_RECIPIENT_EMAIL?.trim();
+  const testRecipientEmail =
+    rawTestRecipient &&
+    rawTestRecipient !== "false" &&
+    rawTestRecipient !== "none" &&
+    rawTestRecipient !== '""'
+      ? rawTestRecipient
+      : null;
   const isLiveDispatchEnabled =
     Boolean(resendApiKey) && process.env.ALLOW_EXTERNAL_DISPATCH === "true";
   const rawAppBaseUrl =

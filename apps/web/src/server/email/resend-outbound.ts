@@ -1,7 +1,8 @@
 import { Resend } from "resend";
-import type { DeliveryRecord, EmailMessage, EmailThread, Quote } from "@/types/domain";
-import { getAppConfig } from "../config.ts";
+import type { CurrencyCode, DeliveryRecord, EmailMessage, EmailThread, Quote } from "@/types/domain";
+import { getAppConfig, isTestRuntime } from "../config.ts";
 import { store } from "../store/session-store.ts";
+import { dryRunStore } from "../store/dryrun-store.ts";
 import { formatMoney } from "../pricing/money.ts";
 
 /**
@@ -35,6 +36,13 @@ export interface SendClarificationEmailInput {
   questionText: string;
   recipientEmail: string;
   recipientName?: string | null;
+  estimate?: {
+    liteTotal: number;
+    proTotal: number;
+    currency: CurrencyCode;
+    billingPeriod: string;
+    statedWorkload: string;
+  } | null;
 }
 
 export interface SendUnpriceableNotificationEmailInput {
@@ -95,6 +103,87 @@ export function buildThreadingHeaders(threadId: string): {
   return { inReplyTo, references, headers };
 }
 
+export interface OutboundPolicyCheck {
+  targetRecipient: string;
+  isBlocked: boolean;
+  blockReason?: string;
+}
+
+export function validateOutboundPolicy(
+  config: ReturnType<typeof getAppConfig>,
+  threadId: string,
+  intendedRecipient: string
+): OutboundPolicyCheck {
+  const cleanIntended = intendedRecipient.replace(/^.*?<([^>]+)>.*$/, "$1").trim().toLowerCase();
+  const recipientDomain = cleanIntended.split("@")[1] || "";
+
+  // 1. Never send to our own domain, zoho.com, or site24x7.com
+  const ownDomainMatch = config.outboundFromEmail.match(/@([^>]+)/);
+  const ownDomain = ownDomainMatch?.[1]
+    ? ownDomainMatch[1].replace(/>/g, "").toLowerCase().trim()
+    : "quote24x7.internal";
+
+  if (
+    recipientDomain === ownDomain ||
+    recipientDomain.endsWith(`.${ownDomain}`) ||
+    recipientDomain === "zoho.com" ||
+    recipientDomain.endsWith(".zoho.com") ||
+    recipientDomain === "site24x7.com" ||
+    recipientDomain.endsWith(".site24x7.com")
+  ) {
+    return {
+      targetRecipient: cleanIntended,
+      isBlocked: true,
+      blockReason: `Recipient domain "${recipientDomain}" is forbidden (cannot send to own domain, zoho.com, or site24x7.com).`,
+    };
+  }
+
+  // 2. Max 3 outbound per thread per day
+  const existingMsgs = store.getMessages(threadId);
+  const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  const recentOutbound = existingMsgs.filter(
+    (m) => m.direction === "outbound" && new Date(m.occurredAt).getTime() >= oneDayAgo
+  );
+  if (recentOutbound.length >= 3) {
+    return {
+      targetRecipient: cleanIntended,
+      isBlocked: true,
+      blockReason: `Rate limit reached: Maximum 3 outbound emails per thread per day exceeded.`,
+    };
+  }
+
+  // 3. Test mode check: send only to an allowlist
+  const isTestMode = !config.isLiveDispatchEnabled || isTestRuntime();
+  if (isTestMode) {
+    if (config.testRecipientEmail) {
+      return { targetRecipient: config.testRecipientEmail.trim(), isBlocked: false };
+    }
+
+    const allowlistEnv = process.env.TEST_ALLOWLIST?.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) ?? [];
+    if (allowlistEnv.length > 0 && !allowlistEnv.includes(cleanIntended)) {
+      return {
+        targetRecipient: cleanIntended,
+        isBlocked: true,
+        blockReason: `Test mode active: Recipient "${cleanIntended}" is not in the configured TEST_ALLOWLIST.`,
+      };
+    }
+  }
+
+  return { targetRecipient: cleanIntended, isBlocked: false };
+}
+
+function resolveOutboundRecipient(
+  config: ReturnType<typeof getAppConfig>,
+  threadId: string,
+  intendedRecipient: string
+): string {
+  const policy = validateOutboundPolicy(config, threadId, intendedRecipient);
+  if (policy.isBlocked) {
+    throw new Error(`Outbound Policy Rejection: ${policy.blockReason}`);
+  }
+  return policy.targetRecipient;
+}
+
 /**
  * Resend Outbound Email Service.
  * Transmits commercial quotation proposals with attached PDF documents,
@@ -106,7 +195,7 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
   const now = new Date().toISOString();
 
   // Safety checks & Loop Prevention
-  const targetRecipient = (config.testRecipientEmail || input.recipientEmail).trim();
+  const targetRecipient = resolveOutboundRecipient(config, input.thread.id, input.recipientEmail);
 
   if (targetRecipient.toLowerCase() === config.outboundFromEmail.toLowerCase()) {
     throw new Error(
@@ -263,8 +352,15 @@ https://www.site24x7.in/
   let mode: "live" | "dry_run" = "dry_run";
   let errorMessage: string | undefined;
 
-  // Real Resend Dispatch
-  if (config.isLiveDispatchEnabled && config.resendApiKey) {
+  const isSendingPaused = store.getOutboundSendingPaused();
+
+  if (isSendingPaused) {
+    status = "accepted";
+    mode = "dry_run";
+    providerMessageId = `paused_${Date.now()}`;
+    errorMessage = "Automated outbound dispatch paused by operator kill switch";
+  } else if (config.isLiveDispatchEnabled && config.resendApiKey) {
+    // Real Resend Dispatch
     try {
       const resend = new Resend(config.resendApiKey);
 
@@ -325,12 +421,18 @@ https://www.site24x7.in/
         detail:
           mode === "live"
             ? `Dispatched via Resend API (messageId: ${providerMessageId}${inReplyTo ? `, In-Reply-To: ${inReplyTo}` : ""})`
-            : `Dry-run simulated dispatch (ALLOW_EXTERNAL_DISPATCH is not true)`,
+            : isSendingPaused
+              ? "Queued in store: Automated outbound dispatch paused by operator kill switch"
+              : `Dry-run simulated dispatch (ALLOW_EXTERNAL_DISPATCH is not true)`,
       },
     ],
   };
 
-  store.saveDelivery(deliveryRecord);
+  if (mode === "dry_run") {
+    dryRunStore.saveDelivery(deliveryRecord);
+  } else {
+    store.saveDelivery(deliveryRecord);
+  }
 
   // Record outbound message in thread timeline
   const outboundMessage: EmailMessage = {
@@ -378,7 +480,7 @@ export async function sendClarificationEmail(
   const config = getAppConfig();
   const deliveryId = `del_${Date.now()}`;
   const now = new Date().toISOString();
-  const targetRecipient = (config.testRecipientEmail || input.recipientEmail).trim();
+  const targetRecipient = resolveOutboundRecipient(config, input.thread.id, input.recipientEmail);
 
   const cleanSubject = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
   const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Quick Sizing Clarification`;
@@ -391,11 +493,17 @@ export async function sendClarificationEmail(
     .map((q) => (q.startsWith("•") || q.startsWith("-") || /^\d+\./.test(q) ? q : `• ${q}`))
     .join("\n");
 
+  const estimateText = input.estimate
+    ? `\nPRELIMINARY ESTIMATE (for stated ${input.estimate.statedWorkload}):\n` +
+      `• Site24x7 Lite: ${formatMoney(input.estimate.liteTotal, input.estimate.currency)} / ${input.estimate.billingPeriod}\n` +
+      `• Site24x7 Professional: ${formatMoney(input.estimate.proTotal, input.estimate.currency)} / ${input.estimate.billingPeriod}\n`
+    : "";
+
   const textContent = `
 Hi ${input.recipientName || "there"},
 
 Thank you for reaching out regarding Site24x7 monitoring.
-
+${estimateText}
 To ensure our pricing engine configures the best-value plan and accurately provisions any necessary add-on capacity for your infrastructure, could you please clarify:
 
 ${formattedQuestions}
@@ -441,7 +549,23 @@ https://www.site24x7.in/
 
     <p>Hi ${escapeHtml(input.recipientName || "there")},</p>
     <p>Thank you for reaching out regarding Site24x7 monitoring. To configure the best-value plan and accurately provision any required add-on capacity for your infrastructure, could you clarify a few details?</p>
-
+    ${
+      input.estimate
+        ? `
+    <div class="card" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin: 16px 0;">
+      <div style="font-size: 13px; font-weight: 700; color: #334155; text-transform: uppercase; margin-bottom: 8px;">
+        Preliminary Estimate (${escapeHtml(input.estimate.statedWorkload)})
+      </div>
+      <div style="font-size: 15px; color: #0f172a; line-height: 1.6;">
+        <div>• <strong>Site24x7 Lite:</strong> ${formatMoney(input.estimate.liteTotal, input.estimate.currency)} / ${input.estimate.billingPeriod}</div>
+        <div>• <strong>Site24x7 Professional:</strong> ${formatMoney(input.estimate.proTotal, input.estimate.currency)} / ${input.estimate.billingPeriod}</div>
+      </div>
+      <div style="font-size: 12px; color: #64748b; margin-top: 6px;">
+        Preliminary pricing for stated items only. Itemized vector PDF proposal will be generated once full scope is confirmed.
+      </div>
+    </div>`
+        : ""
+    }
     <div class="card">
       <div class="card-title">Sizing Questions</div>
       <ul>
@@ -468,7 +592,14 @@ https://www.site24x7.in/
 
   const { inReplyTo, headers: threadingHeaders } = buildThreadingHeaders(input.thread.id);
 
-  if (config.isLiveDispatchEnabled && config.resendApiKey) {
+  const isSendingPaused = store.getOutboundSendingPaused();
+
+  if (isSendingPaused) {
+    status = "accepted";
+    mode = "dry_run";
+    providerMessageId = `paused_${Date.now()}`;
+    errorMessage = "Automated outbound dispatch paused by operator kill switch";
+  } else if (config.isLiveDispatchEnabled && config.resendApiKey) {
     try {
       const resend = new Resend(config.resendApiKey);
       const res = await resend.emails.send({
@@ -520,12 +651,18 @@ https://www.site24x7.in/
         detail:
           mode === "live"
             ? `Clarification dispatched via Resend (messageId: ${providerMessageId}${inReplyTo ? `, In-Reply-To: ${inReplyTo}` : ""})`
-            : "Clarification email queued in demo mode",
+            : isSendingPaused
+              ? "Queued in store: Automated outbound dispatch paused by operator kill switch"
+              : "Clarification email queued in demo mode",
       },
     ],
   };
 
-  store.saveDelivery(deliveryRecord);
+  if (mode === "dry_run") {
+    dryRunStore.saveDelivery(deliveryRecord);
+  } else {
+    store.saveDelivery(deliveryRecord);
+  }
 
   const outboundMessage: EmailMessage = {
     id: `msg_out_${Date.now()}`,
@@ -566,7 +703,7 @@ export async function sendUnpriceableNotificationEmail(
   const config = getAppConfig();
   const deliveryId = `del_${Date.now()}`;
   const now = new Date().toISOString();
-  const targetRecipient = (config.testRecipientEmail || input.recipientEmail).trim();
+  const targetRecipient = resolveOutboundRecipient(config, input.thread.id, input.recipientEmail);
 
   const cleanSubject = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
   const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Sizing & Custom Pricing Notice`;
@@ -602,7 +739,14 @@ https://www.site24x7.in/
 
   const { inReplyTo, headers: threadingHeaders } = buildThreadingHeaders(input.thread.id);
 
-  if (config.isLiveDispatchEnabled && config.resendApiKey) {
+  const isSendingPaused = store.getOutboundSendingPaused();
+
+  if (isSendingPaused) {
+    status = "accepted";
+    mode = "dry_run";
+    providerMessageId = `paused_${Date.now()}`;
+    errorMessage = "Automated outbound dispatch paused by operator kill switch";
+  } else if (config.isLiveDispatchEnabled && config.resendApiKey) {
     try {
       const resend = new Resend(config.resendApiKey);
       const res = await resend.emails.send({
@@ -653,12 +797,18 @@ https://www.site24x7.in/
         detail:
           mode === "live"
             ? `Unpriceable notification dispatched via Resend (messageId: ${providerMessageId}${inReplyTo ? `, In-Reply-To: ${inReplyTo}` : ""})`
-            : "Unpriceable notification email queued in demo mode",
+            : isSendingPaused
+              ? "Queued in store: Automated outbound dispatch paused by operator kill switch"
+              : "Unpriceable notification email queued in demo mode",
       },
     ],
   };
 
-  store.saveDelivery(deliveryRecord);
+  if (mode === "dry_run") {
+    dryRunStore.saveDelivery(deliveryRecord);
+  } else {
+    store.saveDelivery(deliveryRecord);
+  }
 
   const outboundMessage: EmailMessage = {
     id: `msg_out_${Date.now()}`,

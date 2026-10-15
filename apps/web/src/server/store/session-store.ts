@@ -13,6 +13,7 @@ import type {
   SystemHealth,
 } from "@/types/domain";
 import { getAppConfig } from "../config.ts";
+import { dryRunStore } from "./dryrun-store.ts";
 
 interface PersistedState {
   threads: EmailThread[];
@@ -23,6 +24,7 @@ interface PersistedState {
   processedMessageIds: string[];
   /** Optional: absent in stores written before AI decisions were recorded. */
   aiDecisions?: AiDecisionRecord[];
+  outboundSendingPaused?: boolean;
 }
 
 /**
@@ -38,7 +40,19 @@ class SessionStore {
   private deliveries: Map<string, DeliveryRecord> = new Map(); // keyed by deliveryId
   private aiDecisions: Map<string, AiDecisionRecord[]> = new Map(); // keyed by threadId
   private processedMessageIds: Set<string> = new Set(); // for idempotency
+  private outboundSendingPaused = false;
   private initialized = false;
+
+  public getOutboundSendingPaused(): boolean {
+    this.ensureInitialized();
+    return this.outboundSendingPaused;
+  }
+
+  public setOutboundSendingPaused(paused: boolean): void {
+    this.ensureInitialized();
+    this.outboundSendingPaused = paused;
+    this.persistToDisk();
+  }
 
   private isTestEnvironment(): boolean {
     return (
@@ -49,7 +63,43 @@ class SessionStore {
   }
 
   private getStoragePath(): string {
+    if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+      return path.join("/tmp", "session-store.json");
+    }
     return path.resolve(process.cwd(), ".data", "session-store.json");
+  }
+
+  private loadState(parsed: PersistedState): void {
+    if (parsed.outboundSendingPaused !== undefined) {
+      this.outboundSendingPaused = Boolean(parsed.outboundSendingPaused);
+    }
+    if (Array.isArray(parsed.threads)) {
+      for (const thread of parsed.threads) {
+        this.threads.set(thread.id, thread);
+      }
+      for (const msg of parsed.messages || []) {
+        const existing = this.messages.get(msg.threadId) ?? [];
+        existing.push(msg);
+        this.messages.set(msg.threadId, existing);
+      }
+      for (const [id, prof] of parsed.profiles || []) {
+        this.profiles.set(id, prof);
+      }
+      for (const [id, q] of parsed.quotes || []) {
+        this.quotes.set(id, q);
+      }
+      for (const del of parsed.deliveries || []) {
+        this.deliveries.set(del.id, del);
+      }
+      for (const id of parsed.processedMessageIds || []) {
+        this.processedMessageIds.add(id);
+      }
+      for (const decision of parsed.aiDecisions || []) {
+        const existing = this.aiDecisions.get(decision.threadId) ?? [];
+        existing.push(decision);
+        this.aiDecisions.set(decision.threadId, existing);
+      }
+    }
   }
 
   private persistToDisk(): void {
@@ -76,10 +126,27 @@ class SessionStore {
         deliveries: Array.from(this.deliveries.values()),
         processedMessageIds: Array.from(this.processedMessageIds),
         aiDecisions: allAiDecisions,
+        outboundSendingPaused: this.outboundSendingPaused,
       };
       const tmpPath = `${filePath}.tmp`;
       fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf8");
       fs.renameSync(tmpPath, filePath);
+
+      // Optional: Remote Cloud KV sync if configured (e.g. Vercel KV / Upstash Redis)
+      const kvUrl = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL)?.trim();
+      const kvToken = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN)?.trim();
+      if (kvUrl && kvToken) {
+        fetch(`${kvUrl}/set/quote24x7_state`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${kvToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(data),
+        }).catch((err) => {
+          console.warn("[session-store] Failed to sync state to Redis KV:", err);
+        });
+      }
     } catch {
       // Graceful fallback for read-only or restricted environments
     }
@@ -93,6 +160,7 @@ class SessionStore {
     this.deliveries.clear();
     this.aiDecisions.clear();
     this.processedMessageIds.clear();
+    this.outboundSendingPaused = false;
     this.initialized = false;
     this.ensureInitialized();
   }
@@ -101,46 +169,48 @@ class SessionStore {
     if (this.initialized) return;
     this.initialized = true;
 
-    // 1. Try reading persisted data from disk first (skip in test environment)
+    if (this.isTestEnvironment()) return;
+
+    // 1. Try reading persisted data from active storage path (/tmp on Vercel or .data locally)
     const filePath = this.getStoragePath();
-    if (!this.isTestEnvironment() && fs.existsSync(filePath)) {
+    if (fs.existsSync(filePath)) {
       try {
         const raw = fs.readFileSync(filePath, "utf8");
         const parsed = JSON.parse(raw) as PersistedState;
-        if (Array.isArray(parsed.threads)) {
-          for (const thread of parsed.threads) {
-            this.threads.set(thread.id, thread);
-          }
-          for (const msg of parsed.messages || []) {
-            const existing = this.messages.get(msg.threadId) ?? [];
-            existing.push(msg);
-            this.messages.set(msg.threadId, existing);
-          }
-          for (const [id, prof] of parsed.profiles || []) {
-            this.profiles.set(id, prof);
-          }
-          for (const [id, q] of parsed.quotes || []) {
-            this.quotes.set(id, q);
-          }
-          for (const del of parsed.deliveries || []) {
-            this.deliveries.set(del.id, del);
-          }
-          for (const id of parsed.processedMessageIds || []) {
-            this.processedMessageIds.add(id);
-          }
-          for (const decision of parsed.aiDecisions || []) {
-            const existing = this.aiDecisions.get(decision.threadId) ?? [];
-            existing.push(decision);
-            this.aiDecisions.set(decision.threadId, existing);
-          }
+        if (Array.isArray(parsed.threads) && parsed.threads.length > 0) {
+          this.loadState(parsed);
           return;
         }
       } catch {
-        // Fall back to clean empty store
+        // Fall back to baseline fixture
       }
     }
 
-    // 2. Start with empty store (never auto-seed demo fixtures into production store)
+    // 2. If storage file is missing (e.g. fresh Vercel serverless deployment), load from bundled baseline store
+    const candidateBaselinePaths = [
+      path.resolve(process.cwd(), "src", "server", "fixtures", "baseline-store.json"),
+      path.resolve(process.cwd(), "apps", "web", "src", "server", "fixtures", "baseline-store.json"),
+      path.resolve(process.cwd(), ".data", "session-store.json"),
+      path.resolve(process.cwd(), "apps", "web", ".data", "session-store.json"),
+      path.resolve(__dirname, "..", "fixtures", "baseline-store.json"),
+    ];
+
+    for (const bp of candidateBaselinePaths) {
+      if (fs.existsSync(bp)) {
+        try {
+          const raw = fs.readFileSync(bp, "utf8");
+          const parsed = JSON.parse(raw) as PersistedState;
+          if (Array.isArray(parsed.threads) && parsed.threads.length > 0) {
+            this.loadState(parsed);
+            // Write snapshot to storage path (/tmp on Vercel) so subsequent operations can update it
+            this.persistToDisk();
+            return;
+          }
+        } catch {
+          // Try next candidate
+        }
+      }
+    }
   }
 
   // --- Threads ---
@@ -196,6 +266,20 @@ class SessionStore {
     );
   }
 
+  getMessageByProviderMessageId(msgId: string): EmailMessage | undefined {
+    this.ensureInitialized();
+    const cleanId = msgId.replace(/[<>]/g, "").trim().toLowerCase();
+    for (const msgs of this.messages.values()) {
+      const found = msgs.find((m) => {
+        const pClean = (m.providerMessageId || "").replace(/[<>]/g, "").trim().toLowerCase();
+        const mClean = (m.id || "").replace(/[<>]/g, "").trim().toLowerCase();
+        return pClean === cleanId || mClean === cleanId;
+      });
+      if (found) return found;
+    }
+    return undefined;
+  }
+
   addMessage(message: EmailMessage): void {
     this.ensureInitialized();
     const existing = this.messages.get(message.threadId) ?? [];
@@ -227,9 +311,16 @@ class SessionStore {
     );
   }
 
+  getQuotesByThreadId(threadId: string): Quote[] {
+    this.ensureInitialized();
+    return Array.from(this.quotes.values())
+      .filter((q) => q.threadId === threadId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
   getQuote(quoteId: string): Quote | undefined {
     this.ensureInitialized();
-    return this.quotes.get(quoteId);
+    return this.quotes.get(quoteId) ?? dryRunStore.getQuote(quoteId);
   }
 
   saveQuote(quote: Quote): void {
@@ -238,24 +329,45 @@ class SessionStore {
     this.persistToDisk();
   }
 
+  updateQuote(quoteId: string, updates: Partial<Quote>): Quote | undefined {
+    this.ensureInitialized();
+    const existing = this.quotes.get(quoteId);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...updates };
+    this.quotes.set(quoteId, updated);
+    this.persistToDisk();
+    return updated;
+  }
+
   // --- Deliveries ---
   getDeliveries(): DeliveryRecord[] {
     this.ensureInitialized();
-    return Array.from(this.deliveries.values()).sort(
+    const live = Array.from(this.deliveries.values());
+    const dryRun = dryRunStore.getDeliveries();
+    // Return all deliveries (live first, then dryRun not already present)
+    const seen = new Set(live.map((d) => d.id));
+    for (const d of dryRun) {
+      if (!seen.has(d.id)) {
+        live.push(d);
+      }
+    }
+    return live.sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }
 
   getDelivery(id: string): DeliveryRecord | undefined {
     this.ensureInitialized();
-    return this.deliveries.get(id);
+    return this.deliveries.get(id) ?? dryRunStore.getDelivery(id);
   }
 
   getDeliveryByProviderMessageId(providerMessageId: string): DeliveryRecord | undefined {
     this.ensureInitialized();
-    return Array.from(this.deliveries.values()).find(
-      (d) => d.providerMessageId === providerMessageId
+    const clean = providerMessageId.replace(/[<>]/g, "").trim().toLowerCase();
+    const found = Array.from(this.deliveries.values()).find(
+      (d) => (d.providerMessageId || "").replace(/[<>]/g, "").trim().toLowerCase() === clean
     );
+    return found ?? dryRunStore.getDeliveryByProviderMessageId(providerMessageId);
   }
 
   saveDelivery(delivery: DeliveryRecord): void {
@@ -270,11 +382,13 @@ class SessionStore {
   updateDelivery(id: string, updates: Partial<DeliveryRecord>): DeliveryRecord | undefined {
     this.ensureInitialized();
     const existing = this.deliveries.get(id);
-    if (!existing) return undefined;
-    const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
-    this.deliveries.set(id, updated);
-    this.persistToDisk();
-    return updated;
+    if (existing) {
+      const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+      this.deliveries.set(id, updated);
+      this.persistToDisk();
+      return updated;
+    }
+    return dryRunStore.updateDelivery(id, updates);
   }
 
   // --- AI Sales-Engineer Decisions ---
@@ -471,9 +585,83 @@ class SessionStore {
       overall: hasDown ? "down" : hasDegraded ? "degraded" : "ok",
       checkedAt: new Date().toISOString(),
       components,
-      outboundSendingPaused: false,
+      outboundSendingPaused: this.getOutboundSendingPaused(),
       environment: "local",
     };
+  }
+
+  /**
+   * Evaluates all queued deliveries:
+   * 1. Flags messages queued longer than 10 minutes.
+   * 2. Retries with exponential backoff (2^attemptCount minutes).
+   * 3. Transitions to dead-letter (status: "failed", retryEligible: false) after 3 attempts.
+   */
+  flagAndRetryQueuedDeliveries(nowMs = Date.now()): {
+    flaggedCount: number;
+    retriedCount: number;
+    deadLetterCount: number;
+  } {
+    this.ensureInitialized();
+    let flaggedCount = 0;
+    let retriedCount = 0;
+    let deadLetterCount = 0;
+
+    const allDeliveries = [
+      ...Array.from(this.deliveries.values()),
+      ...dryRunStore.getDeliveries(),
+    ];
+
+    for (const d of allDeliveries) {
+      if (d.status === "queued") {
+        const createdMs = new Date(d.createdAt).getTime();
+        const ageMs = nowMs - createdMs;
+
+        // Queued more than 10 minutes (600,000 ms)
+        if (ageMs > 10 * 60 * 1000) {
+          flaggedCount++;
+          const targetStore = this.deliveries.has(d.id) ? this : dryRunStore;
+
+          if (d.attemptCount >= d.maxAttempts) {
+            // Dead-letter after 3 attempts
+            deadLetterCount++;
+            targetStore.updateDelivery(d.id, {
+              status: "failed",
+              retryEligible: false,
+              lastErrorCode: "DEAD_LETTER",
+              lastErrorMessage: `Dead-letter: Queued > 10m and max attempts (${d.maxAttempts}) reached.`,
+              events: [
+                ...d.events,
+                {
+                  at: new Date(nowMs).toISOString(),
+                  status: "failed",
+                  detail: `Dead-lettered after ${d.attemptCount} failed attempts.`,
+                },
+              ],
+            });
+          } else {
+            // Retry with exponential backoff (2^attemptCount minutes)
+            retriedCount++;
+            const backoffMinutes = Math.pow(2, d.attemptCount);
+            const nextRetryAt = new Date(nowMs + backoffMinutes * 60 * 1000).toISOString();
+            targetStore.updateDelivery(d.id, {
+              attemptCount: d.attemptCount + 1,
+              nextRetryAt,
+              retryEligible: true,
+              events: [
+                ...d.events,
+                {
+                  at: new Date(nowMs).toISOString(),
+                  status: "queued",
+                  detail: `Flagged: queued > 10m. Scheduled retry attempt ${d.attemptCount + 1} at ${nextRetryAt} (backoff ${backoffMinutes}m).`,
+                },
+              ],
+            });
+          }
+        }
+      }
+    }
+
+    return { flaggedCount, retriedCount, deadLetterCount };
   }
 
   // --- Integrations ---
@@ -529,11 +717,10 @@ class SessionStore {
   }
 }
 
-// Global singleton across hot-reloads
+// Global singleton across hot-reloads and warm serverless containers
 const globalForStore = globalThis as unknown as { __quote24x7_store?: SessionStore };
 
 export const store = globalForStore.__quote24x7_store ?? new SessionStore();
 
-if (process.env.NODE_ENV !== "production") {
-  globalForStore.__quote24x7_store = store;
-}
+// Retain on globalThis so hot-reloads and warm serverless containers share the instance
+globalForStore.__quote24x7_store = store;

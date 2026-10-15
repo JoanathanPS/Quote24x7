@@ -120,8 +120,18 @@ export default function SettingsPage() {
 
   const isLoading = integrationsLoading || healthLoading;
 
-  const handleToggleKillSwitch = (checked: boolean) => {
+  const handleToggleKillSwitch = async (checked: boolean) => {
     setKillSwitchPaused(checked);
+    try {
+      await fetch("/api/v1/health", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outboundSendingPaused: checked }),
+      });
+      refetchHealth();
+    } catch {
+      // Ignore network errors in local dev
+    }
     if (checked) {
       setKillSwitchFeedback(
         "Automated outbound sending paused. Generated quotes will remain queued in the database."

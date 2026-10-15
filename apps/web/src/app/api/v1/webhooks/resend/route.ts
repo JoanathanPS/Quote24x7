@@ -50,6 +50,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
     }
 
+    // Flag deliveries queued > 10m, schedule backoff retries, and dead-letter after 3 attempts
+    store.flagAndRetryQueuedDeliveries();
+
     const eventType = String(body.type || "unknown");
     const eventData = (body.data && typeof body.data === "object" ? body.data : {}) as Record<string, unknown>;
 

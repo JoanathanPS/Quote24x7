@@ -19,6 +19,7 @@ import {
   sendUnpriceableNotificationEmail,
   type OutboundDispatchResult,
 } from "./resend-outbound.ts";
+import { formatMoney } from "../pricing/money.ts";
 
 export interface InboundEmailPayload {
   providerMessageId: string;
@@ -37,6 +38,7 @@ export interface InboundProcessingResult {
   threadId: string;
   duplicate: boolean;
   actionTaken: "quoted" | "clarification_requested" | "unsupported" | "dropped_loop" | "error";
+  status?: "NEEDS_INFO" | "QUOTED" | "UNSUPPORTED" | "DROPPED_LOOP";
   quote?: Quote;
   pdfGenerated?: boolean;
   outboundResult?: OutboundDispatchResult;
@@ -70,12 +72,15 @@ export async function processInboundEmail(
   const providerMessageId = payload.providerMessageId.trim();
   const rfcMessageId = payload.messageId?.trim() || null;
 
-  // 1. Idempotency & In-Flight Check
+  // 1. Idempotency & In-Flight Check (Deduplicate by Message-ID)
   const isDuplicateId =
     inFlightMessageIds.has(providerMessageId) ||
     store.isMessageProcessed(providerMessageId) ||
+    Boolean(store.getMessageByProviderMessageId(providerMessageId)) ||
     (rfcMessageId !== null &&
-      (inFlightMessageIds.has(rfcMessageId) || store.isMessageProcessed(rfcMessageId)));
+      (inFlightMessageIds.has(rfcMessageId) ||
+        store.isMessageProcessed(rfcMessageId) ||
+        Boolean(store.getMessageByProviderMessageId(rfcMessageId))));
 
   if (isDuplicateId) {
     // Locate existing thread
@@ -85,11 +90,21 @@ export async function processInboundEmail(
         (t) =>
           t.providerThreadId === providerMessageId ||
           (rfcMessageId !== null && t.providerThreadId === rfcMessageId)
-      ) || allThreads[0];
+      ) ||
+      allThreads.find((t) => {
+        const msgs = store.getMessages(t.id);
+        return msgs.some(
+          (m) =>
+            m.providerMessageId === providerMessageId ||
+            (rfcMessageId !== null && m.providerMessageId === rfcMessageId)
+        );
+      }) ||
+      allThreads[0];
     return {
       threadId: existingThread?.id ?? "unknown",
       duplicate: true,
       actionTaken: "dropped_loop",
+      status: "DROPPED_LOOP",
       message: `Message with ID "${providerMessageId}" is in-flight or was already processed. Replay discarded.`,
     };
   }
@@ -105,21 +120,89 @@ export async function processInboundEmail(
   }
 }
 
-async function doProcessInboundEmail(
+export function classifyInboundEmail(
   payload: InboundEmailPayload,
-  config: ReturnType<typeof getAppConfig>,
-  now: string,
-  providerMessageId: string,
-  rfcMessageId: string | null,
-  aiProvider?: AiProvider
-): Promise<InboundProcessingResult> {
+  systemSenderEmail: string
+): { drop: boolean; reason: string | null } {
+  const headers = payload.headers || {};
+  const getHdr = (key: string): string => {
+    for (const [k, v] of Object.entries(headers)) {
+      if (k.toLowerCase() === key.toLowerCase()) return String(v).trim();
+    }
+    return "";
+  };
 
-  // 2. Loop Prevention Check
-  const senderEmail = payload.from.trim().toLowerCase();
-  const systemSenderEmail = config.outboundFromEmail.toLowerCase();
+  const senderEmail = payload.from.replace(/^.*?<([^>]+)>.*$/, "$1").trim().toLowerCase();
+  const fromName = (payload.fromName || "").toLowerCase();
   const lowerSubject = payload.subject.toLowerCase();
   const lowerText = payload.text.toLowerCase();
 
+  // 1. Auto-Submitted
+  const autoSubmitted = getHdr("auto-submitted");
+  if (autoSubmitted && autoSubmitted.toLowerCase() !== "no") {
+    return { drop: true, reason: `Auto-Submitted header present: ${autoSubmitted}` };
+  }
+  if (lowerText.includes("auto-submitted: auto-generated") || lowerText.includes("auto-submitted: auto-replied")) {
+    return { drop: true, reason: "Auto-Submitted detected in message text" };
+  }
+
+  // 2. Precedence: bulk, junk, list, auto_reply
+  const precedence = getHdr("precedence") || getHdr("x-precedence");
+  if (precedence && /^(?:bulk|junk|list|auto_reply)$/i.test(precedence)) {
+    return { drop: true, reason: `Precedence header indicates automated/bulk: ${precedence}` };
+  }
+
+  // 3. noreply / mailer-daemon / bounce / postmaster
+  if (
+    senderEmail.startsWith("noreply@") ||
+    senderEmail.startsWith("no-reply@") ||
+    senderEmail.includes("-noreply@") ||
+    senderEmail.startsWith("mailer-daemon@") ||
+    senderEmail.startsWith("postmaster@") ||
+    senderEmail.startsWith("bounce@") ||
+    senderEmail.startsWith("bounces@") ||
+    fromName.includes("no-reply") ||
+    fromName.includes("noreply") ||
+    fromName.includes("mailer-daemon") ||
+    fromName.includes("postmaster") ||
+    senderEmail.includes(systemSenderEmail.toLowerCase())
+  ) {
+    return { drop: true, reason: `Sender is automated or noreply/mailer-daemon address: ${senderEmail}` };
+  }
+
+  // 4. List headers (List-Id, List-Unsubscribe, etc.)
+  const listHeaders = ["list-id", "list-unsubscribe", "list-help", "list-post", "list-owner", "list-archive"];
+  for (const lh of listHeaders) {
+    if (getHdr(lh)) {
+      return { drop: true, reason: `Mailing list header detected: ${lh}` };
+    }
+  }
+
+  // 5. DMARC reports
+  const isDmarc =
+    lowerSubject.includes("report domain:") ||
+    lowerSubject.includes("dmarc report") ||
+    lowerSubject.includes("dmarc aggregate") ||
+    lowerSubject.includes("dmarc forensic") ||
+    lowerSubject.includes("dmarc-report") ||
+    (lowerSubject.includes("dmarc") && (lowerSubject.includes("report") || lowerSubject.includes("rua") || lowerSubject.includes("ruf"))) ||
+    senderEmail.includes("dmarc") ||
+    getHdr("content-type").includes("report-type=dmarc-xml");
+  if (isDmarc) {
+    return { drop: true, reason: "DMARC aggregate/forensic report detected" };
+  }
+
+  // 6. Ticket-bot subjects
+  const isTicketBot =
+    /\[(?:ticket|case|request|issue|incident|helpdesk)\s*(?:#|id:?|no:?)?\s*[\w-]+\]/i.test(payload.subject) ||
+    /^(?:ticket\s+created|new\s+ticket|support\s+request|helpdesk\s+ticket|auto-reply:\s*\[ticket)/i.test(payload.subject) ||
+    /\b(?:zendesk|servicenow|jira|freshdesk|zoho\s*desk)\b/i.test(payload.subject) ||
+    /\[#[0-9]{4,}\]/.test(payload.subject);
+  if (isTicketBot) {
+    return { drop: true, reason: `Ticket-bot notification subject detected: ${payload.subject}` };
+  }
+
+  // 7. Standard auto-replies and loop prevention
   const isAutoReply =
     lowerSubject.startsWith("auto:") ||
     lowerSubject.startsWith("automatic reply:") ||
@@ -127,42 +210,34 @@ async function doProcessInboundEmail(
     lowerText.includes("automated response") ||
     lowerText.includes("out of the office") ||
     lowerText.includes("auto-submitted") ||
-    senderEmail.startsWith("mailer-daemon@") ||
-    senderEmail.startsWith("postmaster@");
-
-  if (
-    senderEmail.includes(systemSenderEmail) ||
     payload.text.includes("Quote24x7 Automated Operations Team") ||
-    payload.text.includes("Quote24x7 Operations & Solutions Team") ||
-    isAutoReply
-  ) {
-    store.markMessageProcessed(providerMessageId);
-    return {
-      threadId: "loop_prevented",
-      duplicate: false,
-      actionTaken: "dropped_loop",
-      message: "Loop prevented: Message was generated by automated system or auto-responder.",
-    };
+    payload.text.includes("Quote24x7 Operations & Solutions Team");
+  if (isAutoReply) {
+    return { drop: true, reason: "Automated auto-reply or loop message detected" };
   }
 
-function extractEmail(str: string): string {
+  return { drop: false, reason: null };
+}
+
+export function extractEmail(str: string): string {
   const match = str.match(/<([^>]+)>/);
   return (match && match[1] ? match[1] : str).trim().toLowerCase();
 }
 
-function cleanSubject(sub: string): string {
+export function cleanSubject(sub: string): string {
   return sub
     .replace(/^(?:re|fwd):\s*/gi, "")
     .replace(/\[ref:\s*#(?:th|qt)_\w+\]/gi, "")
     .replace(/\s*-\s*sizing\s+information\s+needed/gi, "")
     .replace(/\s*-\s*sizing\s+&\s+custom\s+pricing\s+notice/gi, "")
+    .replace(/\s*-\s*quick\s+sizing\s+clarification/gi, "")
     .replace(/\s*-\s*ref\s+#\w+/gi, "")
     .replace(/^(?:re|fwd):\s*/gi, "")
     .trim()
     .toLowerCase();
 }
 
-function stripQuotedEmail(text: string): string {
+export function stripQuotedEmail(text: string): string {
   const lines = text.split("\n");
   const result: string[] = [];
   for (const line of lines) {
@@ -181,30 +256,162 @@ function stripQuotedEmail(text: string): string {
   return clean.length > 0 ? clean : text;
 }
 
-  // 3. Thread Resolution (Link reply to existing thread or create a new one)
+export interface UnmentionedCategoriesCheck {
+  unmentioned: boolean;
+  missingCategories: string[];
+  singleQuestion: string;
+}
+
+export function checkUnmentionedCategories(
+  demand: import("../pricing/engine.ts").PricingDemand,
+  cumulativeText: string,
+  priorInboundCount: number
+): UnmentionedCategoriesCheck {
+  // If prior inbound turns exist, categories are answered or ruled out by the buyer's reply
+  if (priorInboundCount > 0) {
+    return { unmentioned: false, missingCategories: [], singleQuestion: "" };
+  }
+
+  const lower = cumulativeText.toLowerCase();
+
+  // Explicit rule-out / exclusion phrases
+  const ruledOut =
+    /\b(?:only\s+(?:need\s+)?servers?|just\s+servers?|servers?\s+only|solely\s+servers?|strictly\s+servers?|no\s+other\s+monitoring|nothing\s+else|no\s+(?:websites?|apps?|applications?|network)|don'?t\s+need\s+(?:websites?|apps?|applications?|network)|do\s+not\s+need\s+(?:websites?|apps?|applications?|network)|none\s+of\s+the\s+other)\b/i.test(
+      lower
+    );
+  if (ruledOut) {
+    return { unmentioned: false, missingCategories: [], singleQuestion: "" };
+  }
+
+  const mentionsServers =
+    demand.host_monitor > 0 ||
+    /\b(?:servers?|hosts?|vms?|nodes?|instances?|linux|windows)\b/i.test(lower);
+
+  const mentionsWebsites =
+    demand.basic_monitor > 0 ||
+    demand.advanced_monitor > 0 ||
+    /\b(?:websites?|urls?|endpoints?|domains?|ping|uptime|synthetic|checks?|http)\b/i.test(lower);
+
+  const mentionsApps =
+    /\b(?:apps?|applications?|apm|java|python|node(?:\.js)?|\.net|php|microservices?|databases?)\b/i.test(lower);
+
+  const mentionsNetwork =
+    demand.network_component > 0 ||
+    /\b(?:network|switches?|routers?|firewalls?|snmp|interfaces?)\b/i.test(lower);
+
+  const mentionsRumLogs =
+    demand.rum_pageview > 0 ||
+    demand.applog_gb > 0 ||
+    /\b(?:rum|pageviews?|logs?|applogs?)\b/i.test(lower);
+
+  const otherCategoriesMentioned =
+    mentionsWebsites || mentionsApps || mentionsNetwork || mentionsRumLogs;
+
+  // If primary servers are stated but none of the other monitoring categories were mentioned or ruled out:
+  if (mentionsServers && !otherCategoriesMentioned) {
+    return {
+      unmentioned: true,
+      missingCategories: ["websites", "applications", "network devices"],
+      singleQuestion: "Do you also require monitoring for websites, applications, or network devices?",
+    };
+  }
+
+  return { unmentioned: false, missingCategories: [], singleQuestion: "" };
+}
+
+export function formatStatedWorkload(demand: import("../pricing/engine.ts").PricingDemand): string {
+  const parts: string[] = [];
+  if (demand.host_monitor > 0) {
+    parts.push(`${demand.host_monitor} server${demand.host_monitor === 1 ? "" : "s"}`);
+  }
+  if (demand.basic_monitor > 0) {
+    parts.push(`${demand.basic_monitor} website${demand.basic_monitor === 1 ? "" : "s"}`);
+  }
+  if (demand.advanced_monitor > 0) {
+    parts.push(`${demand.advanced_monitor} advanced monitor${demand.advanced_monitor === 1 ? "" : "s"}`);
+  }
+  if (demand.network_component > 0) {
+    parts.push(`${demand.network_component} network device${demand.network_component === 1 ? "" : "s"}`);
+  }
+  if (demand.rum_pageview > 0) {
+    parts.push(`${demand.rum_pageview.toLocaleString("en-IN")} RUM pageviews`);
+  }
+  if (demand.applog_gb > 0) {
+    parts.push(`${demand.applog_gb} GB logs`);
+  }
+  return parts.length > 0 ? parts.join(", ") : "stated workload";
+}
+
+async function doProcessInboundEmail(
+  payload: InboundEmailPayload,
+  config: ReturnType<typeof getAppConfig>,
+  now: string,
+  providerMessageId: string,
+  rfcMessageId: string | null,
+  aiProvider?: AiProvider
+): Promise<InboundProcessingResult> {
+  // 2. Classify Inbound Mail & Loop Prevention Check
+  const classification = classifyInboundEmail(payload, config.outboundFromEmail);
+  if (classification.drop) {
+    store.markMessageProcessed(providerMessageId);
+    if (rfcMessageId) store.markMessageProcessed(rfcMessageId);
+    return {
+      threadId: "classified_dropped",
+      duplicate: false,
+      actionTaken: "dropped_loop",
+      status: "DROPPED_LOOP",
+      message: `Inbound mail dropped by classifier: ${classification.reason}`,
+    };
+  }
+
+  // 3. Thread Resolution (In-Reply-To / References -> Explicit Ref -> Sender/Subject)
   const isReply =
-    lowerSubject.startsWith("re:") ||
-    lowerSubject.startsWith("fwd:") ||
-    lowerSubject.includes("re: ") ||
-    lowerSubject.includes("[ref:");
+    payload.subject.toLowerCase().startsWith("re:") ||
+    payload.subject.toLowerCase().startsWith("fwd:") ||
+    payload.subject.toLowerCase().includes("re: ") ||
+    payload.subject.toLowerCase().includes("[ref:");
 
   const normalizedSender = extractEmail(payload.from);
   let thread: EmailThread | undefined;
 
-  // Check for explicit Thread or Quote Ref in subject or body
-  const threadRefMatch = (payload.subject + "\n" + payload.text).match(/#(th_\w+)/i);
-  const quoteRefMatch = (payload.subject + "\n" + payload.text).match(/#(qt_\w+)/i);
+  // A. Thread by In-Reply-To and References headers
+  const inReplyToHdr = payload.headers?.["in-reply-to"] || payload.headers?.["In-Reply-To"];
+  const referencesHdr = payload.headers?.["references"] || payload.headers?.["References"];
 
-  if (threadRefMatch && threadRefMatch[1]) {
-    thread = store.getThread(threadRefMatch[1]);
-  } else if (quoteRefMatch && quoteRefMatch[1]) {
-    const quote = store.getQuote(quoteRefMatch[1]);
-    if (quote) {
-      thread = store.getThread(quote.threadId);
+  if (inReplyToHdr || referencesHdr) {
+    const candidateIds: string[] = [];
+    if (inReplyToHdr) {
+      candidateIds.push(...inReplyToHdr.split(/\s+/).map((id) => id.replace(/[<>]/g, "").trim()).filter(Boolean));
+    }
+    if (referencesHdr) {
+      candidateIds.push(...referencesHdr.split(/\s+/).map((id) => id.replace(/[<>]/g, "").trim()).filter(Boolean));
+    }
+
+    for (const refId of candidateIds) {
+      const matchedMsg = store.getMessageByProviderMessageId(refId);
+      if (matchedMsg) {
+        thread = store.getThread(matchedMsg.threadId);
+        if (thread) break;
+      }
     }
   }
 
-  // If not found by explicit ref, match active thread for this sender only if this is a reply
+  // B. Check for explicit Thread or Quote Ref in subject or body
+  if (!thread) {
+    const threadRefMatch = (payload.subject + "\n" + payload.text).match(/#(th_\w+)/i);
+    const quoteRefMatch = (payload.subject + "\n" + payload.text).match(/#(qt_\w+)/i);
+
+    if (threadRefMatch && threadRefMatch[1]) {
+      thread = store.getThread(threadRefMatch[1]);
+    } else if (quoteRefMatch && quoteRefMatch[1]) {
+      const quote = store.getQuote(quoteRefMatch[1]);
+      if (quote) {
+        thread = store.getThread(quote.threadId);
+      }
+    }
+  }
+
+  // C. Match active thread for this sender only if this is a reply
   if (!thread && isReply) {
     const openThread = store.getActiveThreadBySender(normalizedSender);
     if (openThread) {
@@ -401,7 +608,80 @@ function stripQuotedEmail(text: string): string {
     };
   }
 
-  // 7. Deterministic Pricing Execution
+  // 7. Check for unmentioned monitoring categories
+  const priorInboundCount = priorMessages.filter((m) => m.direction === "inbound").length;
+  const categoryCheck = checkUnmentionedCategories(
+    extraction.demand,
+    cumulativeText,
+    priorInboundCount
+  );
+
+  if (categoryCheck.unmentioned) {
+    const quoteId = `qt_${Date.now()}`;
+    const { quote } = buildQuote({
+      quoteId,
+      threadId: thread.id,
+      profile: extraction.profile,
+      demand: extraction.demand,
+      catalogue,
+      createdAt: now,
+      status: "estimate",
+    });
+
+    if (quote.options.length > 0 && quote.integrityChecks.every((c) => c.passed)) {
+      // One active quote per thread. New quotes supersede old ones.
+      const priorQuotes = store.getQuotesByThreadId(thread.id);
+      for (const pq of priorQuotes) {
+        if (pq.id !== quote.id) {
+          store.updateQuote(pq.id, { status: "superseded" });
+        }
+      }
+      store.saveQuote(quote);
+
+      const liteOpt = quote.options.find(
+        (o) => o.planId === "lite" || o.planName.toLowerCase().includes("lite")
+      );
+      const proOpt = quote.options.find(
+        (o) => o.planId === "pro" || o.planName.toLowerCase().includes("professional")
+      );
+
+      const clarificationResult = await sendClarificationEmail({
+        thread,
+        questionText: categoryCheck.singleQuestion,
+        recipientEmail: payload.from,
+        recipientName: payload.fromName,
+        estimate: {
+          liteTotal: liteOpt ? liteOpt.total : (quote.options[0]?.total ?? 0),
+          proTotal: proOpt ? proOpt.total : (quote.options[0]?.total ?? 0),
+          currency: quote.currency,
+          billingPeriod: "month",
+          statedWorkload: formatStatedWorkload(extraction.demand),
+        },
+      });
+
+      store.updateThread(thread.id, {
+        status: "awaiting_reply",
+        statusDetail: `Estimate provided for ${formatStatedWorkload(extraction.demand)} (${formatMoney(liteOpt?.total ?? 0, quote.currency)} Lite / ${formatMoney(proOpt?.total ?? 0, quote.currency)} Pro); awaiting confirmation on other categories.`,
+        quoteId: quote.id,
+        quoteTotal: liteOpt ? liteOpt.total : (quote.options[0]?.total ?? null),
+        currency: quote.currency,
+      });
+
+      return {
+        threadId: thread.id,
+        duplicate: false,
+        actionTaken: "clarification_requested",
+        status: "NEEDS_INFO",
+        quote,
+        pdfGenerated: false,
+        outboundResult: clarificationResult,
+        message: `Estimate sent (${formatMoney(liteOpt?.total ?? 0, quote.currency)} Lite / ${formatMoney(proOpt?.total ?? 0, quote.currency)} Pro). Single question asked for unmentioned categories; no PDF generated.`,
+        ...decisionMeta,
+      };
+    }
+  }
+
+  // 8. Deterministic Pricing Execution
   store.updateThread(thread.id, { status: "pricing" });
 
   const quoteId = `qt_${Date.now()}`;
@@ -413,6 +693,7 @@ function stripQuotedEmail(text: string): string {
     demand: extraction.demand,
     catalogue,
     createdAt: now,
+    status: "validated",
   });
 
   // Fail-Closed Gate: Do not produce documents or send quotes if no valid options or integrity fails
@@ -446,6 +727,7 @@ function stripQuotedEmail(text: string): string {
       threadId: thread.id,
       duplicate: false,
       actionTaken: "unsupported",
+      status: "UNSUPPORTED",
       quote,
       pdfGenerated: false,
       outboundResult: dispatchResult,
@@ -454,9 +736,17 @@ function stripQuotedEmail(text: string): string {
     };
   }
 
+  // One active quote per thread. New quotes supersede old ones.
+  const priorQuotes = store.getQuotesByThreadId(thread.id);
+  for (const pq of priorQuotes) {
+    if (pq.id !== quote.id) {
+      store.updateQuote(pq.id, { status: "superseded" });
+    }
+  }
+
   store.updateThread(thread.id, { status: "document_generation" });
 
-  // 8. Server-Side PDF Rendering
+  // 9. Server-Side PDF Rendering
   const pdfBuffer = await renderQuotePdf({
     quote,
     thread,
@@ -475,9 +765,10 @@ function stripQuotedEmail(text: string): string {
   };
 
   quote.documents = [quoteDoc];
+  quote.status = "validated";
   store.saveQuote(quote);
 
-  // 9. Outbound Email Dispatch via Resend
+  // 10. Outbound Email Dispatch via Resend
   store.updateThread(thread.id, { status: "sending" });
 
   const dispatchResult = await sendQuoteEmail({
@@ -488,7 +779,7 @@ function stripQuotedEmail(text: string): string {
     recipientName: payload.fromName,
   });
 
-  // 10. Finalize Thread Record
+  // 11. Finalize Thread Record
   const bestValueOption =
     quote.options.find((o) => o.optionType === "best_value") ?? quote.options[0];
 
@@ -506,6 +797,7 @@ function stripQuotedEmail(text: string): string {
     threadId: thread.id,
     duplicate: false,
     actionTaken: "quoted",
+    status: "QUOTED",
     quote,
     pdfGenerated: true,
     outboundResult: dispatchResult,
