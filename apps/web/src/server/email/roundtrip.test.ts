@@ -554,6 +554,40 @@ test("Extraction: Handles natural language variations (2M, 2 million, 2,000,000,
   }
 });
 
+test("Extraction: Handles bulleted colon-separated requirements without asking for clarification", () => {
+  const formEmail = `
+Hi,
+
+Please provide the best possible pricing for the following exact requirements:
+
+- Servers / Virtual hosts to monitor: 25
+- Basic ping / port / website uptime checks: 40
+- Synthetic transaction / Advanced web monitors: 8
+- Expected monthly RUM pageviews: 500,000
+- Expected monthly AppLogs volume: 10 GB (30-day retention)
+- Preferred billing: Annual
+
+Please share a clear quotation.
+`;
+
+  const extraction = extractRequirements({
+    threadId: "th_colon_form_test",
+    senderEmail: "joanathanps2006@gmail.com",
+    senderName: "IT Team",
+    subject: "Site24x7 Pricing Quote",
+    bodyText: formEmail,
+  });
+
+  assert.equal(extraction.isComplete, true, "Bulleted form email must be marked complete");
+  assert.equal(extraction.missingMaterialFields.length, 0, "No material fields should be missing");
+  assert.equal(extraction.demand.host_monitor, 25);
+  assert.equal(extraction.demand.basic_monitor, 40);
+  assert.equal(extraction.demand.advanced_monitor, 8);
+  assert.equal(extraction.demand.rum_pageview, 500000);
+  assert.equal(extraction.demand.applog_gb, 10);
+  assert.equal(extraction.billingPeriod, "annual");
+});
+
 test("Autonomous Conversation: Complete multi-turn sequence (initial email -> clarification -> buyer reply -> merged quote -> PDF email)", async () => {
   const senderEmail = `buyer_${Date.now()}@cloudpeak.io`;
   const senderName = "Sarah Jenkins";

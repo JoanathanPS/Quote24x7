@@ -46,6 +46,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const serverMatch =
     text.match(/(\d+)\s*(?:[a-z\s]{0,35}?)\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?)\b/i) ||
+    text.match(/(?:servers?|hosts?|vms?|instances?|nodes?|machines?)[^:\n\r\d]{0,50}[:=]\s*(\d+)/i) ||
     text.match(/(?:servers?|hosts?|nodes?|instances?)\s*(?:count|total|:|=)\s*(\d+)/i);
 
   if (serverMatch && serverMatch[1]) {
@@ -89,6 +90,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const netMatch =
     text.match(/(\d+)\s*(?:[a-z\s]{0,30}?)\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)\b/i) ||
+    text.match(/(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)[^:\n\r\d]{0,50}[:=]\s*(\d+)/i) ||
     text.match(/(?:network(?:\s+devices?)?|switches?|routers?)\s*(?:count|total|:|=)\s*(\d+)/i);
 
   if (netMatch && netMatch[1]) {
@@ -133,6 +135,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const advMatch =
     text.match(/(\d+)\s*(?:[a-z\s]{0,35}?)\b(?:synthetic(?:\s+(?:transaction|web|browser))?|advanced(?:\s+web)?|transaction|critical\s+web)\s*(?:monitors?|endpoints?|urls?|checks?|apis?)\b/i) ||
+    text.match(/(?:synthetic(?:\s+transaction|\s+web|\s+browser)?|advanced(?:\s+web)?|transaction)[^:\n\r\d]{0,50}[:=]\s*(\d+)/i) ||
     text.match(/(\d+)\s*(?:synthetic|advanced|transaction)\s*(?:(?:transaction|web|browser)\s+)?(?:monitors?|endpoints?|checks?|urls?|apis?)/i) ||
     text.match(/(?:advanced|synthetic|transaction)\s*(?:monitors?|endpoints?|checks?)\s*(?:count|total|:|=)\s*(\d+)/i);
 
@@ -186,6 +189,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   let basicEvidence: string | null = null;
   const basicCountMatch =
     text.match(/(\d+)\s*(?:basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?)?|standard(?:\s+monitors?)?|websites?|urls?|web\s+sites?|website(?:\s+uptime|\s+availability)?(?:\s+monitors?|\s+checks?)?)\b/i) ||
+    text.match(/(?:basic|ping|port|website\s+uptime|uptime\s+checks?)[^:\n\r\d]{0,50}[:=]\s*(\d+)/i) ||
     text.match(/(?:basic|ping|port|standard|websites?|urls?|web\s+sites?|website(?:\s+uptime)?)\s*(?:monitors?|checks?)\s*(?:count|total|:|=)\s*(\d+)/i);
 
   const websiteAvailabilityMentioned =
@@ -296,6 +300,8 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     text.match(/(?:rum|real\s+user\s+monitoring)\s*(?:[a-z\s]{0,25}?)\b(\d+(?:[.,]\d+)?)\s*(?:million\b|m\b)\s*(?:pageviews?|views?)?/i);
   const rumKMatch =
     text.match(/(\d+(?:[.,]\d+)?)\s*(?:thousand\b|k\b)\s*(?:[a-z\s/]{0,25}?)\b(?:pageviews?|views?|rum)\b/i);
+  const rumColonMatch =
+    text.match(/(?:rum|real\s+user\s+monitoring|pageviews?)[^:\n\r\d]{0,50}[:=]\s*(\d[\d,.]*)\s*(million|m|k|thousand)?/i);
   const rumRawMatch =
     text.match(/(\d{1,3}(?:,\d{3})+|\d{5,})\s*(?:[a-z\s/]{0,25}?)\b(?:pageviews?|views?|rum)\b/i);
 
@@ -318,6 +324,30 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   } else if (rumKMatch && rumKMatch[1]) {
     rumPageviews = Math.round(parseFloat(rumKMatch[1].replace(/,/g, "")) * 1_000);
     rumEvidence = rumKMatch[0].trim();
+    fields.push({
+      key: "rum_pageviews",
+      label: "RUM Pageviews",
+      group: "applications",
+      value: rumPageviews,
+      unit: "pageviews/month",
+      state: "provided",
+      confidence: 0.95,
+      evidence: rumEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
+  } else if (rumColonMatch && rumColonMatch[1]) {
+    const rawVal = parseFloat(rumColonMatch[1].replace(/,/g, ""));
+    const unit = (rumColonMatch[2] || "").toLowerCase();
+    if (unit === "million" || unit === "m") {
+      rumPageviews = Math.round(rawVal * 1_000_000);
+    } else if (unit === "thousand" || unit === "k") {
+      rumPageviews = Math.round(rawVal * 1_000);
+    } else {
+      rumPageviews = Math.round(rawVal);
+    }
+    rumEvidence = rumColonMatch[0].trim();
     fields.push({
       key: "rum_pageviews",
       label: "RUM Pageviews",
@@ -373,6 +403,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const logMatch =
     text.match(/(\d+)\s*(?:gb|gigabytes?|tb|terabytes?)\s*(?:[a-z\s/]{0,20}?)\b(?:applogs?|logs?)\b/i) ||
+    text.match(/(?:applogs?|logs?|log\s+management)[^:\n\r\d]{0,50}[:=]\s*(\d+)\s*(?:gb|gigabytes?|tb|terabytes?)?/i) ||
     text.match(/(?:applogs?|logs?)\s*(?:volume|storage|size|retention)?\s*(?:of|:|=)?\s*(\d+)\s*(?:gb|gigabytes?|tb|terabytes?)/i);
 
   if (logMatch && logMatch[1]) {
@@ -432,7 +463,16 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   // 7. Billing Period
   let billingPeriod: BillingPeriod = "annual";
-  if (lower.includes("monthly") || lower.includes("per month") || lower.includes("month-to-month")) {
+  const billingMatch = text.match(/(?:billing|billed|payment|contract|subscription)[^:\n\r]{0,30}[:=]\s*(annual(?:ly)?|yearly|monthly)/i);
+  if (billingMatch && billingMatch[1]) {
+    billingPeriod = /annual|yearly/i.test(billingMatch[1]) ? "annual" : "monthly";
+  } else if (/\b(?:annually|annual\s+billing|yearly\s+billing|annual\s+subscription)\b/i.test(lower)) {
+    billingPeriod = "annual";
+  } else if (/\b(?:month-to-month|monthly\s+billing|billed\s+monthly|monthly\s+subscription)\b/i.test(lower)) {
+    billingPeriod = "monthly";
+  } else if (lower.includes("annual")) {
+    billingPeriod = "annual";
+  } else if (lower.includes("monthly") && !lower.includes("monthly pageview") && !lower.includes("monthly applog") && !lower.includes("monthly rum")) {
     billingPeriod = "monthly";
   }
   fields.push({

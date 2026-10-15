@@ -152,14 +152,8 @@ alter table public.deliveries enable row level security;
 alter table public.ai_decisions enable row level security;
 alter table public.processed_messages enable row level security;
 
--- Policies allowing full access to backend service role and anon clients with API key
-create policy "Allow all access to email_threads" on public.email_threads for all using (true) with check (true);
-create policy "Allow all access to email_messages" on public.email_messages for all using (true) with check (true);
-create policy "Allow all access to requirement_profiles" on public.requirement_profiles for all using (true) with check (true);
-create policy "Allow all access to quotes" on public.quotes for all using (true) with check (true);
-create policy "Allow all access to deliveries" on public.deliveries for all using (true) with check (true);
-create policy "Allow all access to ai_decisions" on public.ai_decisions for all using (true) with check (true);
-create policy "Allow all access to processed_messages" on public.processed_messages for all using (true) with check (true);
+-- Access policies are created once, at the end of this file, for every table.
+-- See "ACCESS POLICIES" below.
 
 -- ==============================================================================
 -- PRICING CATALOGUE
@@ -386,15 +380,39 @@ alter table public.catalogue_plan_addon_prices enable row level security;
 alter table public.catalogue_plan_addon_compat enable row level security;
 alter table public.catalogue_feature_matrix enable row level security;
 
-create policy "Allow all access to catalogue_versions" on public.catalogue_versions for all using (true) with check (true);
-create policy "Allow all access to catalogue_sources" on public.catalogue_sources for all using (true) with check (true);
-create policy "Allow all access to catalogue_units" on public.catalogue_units for all using (true) with check (true);
-create policy "Allow all access to catalogue_plan_families" on public.catalogue_plan_families for all using (true) with check (true);
-create policy "Allow all access to catalogue_plans" on public.catalogue_plans for all using (true) with check (true);
-create policy "Allow all access to catalogue_plan_family_members" on public.catalogue_plan_family_members for all using (true) with check (true);
-create policy "Allow all access to catalogue_plan_entitlements" on public.catalogue_plan_entitlements for all using (true) with check (true);
-create policy "Allow all access to catalogue_addons" on public.catalogue_addons for all using (true) with check (true);
-create policy "Allow all access to catalogue_addon_grants" on public.catalogue_addon_grants for all using (true) with check (true);
-create policy "Allow all access to catalogue_plan_addon_prices" on public.catalogue_plan_addon_prices for all using (true) with check (true);
-create policy "Allow all access to catalogue_plan_addon_compat" on public.catalogue_plan_addon_compat for all using (true) with check (true);
-create policy "Allow all access to catalogue_feature_matrix" on public.catalogue_feature_matrix for all using (true) with check (true);
+-- ==============================================================================
+-- ACCESS POLICIES
+-- ==============================================================================
+-- Full access for the backend service role and for anon clients holding the
+-- API key, matching the original policy set.
+--
+-- Postgres has no "create policy if not exists", so each policy is dropped
+-- first. That makes this whole file safe to re-run against a database that was
+-- already seeded with an earlier version of the schema -- which matters, since
+-- the catalogue tables above were added after the first seven tables had
+-- already been created.
+-- ==============================================================================
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array[
+    -- original tables
+    'email_threads', 'email_messages', 'requirement_profiles', 'quotes',
+    'deliveries', 'ai_decisions', 'processed_messages',
+    -- catalogue tables
+    'catalogue_versions', 'catalogue_sources', 'catalogue_units',
+    'catalogue_plan_families', 'catalogue_plans', 'catalogue_plan_family_members',
+    'catalogue_plan_entitlements', 'catalogue_addons', 'catalogue_addon_grants',
+    'catalogue_plan_addon_prices', 'catalogue_plan_addon_compat',
+    'catalogue_feature_matrix'
+  ]
+  loop
+    execute format('drop policy if exists %I on public.%I', 'Allow all access to ' || t, t);
+    execute format(
+      'create policy %I on public.%I for all using (true) with check (true)',
+      'Allow all access to ' || t, t
+    );
+  end loop;
+end $$;
