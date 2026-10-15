@@ -6,19 +6,11 @@ import {
   Heartbeat,
   XCircle,
   ArrowsClockwise,
-  Sparkle,
-  EnvelopeSimple,
-  Cpu,
-  Database,
-  PaperPlaneTilt,
-  FilePdf,
-  HardDrives,
-  Speedometer,
 } from "@phosphor-icons/react";
 
 import { useSystemHealth, useOverviewMetrics } from "@/hooks/use-api";
 import { formatDateTime, cn } from "@/lib/utils";
-import type { HealthLevel, HealthComponent, ActivityBucket, ThreadStatus } from "@/types/domain";
+import type { HealthLevel, ActivityBucket, ThreadStatus } from "@/types/domain";
 
 import {
   Card,
@@ -49,16 +41,6 @@ function getHealthLevelBadge(level: HealthLevel): {
   }
 }
 
-function getComponentIcon(id: string) {
-  if (id.includes("cat") || id.includes("pricing") || id.includes("engine")) return Cpu;
-  if (id.includes("inbound") || id.includes("email") || id.includes("webhook")) return EnvelopeSimple;
-  if (id.includes("ai") || id.includes("extract")) return Sparkle;
-  if (id.includes("outbound") || id.includes("mail") || id.includes("resend")) return PaperPlaneTilt;
-  if (id.includes("db") || id.includes("database") || id.includes("store")) return Database;
-  if (id.includes("doc") || id.includes("pdf")) return FilePdf;
-  return HardDrives;
-}
-
 export default function HealthPage() {
   const {
     data: health,
@@ -82,25 +64,6 @@ export default function HealthPage() {
     refetchMetrics();
   };
 
-  // Ensure default/fallback components cover all 6 areas if missing
-  const allComponents: HealthComponent[] = React.useMemo(() => {
-    if (!health?.components) return [];
-    const existing = [...health.components];
-
-    // Ensure PDF renderer is present
-    if (!existing.some((c) => c.id.includes("doc") || c.id.includes("pdf"))) {
-      existing.push({
-        id: "doc-renderer",
-        name: "Document & PDF Renderer",
-        level: "ok",
-        detail: "Client-side preview engine and vector PDF generation pipeline operational",
-        latencyMs: 14,
-      });
-    }
-
-    return existing;
-  }, [health?.components]);
-
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -111,10 +74,13 @@ export default function HealthPage() {
           </div>
           <Skeleton className="h-9 w-32" />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Skeleton className="h-32 w-full rounded-xl" />
-          <Skeleton className="h-32 w-full rounded-xl" />
-          <Skeleton className="h-32 w-full rounded-xl" />
+        <Skeleton className="h-20 w-full rounded-xl" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
         </div>
         <Skeleton className="h-64 w-full rounded-xl" />
       </div>
@@ -163,7 +129,7 @@ export default function HealthPage() {
             </h1>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Service status, component latencies, and message activity.
+            Service status and pipeline activity metrics.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -211,57 +177,6 @@ export default function HealthPage() {
           </div>
         </div>
       </Card>
-
-      {/* Health Components Grid */}
-      <div>
-        <div className="mb-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            Operational Subsystems & Providers ({allComponents.length})
-          </h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {allComponents.map((component) => {
-            const compBadge = getHealthLevelBadge(component.level);
-            const CompIcon = getComponentIcon(component.id);
-            return (
-              <Card key={component.id} className="border-border bg-surface shadow-xs hover:border-border-strong transition-colors">
-                <CardHeader className="pb-3 border-b border-border/40">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-soft text-primary shrink-0">
-                        <CompIcon className="h-4 w-4" weight="bold" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-sm font-semibold">{component.name}</CardTitle>
-                        <span className="font-mono text-[10px] text-muted-foreground block">
-                          {component.id}
-                        </span>
-                      </div>
-                    </div>
-                    <Badge variant={compBadge.variant} className="text-[11px] font-medium shrink-0">
-                      {component.level}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-3 space-y-2 text-xs">
-                  <p className="text-muted-foreground leading-relaxed">
-                    {component.detail}
-                  </p>
-                  <div className="flex items-center justify-between pt-2 border-t border-border/30 text-[11px]">
-                    <span className="text-muted-foreground flex items-center gap-1">
-                      <Speedometer className="h-3.5 w-3.5" />
-                      Latency:
-                    </span>
-                    <span className="font-mono font-semibold text-foreground">
-                      {component.latencyMs !== null ? `${component.latencyMs}ms` : "N/A"}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
 
       {/* Operational Metrics & Activity */}
       {metrics && (
