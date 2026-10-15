@@ -716,12 +716,12 @@ export default function QuoteDocumentPage() {
                 </p>
               </div>
               <a
-                href="https://www.site24x7.in/"
+                href="https://quotes.joanathan.in/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 font-medium text-primary hover:underline print:border-none print:p-0 print:text-black"
               >
-                <span>Visit site24x7.in</span>
+                <span>Visit quotes.joanathan.in</span>
                 <ArrowSquareOut size={13} />
               </a>
             </div>

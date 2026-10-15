@@ -543,7 +543,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
     color: rgb(0.85, 0.87, 0.9),
   });
 
-  page1.drawText("Official Verification & Procurement: https://www.site24x7.in/", {
+  page1.drawText("Official Verification & Procurement: https://quotes.joanathan.in/", {
     x: margin,
     y: 28,
     size: 7.5,

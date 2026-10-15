@@ -6,7 +6,7 @@
 export interface AppConfig {
   /** Resend API Key for outbound email delivery */
   resendApiKey: string | null;
-  /** Verified sender email address (e.g. "Quote24x7 <quotes@yourdomain.com>" or "onboarding@resend.dev") */
+  /** Verified sender email address (e.g. "Quote24x7 <quotes@joanathan.in>") */
   outboundFromEmail: string;
   /** Webhook signing secret for verifying incoming Resend webhooks */
   resendWebhookSecret: string | null;
@@ -53,7 +53,7 @@ export function isTestRuntime(): boolean {
 export function getAppConfig(): AppConfig {
   const resendApiKey = process.env.RESEND_API_KEY?.trim() || null;
   const outboundFromEmail =
-    process.env.OUTBOUND_FROM_EMAIL?.trim() || "Quote24x7 <onboarding@resend.dev>";
+    process.env.OUTBOUND_FROM_EMAIL?.trim() || "Quote24x7 <quotes@joanathan.in>";
   const resendWebhookSecret = process.env.RESEND_WEBHOOK_SECRET?.trim() || null;
   const isLiveDispatchEnabled =
     Boolean(resendApiKey) && process.env.ALLOW_EXTERNAL_DISPATCH === "true";

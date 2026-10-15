@@ -246,7 +246,7 @@ If you would like to adjust any server counts or add optional services, simply r
 
 Best regards,
 Quote24x7 Assistant
-https://www.site24x7.in/
+https://quotes.joanathan.in/
   `.trim();
 
   // Responsive HTML Version (Clean, professional, humanized)
@@ -508,7 +508,7 @@ Simply reply directly to this email with your counts or estimates, and we will i
 
 Best regards,
 Quote24x7 Assistant
-https://www.site24x7.in/
+https://quotes.joanathan.in/
   `.trim();
 
   const htmlQuestions = input.questionText
@@ -574,7 +574,7 @@ https://www.site24x7.in/
     </p>
 
     <div class="footer">
-      Quote24x7 Autonomous Operations • <a href="https://www.site24x7.in/">https://www.site24x7.in/</a>
+      Quote24x7 Autonomous Operations • <a href="https://quotes.joanathan.in/">https://quotes.joanathan.in/</a>
     </div>
   </div>
 </body>
@@ -725,7 +725,7 @@ We appreciate your patience and look forward to assisting you.
 
 Warm regards,
 Quote24x7 Operations & Solutions Team
-https://www.site24x7.in/
+https://quotes.joanathan.in/
   `.trim();
 
   let providerMessageId: string | null = null;
