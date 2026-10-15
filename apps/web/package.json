@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types \"src/server/**/*.test.ts\"",
-    "check": "npm run lint && npm run typecheck && npm run test"
+    "catalogue:build": "node scripts/build-catalogue-seed.mjs",
+    "check": "npm run catalogue:build && npm run lint && npm run typecheck && npm run test"
   },
   "dependencies": {
     "@google/genai": "^2.29.1",

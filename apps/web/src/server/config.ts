@@ -58,8 +58,13 @@ export function isTestRuntime(): boolean {
 
 export function getAppConfig(): AppConfig {
   const resendApiKey = process.env.RESEND_API_KEY?.trim() || null;
+  let rawOutboundFrom = (process.env.OUTBOUND_FROM_EMAIL || "").trim();
+  // Strip surrounding quotes if copied verbatim from .env files or docs
+  rawOutboundFrom = rawOutboundFrom.replace(/^["']|["']$/g, "").trim();
   const outboundFromEmail =
-    process.env.OUTBOUND_FROM_EMAIL?.trim() || "Quote24x7 <quotes@joanathan.in>";
+    rawOutboundFrom && rawOutboundFrom.includes("@")
+      ? rawOutboundFrom
+      : "Quote24x7 <quotes@joanathan.in>";
   const resendWebhookSecret = process.env.RESEND_WEBHOOK_SECRET?.trim() || null;
   const isLiveDispatchEnabled =
     Boolean(resendApiKey) && process.env.ALLOW_EXTERNAL_DISPATCH === "true";

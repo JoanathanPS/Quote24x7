@@ -145,9 +145,9 @@ export default function InboxPage() {
   );
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 pb-12">
+    <div className="mx-auto max-w-7xl space-y-4 pb-8 lg:h-[calc(100vh-5.5rem)] lg:flex lg:flex-col lg:overflow-hidden">
       {/* Top Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-3 shrink-0">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <Tray className="h-5 w-5 text-primary" />
@@ -174,7 +174,7 @@ export default function InboxPage() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between shrink-0">
         {/* Search */}
         <div className="relative flex-1 sm:max-w-md">
           <MagnifyingGlass className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -231,9 +231,9 @@ export default function InboxPage() {
       </div>
 
       {/* Split Pane: Thread List (Left) + Detail & Timeline (Right) */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 min-h-[640px]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 min-h-[500px] lg:flex-1 lg:min-h-0">
         {/* Left Pane: Thread List */}
-        <div className="lg:col-span-5 flex flex-col space-y-2">
+        <div className="lg:col-span-5 flex flex-col min-h-0 h-full">
           {threadsLoading ? (
             <div className="space-y-2 p-2">
               {[1, 2, 3, 4].map((i) => (
@@ -260,7 +260,7 @@ export default function InboxPage() {
               />
             </div>
           ) : (
-            <div className="space-y-2 max-h-[750px] overflow-y-auto pr-1">
+            <div className="space-y-2 overflow-y-auto pr-1 flex-1 min-h-0">
               {filteredThreads.map((thread) => {
                 const isSelected = thread.id === selectedThreadId;
                 const statusInfo = getHumanStatus(thread.status);
@@ -334,7 +334,7 @@ export default function InboxPage() {
         </div>
 
         {/* Right Pane: Selected Thread Detail & Timeline */}
-        <div className="lg:col-span-7">
+        <div className="lg:col-span-7 h-full flex flex-col min-h-0">
           {selectedThread ? (
             <SelectedThreadPanel thread={selectedThread} />
           ) : (
@@ -373,9 +373,9 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
   const missingFields = requirements?.fields.filter((f) => f.state === "missing") ?? [];
 
   return (
-    <Card className="border-border bg-surface shadow-xs flex flex-col h-full overflow-hidden">
+    <Card className="border-border bg-surface shadow-xs flex flex-col h-full min-h-0 overflow-hidden">
       {/* Thread Detail Header */}
-      <CardHeader className="p-4 border-b border-border bg-surface-sunken/40 space-y-3">
+      <CardHeader className="p-4 border-b border-border bg-surface-sunken/40 space-y-3 shrink-0">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
@@ -447,7 +447,7 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
       </CardHeader>
 
       {/* Extracted Workload Sizing Strip */}
-      <div className="px-4 py-2.5 bg-surface border-b border-border text-xs">
+      <div className="px-4 py-2.5 bg-surface border-b border-border text-xs shrink-0">
         <div className="flex items-center justify-between gap-2 mb-1.5">
           <span className="font-semibold text-[11px] uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
             <GearSix className="h-3.5 w-3.5 text-primary" />
@@ -528,7 +528,7 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
       </div>
 
       {/* Message Timeline */}
-      <CardContent className="p-4 flex-1 overflow-y-auto space-y-4 max-h-[520px]">
+      <CardContent className="p-4 flex-1 min-h-0 overflow-y-auto space-y-4">
         {messagesLoading ? (
           <div className="space-y-3">
             <Skeleton className="h-20 w-full" />
@@ -573,7 +573,8 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
                       <span className="font-semibold text-xs text-foreground">
                         {isInbound ? msg.fromName || msg.fromAddress : "Quote24x7 AI Assistant"}
                       </span>
-                      <span className="text-[11px] text-muted-foreground ml-2">
+                      {" "}
+                      <span className="text-[11px] text-muted-foreground ml-1">
                         {isInbound ? `to ${msg.toAddresses[0] || "Quote24x7"}` : `to ${msg.toAddresses[0]}`}
                       </span>
                     </div>
