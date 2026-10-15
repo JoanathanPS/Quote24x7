@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { store } from "@/server/store/session-store";
 
 export async function GET() {
+  await store.ensureInitializedAsync();
   store.flagAndRetryQueuedDeliveries();
   const health = store.getHealth();
   return NextResponse.json(health);
@@ -9,6 +10,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    await store.ensureInitializedAsync();
     const body = await request.json();
     if (typeof body.outboundSendingPaused === "boolean") {
       store.setOutboundSendingPaused(body.outboundSendingPaused);

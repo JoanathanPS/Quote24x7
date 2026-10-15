@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { store } from "@/server/store/session-store";
 
 export async function GET(request: NextRequest) {
+  await store.ensureInitializedAsync();
   const { searchParams } = request.nextUrl;
   const status = searchParams.get("status");
   const threadId = searchParams.get("threadId");

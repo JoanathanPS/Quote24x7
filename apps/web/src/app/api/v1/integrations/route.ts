@@ -3,6 +3,7 @@ import { store } from "@/server/store/session-store";
 import { getAppConfig } from "@/server/config";
 
 export async function GET() {
+  await store.ensureInitializedAsync();
   const config = getAppConfig();
   const integrations = store.getIntegrations().map((item) => {
     if (item.id === "int_outbound_resend") {

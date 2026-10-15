@@ -19,6 +19,7 @@ import { store } from "@/server/store/session-store";
  */
 export async function POST(request: NextRequest) {
   try {
+    await store.ensureInitializedAsync();
     const config = getAppConfig();
     const rawBody = await request.text();
 

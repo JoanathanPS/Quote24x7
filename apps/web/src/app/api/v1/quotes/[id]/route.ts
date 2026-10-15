@@ -5,6 +5,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  await store.ensureInitializedAsync();
   const { id } = await params;
   const quote = store.getQuote(id);
   if (!quote) {

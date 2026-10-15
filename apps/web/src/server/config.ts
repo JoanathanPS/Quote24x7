@@ -26,6 +26,12 @@ export interface AppConfig {
   aiTimeoutMs: number;
   /** Maximum attempts (initial + retries) for transient Gemini failures */
   aiMaxAttempts: number;
+  /** Supabase Project URL */
+  supabaseUrl: string | null;
+  /** Supabase API Key (service_role or anon key) */
+  supabaseKey: string | null;
+  /** Whether Supabase is configured and ready for live persistence */
+  isSupabaseConfigured: boolean;
 }
 
 /** Default model used only when GEMINI_MODEL is absent. Never a silent substitution for a configured value. */
@@ -85,6 +91,19 @@ export function getAppConfig(): AppConfig {
   const aiTimeoutMs = Number.parseInt(process.env.AI_TIMEOUT_MS ?? "", 10) || 30_000;
   const aiMaxAttempts = Number.parseInt(process.env.AI_MAX_ATTEMPTS ?? "", 10) || 3;
 
+  // Supabase PostgreSQL Database Integration
+  const supabaseUrl =
+    process.env.SUPABASE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
+    null;
+  const supabaseKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+    process.env.SUPABASE_SERVICE_KEY?.trim() ||
+    process.env.SUPABASE_ANON_KEY?.trim() ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
+    null;
+  const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
+
   return {
     resendApiKey,
     outboundFromEmail,
@@ -97,5 +116,8 @@ export function getAppConfig(): AppConfig {
     isAiEnabled,
     aiTimeoutMs,
     aiMaxAttempts,
+    supabaseUrl,
+    supabaseKey,
+    isSupabaseConfigured,
   };
 }

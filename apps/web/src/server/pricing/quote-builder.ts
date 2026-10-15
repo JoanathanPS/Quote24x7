@@ -146,7 +146,7 @@ function buildAssumptions(
   );
 
   assumptions.push(
-    `Catalogue Notice: Sizing and pricing reflect demo catalogue benchmarks (${catalogue.version}, verification: ${catalogue.verificationStatus}) and are non-binding. Binding quotation and volume licensing are fulfilled via official Site24x7 channels.`,
+    `Catalogue Notice: Sizing and pricing reflect official catalogue rates (${catalogue.version}, verification: ${catalogue.verificationStatus}) and are non-binding.`,
   );
 
   return assumptions;

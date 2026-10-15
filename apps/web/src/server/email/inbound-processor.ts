@@ -67,6 +67,7 @@ export async function processInboundEmail(
   payload: InboundEmailPayload,
   provider?: AiProvider
 ): Promise<InboundProcessingResult> {
+  await store.ensureInitializedAsync();
   const config = getAppConfig();
   const now = payload.receivedAt || new Date().toISOString();
   const providerMessageId = payload.providerMessageId.trim();

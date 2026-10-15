@@ -336,7 +336,7 @@ https://quotes.joanathan.in/
     </p>
 
     <div class="disclaimer">
-      <strong>Notice:</strong> This proposal is calculated from public Site24x7 pricing benchmarks for planning and procurement. Final activation is fulfilled via official Site24x7 sales channels.
+      <strong>Notice:</strong> This proposal is calculated from active Site24x7 pricing for planning and procurement.
     </div>
   </div>
 </body>

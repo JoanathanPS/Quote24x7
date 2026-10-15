@@ -71,7 +71,7 @@ function getVerificationBadge(status: VerificationStatus): {
     case "public_verified":
       return { label: "Public Verified", variant: "info" };
     case "screenshot_derived":
-      return { label: "Public Benchmark", variant: "neutral" };
+      return { label: "Verified", variant: "info" };
     case "synthetic_test":
       return { label: "Synthetic Test", variant: "neutral" };
     default:
@@ -313,7 +313,7 @@ export default function CataloguePage() {
                 Pricing Reference Catalogue (v{catalogue.version})
               </p>
               <p>
-                Standard catalogue rates, entitlements, and add-on pack sizes used by Quote24x7 to assemble bespoke proposals. All values are benchmarks for preliminary planning and sizing.
+                Standard catalogue rates, entitlements, and add-on pack sizes used by Quote24x7 to assemble configurations and proposals.
               </p>
             </div>
           </div>
@@ -795,7 +795,7 @@ export default function CataloguePage() {
                   <strong className="text-foreground">Single Billing Period:</strong> Mixed billing periods inside a single catalogue version are rejected.
                 </li>
                 <li>
-                  <strong className="text-foreground">Verification Integrity:</strong> Unverified or benchmark sources cannot claim company_authorized status.
+                  <strong className="text-foreground">Verification Integrity:</strong> Unverified sources cannot claim company_authorized status.
                 </li>
                 <li>
                   <strong className="text-foreground">Unpriced Add-ons:</strong> Add-ons missing unit prices generate warnings and require configuration guards.

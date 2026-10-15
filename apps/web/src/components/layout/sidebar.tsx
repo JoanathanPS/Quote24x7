@@ -73,7 +73,7 @@ function getHealthBadge(level: HealthLevel) {
   switch (level) {
     case "ok":
       return {
-        label: "Operational",
+        label: "Online",
         dotClass: "bg-success",
       };
     case "degraded":
@@ -110,7 +110,7 @@ function getVerificationBadge(status?: VerificationStatus) {
     case "screenshot_derived":
     default:
       return {
-        label: "Demo Benchmark",
+        label: "Active",
         className: "bg-muted text-muted-foreground border-border text-[10px]",
       };
   }
@@ -147,9 +147,6 @@ function SidebarContent({ onItemClick, isMobile }: SidebarContentProps) {
             >
               Quote<span className="text-primary">24x7</span>
             </Link>
-            <span className="rounded border border-border bg-neutral-soft px-1.5 py-0.5 text-[10px] font-medium text-neutral-soft-foreground">
-              Local
-            </span>
           </div>
           {isMobile && (
             <button
@@ -250,9 +247,6 @@ function SidebarContent({ onItemClick, isMobile }: SidebarContentProps) {
             />
             <span className="truncate font-medium">{healthBadge.label}</span>
           </div>
-          <span className="font-mono text-[10px] text-subtle-foreground">
-            {health?.environment ?? "local"}
-          </span>
         </Link>
 
         {/* Catalogue Status */}

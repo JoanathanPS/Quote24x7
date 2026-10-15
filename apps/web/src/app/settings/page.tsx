@@ -12,12 +12,8 @@ import {
   Database,
   FilePdf,
   CloudArrowUp,
-  ShieldCheck,
-  Warning,
   Key,
   BookOpen,
-  Question,
-  LockKey,
   SlidersHorizontal,
   Info,
 } from "@phosphor-icons/react";
@@ -31,7 +27,6 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
   CardFooter,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -391,63 +386,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Safety & Legal Principles Card */}
-      <Card className="border-border bg-surface shadow-xs">
-        <CardHeader className="pb-3 border-b border-border/40">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-primary" weight="duotone" />
-            <CardTitle className="text-base font-semibold">
-              Operational Safety, Boundaries & Legal Guarantees
-            </CardTitle>
-          </div>
-          <CardDescription className="text-xs">
-            Core architectural principles governing pricing estimations, credential boundaries, and mentor discovery.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-4 space-y-4 text-xs">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-3.5 rounded-lg bg-muted/30 border border-border/40 space-y-1.5">
-              <span className="font-semibold text-foreground flex items-center gap-1.5">
-                <Warning className="h-4 w-4 text-warning" weight="fill" />
-                1. Non-Binding Quotes & Honest Provenance
-              </span>
-              <p className="text-muted-foreground leading-relaxed">
-                Quotations produced by this application are preliminary estimates sized from standard catalogue benchmark data. The system strictly labels all output with <strong className="text-foreground">DEMO DATA</strong> warnings and never presents an unverified calculation as an authorized Zoho commercial contract.
-              </p>
-            </div>
 
-            <div className="p-3.5 rounded-lg bg-muted/30 border border-border/40 space-y-1.5">
-              <span className="font-semibold text-foreground flex items-center gap-1.5">
-                <LockKey className="h-4 w-4 text-primary" weight="fill" />
-                2. Zero Zoho Internal Credential Access
-              </span>
-              <p className="text-muted-foreground leading-relaxed">
-                This console operates entirely on simulated fixtures and public pricing artefacts. It does not require access to Zoho corp internal VPNs, private repositories, or customer databases. Provider adapters operate strictly through standard HTTP webhooks and simulation mock interfaces.
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-lg bg-muted/30 border border-border/40 space-y-1.5">
-              <span className="font-semibold text-foreground flex items-center gap-1.5">
-                <CheckCircle className="h-4 w-4 text-success" weight="fill" />
-                3. Reproducible Integer Calculations
-              </span>
-              <p className="text-muted-foreground leading-relaxed">
-                Zero float arithmetic rule: all calculations occur in minor integer units (paise). Given identical demand profiles and an identical SHA-256 catalogue version, the deterministic engine produces byte-for-byte identical quotations across TypeScript and Python execution environments.
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-lg bg-muted/30 border border-border/40 space-y-1.5">
-              <span className="font-semibold text-foreground flex items-center gap-1.5">
-                <Question className="h-4 w-4 text-info" weight="fill" />
-                4. Mentor Discovery Questions
-              </span>
-              <p className="text-muted-foreground leading-relaxed">
-                Documented discovery questions explore enterprise discount curves, multi-tier add-on structures where pack rates vary by base plan tier, tax handling per market jurisdiction, and commitment contracts.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Integration Setup Documentation Modal */}
       <Dialog

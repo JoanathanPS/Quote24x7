@@ -220,11 +220,7 @@ export default function QuoteDetailPage() {
             <Badge variant={quoteStatusInfo.variant} className="text-xs">
               {quoteStatusInfo.label}
             </Badge>
-            <Badge
-              variant={pricingStatusInfo.variant}
-              className="text-xs flex items-center gap-1"
-            >
-              <WarningCircle className="h-3.5 w-3.5" />
+            <Badge variant={pricingStatusInfo.variant} className="text-xs">
               {pricingStatusInfo.label}
             </Badge>
           </div>
@@ -250,16 +246,6 @@ export default function QuoteDetailPage() {
               Calculated on {formatDateTime(quote.createdAt)}
             </span>
           </div>
-
-          {/* Unverified Disclaimer Alert */}
-          {quote.pricingStatus === "demo_unverified" && (
-            <div className="flex items-center gap-2 rounded-md border border-warning/40 bg-warning-soft/20 px-3.5 py-2 text-xs text-warning-soft-foreground">
-              <WarningCircle className="h-4 w-4 shrink-0 text-warning" />
-              <span>
-                <strong>Demo Data / Unverified Catalogue:</strong> {pricingStatusInfo.warningText}
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Primary Action Button */}

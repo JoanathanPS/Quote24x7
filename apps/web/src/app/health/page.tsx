@@ -8,12 +8,10 @@ import {
   ArrowsClockwise,
   Sparkle,
   EnvelopeSimple,
-  ShieldCheck,
   Cpu,
   Database,
   PaperPlaneTilt,
   FilePdf,
-  Lock,
   HardDrives,
   Speedometer,
 } from "@phosphor-icons/react";
@@ -41,7 +39,7 @@ function getHealthLevelBadge(level: HealthLevel): {
 } {
   switch (level) {
     case "ok":
-      return { label: "Healthy / Operational", variant: "success", colorClass: "bg-success text-success" };
+      return { label: "Healthy", variant: "success", colorClass: "bg-success text-success" };
     case "degraded":
       return { label: "Degraded Performance", variant: "warning", colorClass: "bg-warning text-warning" };
     case "down":
@@ -161,11 +159,11 @@ export default function HealthPage() {
           <div className="flex items-center gap-2">
             <Heartbeat className="h-6 w-6 text-primary" weight="duotone" />
             <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-              System Health & Evaluation
+              System Health
             </h1>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Operational readiness, provider latencies, and pricing engine verification metrics.
+            Service status, component latencies, and message activity.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -181,7 +179,7 @@ export default function HealthPage() {
         </div>
       </div>
 
-      {/* Operational Readiness Banner */}
+      {/* Status Banner */}
       <Card className="border-border bg-surface shadow-xs overflow-hidden">
         <div className="p-5 sm:p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -189,9 +187,6 @@ export default function HealthPage() {
               <Badge variant={overallBadge.variant} className="px-2.5 py-0.5 text-xs font-semibold">
                 <span className="flex h-2 w-2 rounded-full bg-current mr-1.5" />
                 {overallBadge.label}
-              </Badge>
-              <Badge variant="neutral" className="text-xs">
-                Environment: {health.environment === "local" ? "Local Development / Staging" : health.environment}
               </Badge>
               <span className="text-xs text-muted-foreground">
                 Last checked: {formatDateTime(health.checkedAt)}
@@ -273,7 +268,7 @@ export default function HealthPage() {
         <div className="space-y-4">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Operational Throughput & Workload ({metrics.windowLabel})
+              Activity Metrics
             </h2>
           </div>
 
@@ -458,76 +453,6 @@ export default function HealthPage() {
         </div>
       )}
 
-      {/* AI & Pricing Verification Summary */}
-      <div className="space-y-3 pt-2">
-        <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            AI & Pricing Engine Architectural Verification
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="border-border bg-surface shadow-xs">
-            <CardContent className="p-5 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="h-5 w-5 text-success" weight="fill" />
-                  <span className="text-sm font-semibold text-foreground">Deterministic Arithmetic</span>
-                </div>
-                <Badge variant="success" className="text-xs font-mono font-bold">
-                  100% Correct
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                All pricing calculations are performed in minor integer units (paise) with zero floating point variance. Ceil-pack rounding and entitlement offsets are tested against ground-truth fixtures.
-              </p>
-              <div className="pt-1 text-[11px] text-muted-foreground font-mono">
-                Formula: Base + ∑ ceil((req - inc) / packSize) × packPrice
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border bg-surface shadow-xs">
-            <CardContent className="p-5 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Cpu className="h-5 w-5 text-primary" weight="fill" />
-                  <span className="text-sm font-semibold text-foreground">Provenance Coverage</span>
-                </div>
-                <Badge variant="primary" className="text-xs font-mono font-bold">
-                  100% Traced
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Every generated quote line item and add-on unit price links back to a registered SourceReference ID with retrieval timestamp and documented caveats.
-              </p>
-              <div className="pt-1 text-[11px] text-muted-foreground font-mono">
-                Audit integrity: No unreferenced price values allowed
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border bg-surface shadow-xs">
-            <CardContent className="p-5 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Lock className="h-5 w-5 text-info" weight="fill" />
-                  <span className="text-sm font-semibold text-foreground">Prompt Injection Defense</span>
-                </div>
-                <Badge variant="info" className="text-xs font-mono font-bold">
-                  Active
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Deterministic security boundary: LLMs extract structured JSON requirement fields only. Pricing arithmetic, discounts, and terms are strictly resolved by pure TypeScript engine logic.
-              </p>
-              <div className="pt-1 text-[11px] text-muted-foreground font-mono">
-                Defense: Tool constraints & schema isolation
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
     </div>
   );
 }

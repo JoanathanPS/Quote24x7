@@ -264,7 +264,6 @@ export default function InboxPage() {
               {filteredThreads.map((thread) => {
                 const isSelected = thread.id === selectedThreadId;
                 const statusInfo = getHumanStatus(thread.status);
-                const isLive = thread.id.startsWith("th_");
 
                 return (
                   <div
@@ -307,24 +306,7 @@ export default function InboxPage() {
                     {/* Bottom Metadata Row: Badges, Status, and Amount */}
                     <div className="mt-2.5 flex items-center justify-between gap-2 pt-2 border-t border-border/40">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {/* Live vs Demo Badge */}
-                        {isLive ? (
-                          <Badge
-                            variant="primary"
-                            className="text-[9px] py-0 px-1 font-mono tracking-tight"
-                          >
-                            Live Inbound
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="neutral"
-                            className="text-[9px] py-0 px-1 font-mono tracking-tight text-muted-foreground"
-                          >
-                            Demo Record
-                          </Badge>
-                        )}
-
-                        {/* Human Status Badge */}
+                        {/* Status Badge */}
                         <Badge variant={statusInfo.variant} className="text-[9px] py-0 px-1.5 font-medium">
                           {statusInfo.label}
                         </Badge>
@@ -379,7 +361,6 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
   const { data: requirements, isLoading: reqsLoading } = useThreadRequirements(thread.id);
 
   const statusInfo = getHumanStatus(thread.status);
-  const isLive = thread.id.startsWith("th_");
 
   // Format extracted parameters helper
   const extractedHosts = requirements?.fields.find((f) => f.key === "host_count")?.value;
@@ -398,15 +379,6 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              {isLive ? (
-                <Badge variant="primary" className="text-[10px] font-mono">
-                  Live Inbound
-                </Badge>
-              ) : (
-                <Badge variant="neutral" className="text-[10px] font-mono text-muted-foreground">
-                  Demo Record
-                </Badge>
-              )}
               <div className="flex items-center gap-1.5">
                 <StatusDot status={thread.status} />
                 <Badge variant={statusInfo.variant} className="text-[11px] font-medium">

@@ -5,6 +5,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const status = searchParams.get("status");
   const search = searchParams.get("search");
+  await store.ensureInitializedAsync();
   let threads = store.getThreads();
 
   if (status) {

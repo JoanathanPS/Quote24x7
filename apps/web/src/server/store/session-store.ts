@@ -14,6 +14,18 @@ import type {
 } from "@/types/domain";
 import { getAppConfig } from "../config.ts";
 import { dryRunStore } from "./dryrun-store.ts";
+import {
+  fetchFullStateFromSupabase,
+  seedSupabaseFromBaseline,
+  type SupabaseFullState,
+  upsertThreadToSupabase,
+  insertMessageToSupabase,
+  upsertProfileToSupabase,
+  upsertQuoteToSupabase,
+  upsertDeliveryToSupabase,
+  insertAiDecisionToSupabase,
+  insertProcessedMessageToSupabase,
+} from "../db/supabase.ts";
 
 interface PersistedState {
   threads: EmailThread[];
@@ -213,6 +225,46 @@ class SessionStore {
     }
   }
 
+  private supabaseSyncing = false;
+
+  public async ensureInitializedAsync(): Promise<void> {
+    this.ensureInitialized();
+    if (this.isTestEnvironment()) return;
+
+    const config = getAppConfig();
+    if (config.isSupabaseConfigured && !this.supabaseSyncing) {
+      this.supabaseSyncing = true;
+      try {
+        const remoteState = await fetchFullStateFromSupabase();
+        if (remoteState && remoteState.threads.length > 0) {
+          this.loadState(remoteState as unknown as PersistedState);
+          this.persistToDisk();
+        } else if (remoteState && remoteState.threads.length === 0 && this.threads.size > 0) {
+          // If Supabase is connected but empty, seed it from our baseline snapshot
+          const allMsgs: EmailMessage[] = [];
+          for (const list of this.messages.values()) allMsgs.push(...list);
+          const allDecisions: AiDecisionRecord[] = [];
+          for (const list of this.aiDecisions.values()) allDecisions.push(...list);
+
+          const snapshot: SupabaseFullState = {
+            threads: Array.from(this.threads.values()),
+            messages: allMsgs,
+            profiles: Array.from(this.profiles.entries()),
+            quotes: Array.from(this.quotes.entries()),
+            deliveries: Array.from(this.deliveries.values()),
+            processedMessageIds: Array.from(this.processedMessageIds),
+            aiDecisions: allDecisions,
+          };
+          await seedSupabaseFromBaseline(snapshot);
+        }
+      } catch (err) {
+        console.warn("[session-store] Error syncing with Supabase:", err);
+      } finally {
+        this.supabaseSyncing = false;
+      }
+    }
+  }
+
   // --- Threads ---
   getThreads(): EmailThread[] {
     this.ensureInitialized();
@@ -230,6 +282,7 @@ class SessionStore {
     this.ensureInitialized();
     this.threads.set(thread.id, { ...thread });
     this.persistToDisk();
+    upsertThreadToSupabase(thread);
   }
 
   updateThread(id: string, updates: Partial<EmailThread>): EmailThread | undefined {
@@ -239,6 +292,7 @@ class SessionStore {
     const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
     this.threads.set(id, updated);
     this.persistToDisk();
+    upsertThreadToSupabase(updated);
     return updated;
   }
 
@@ -287,8 +341,10 @@ class SessionStore {
     this.messages.set(message.threadId, existing);
     if (message.providerMessageId) {
       this.processedMessageIds.add(message.providerMessageId);
+      insertProcessedMessageToSupabase(message.providerMessageId);
     }
     this.persistToDisk();
+    insertMessageToSupabase(message);
   }
 
   // --- Requirement Profiles ---
@@ -301,6 +357,7 @@ class SessionStore {
     this.ensureInitialized();
     this.profiles.set(profile.threadId, { ...profile });
     this.persistToDisk();
+    upsertProfileToSupabase(profile);
   }
 
   // --- Quotes ---
@@ -327,6 +384,7 @@ class SessionStore {
     this.ensureInitialized();
     this.quotes.set(quote.id, { ...quote });
     this.persistToDisk();
+    upsertQuoteToSupabase(quote);
   }
 
   updateQuote(quoteId: string, updates: Partial<Quote>): Quote | undefined {
@@ -336,6 +394,7 @@ class SessionStore {
     const updated = { ...existing, ...updates };
     this.quotes.set(quoteId, updated);
     this.persistToDisk();
+    upsertQuoteToSupabase(updated);
     return updated;
   }
 
@@ -375,8 +434,10 @@ class SessionStore {
     this.deliveries.set(delivery.id, { ...delivery });
     if (delivery.providerMessageId) {
       this.processedMessageIds.add(delivery.providerMessageId);
+      insertProcessedMessageToSupabase(delivery.providerMessageId);
     }
     this.persistToDisk();
+    upsertDeliveryToSupabase(delivery);
   }
 
   updateDelivery(id: string, updates: Partial<DeliveryRecord>): DeliveryRecord | undefined {
@@ -386,6 +447,7 @@ class SessionStore {
       const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
       this.deliveries.set(id, updated);
       this.persistToDisk();
+      upsertDeliveryToSupabase(updated);
       return updated;
     }
     return dryRunStore.updateDelivery(id, updates);
@@ -423,6 +485,7 @@ class SessionStore {
     existing.push({ ...decision });
     this.aiDecisions.set(decision.threadId, existing);
     this.persistToDisk();
+    insertAiDecisionToSupabase(decision);
   }
 
   // --- Idempotency ---
@@ -435,6 +498,7 @@ class SessionStore {
     this.ensureInitialized();
     this.processedMessageIds.add(providerMessageId);
     this.persistToDisk();
+    insertProcessedMessageToSupabase(providerMessageId);
   }
 
   // --- Metrics ---
@@ -571,9 +635,11 @@ class SessionStore {
       },
       {
         id: "store-persistence",
-        name: "Conversation & Quote Session Store",
+        name: config.isSupabaseConfigured ? "Supabase PostgreSQL Database" : "Conversation & Quote Session Store",
         level: "ok",
-        detail: `File-backed storage active with ${threads.length} threads and ${deliveries.length} delivery records`,
+        detail: config.isSupabaseConfigured
+          ? `Supabase PostgreSQL active with ${threads.length} threads and ${deliveries.length} delivery records`
+          : `File-backed storage active with ${threads.length} threads and ${deliveries.length} delivery records`,
         latencyMs: null,
       },
     ];
@@ -692,12 +758,14 @@ class SessionStore {
         docsPath: "docs/integrations/outbound-email.md",
       },
       {
-        id: "int_db_file",
-        name: "Local Session Store",
+        id: "int_db_supabase",
+        name: config.isSupabaseConfigured ? "Supabase PostgreSQL Database" : "Local Session Store (Supabase Ready)",
         category: "database",
-        state: "configured",
-        detail: "JSON file-backed persistent repository at .data/session-store.json",
-        requiredEnvVars: [],
+        state: config.isSupabaseConfigured ? "configured" : "demo_mode",
+        detail: config.isSupabaseConfigured
+          ? `Connected to Supabase PostgreSQL at ${config.supabaseUrl} with automated persistence`
+          : "Running on JSON file-backed local store (.data/session-store.json). Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to enable Supabase.",
+        requiredEnvVars: ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"],
         docsPath: "docs/integrations/database.md",
       },
       {
