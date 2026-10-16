@@ -210,12 +210,20 @@ export interface EmailMessage {
   references?: string | null;
 }
 
+export type DocumentFormatKind = "pdf" | "word" | "excel" | "text" | "other";
+
 export interface MessageAttachment {
   name: string;
   contentType: string;
   sizeBytes: number;
-  /** Attachments are stored and listed but never parsed or executed in Phase 1. */
+  /** Whether the attachment has been scanned and verified safe. */
   scanned: boolean;
+  /** Plain text extracted from document attachments (Word, PDF, Excel) for requirement extraction. */
+  extractedText?: string;
+  /** Classified document kind (Word, PDF, Excel, text, or other). */
+  documentKind?: DocumentFormatKind;
+  /** Base64 encoded file payload if retained in-memory. */
+  contentBase64?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -600,4 +608,5 @@ export interface WebhookEventRecord {
   processedAt: IsoDateTime | null;
   createdAt: IsoDateTime;
 }
+
 

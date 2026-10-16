@@ -18,7 +18,6 @@ import {
   Calendar,
   CaretDown,
   CaretUp,
-  Paperclip,
   ShieldWarning,
   ArrowRight,
   Info,
@@ -30,6 +29,7 @@ import {
   useThreadRequirements,
   useQuote,
 } from "@/hooks/use-api";
+import { MessageAttachmentsList } from "@/components/inbox/message-attachments";
 import { formatMoney } from "@/server/pricing/money";
 import { formatDateTime, formatRelativeTime, cn } from "@/lib/utils";
 import type {
@@ -486,30 +486,10 @@ export default function ThreadDetailPage() {
 
                       {/* Attachments */}
                       {msg.attachments && msg.attachments.length > 0 && (
-                        <div className="space-y-1 pt-1">
-                          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                            Attachments
-                          </span>
-                          <div className="flex flex-wrap gap-2">
-                            {msg.attachments.map((att, idx) => (
-                              <div
-                                key={idx}
-                                className="flex items-center gap-1.5 rounded border border-border bg-surface px-2.5 py-1 text-xs text-foreground"
-                              >
-                                <Paperclip className="h-3 w-3 text-muted-foreground" />
-                                <span className="font-medium">{att.name}</span>
-                                <span className="text-[11px] text-muted-foreground">
-                                  ({(att.sizeBytes / 1024).toFixed(1)} KB)
-                                </span>
-                                {att.scanned && (
-                                  <Badge variant="success" className="text-[9px] py-0 px-1">
-                                    Scanned
-                                  </Badge>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
+                        <MessageAttachmentsList
+                          attachments={msg.attachments}
+                          quoteId={thread.quoteId}
+                        />
                       )}
                     </CardContent>
                   </Card>

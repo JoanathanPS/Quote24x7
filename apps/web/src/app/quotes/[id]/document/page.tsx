@@ -197,13 +197,20 @@ export default function QuoteDocumentPage() {
             </div>
 
             <Button
-              onClick={handlePrint}
+              asChild
               variant="outline"
               size="sm"
               className="hidden gap-1.5 font-medium sm:flex"
             >
-              <DownloadSimple size={15} />
-              <span>Save PDF</span>
+              <a
+                href={`/api/v1/quotes/${quote.id}/pdf?option=${selectedOptionType}&download=true`}
+                download={`quote-${quote.id.toLowerCase()}-${selectedOptionType}.pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <DownloadSimple size={15} />
+                <span>Download PDF</span>
+              </a>
             </Button>
 
             <Button

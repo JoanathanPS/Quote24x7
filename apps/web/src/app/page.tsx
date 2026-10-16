@@ -23,8 +23,11 @@ import {
   Calendar,
   Buildings,
   EnvelopeSimple,
-  Paperclip,
+  Plus,
 } from "@phosphor-icons/react";
+
+import { InboundInquiryModal } from "@/components/inbox/inbound-inquiry-modal";
+import { MessageAttachmentsList } from "@/components/inbox/message-attachments";
 
 import {
   useThreads,
@@ -85,6 +88,7 @@ export default function InboxPage() {
   const [search, setSearch] = React.useState("");
   const [activeFilter, setActiveFilter] = React.useState<HumanFilter>("all");
   const [selectedThreadId, setSelectedThreadId] = React.useState<string | null>(null);
+  const [inboundModalOpen, setInboundModalOpen] = React.useState(false);
 
   const {
     data: threads,
@@ -158,6 +162,14 @@ export default function InboxPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            onClick={() => setInboundModalOpen(true)}
+            className="h-8 gap-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Receive Inbound Inquiry
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -348,6 +360,16 @@ export default function InboxPage() {
           )}
         </div>
       </div>
+
+      {/* Interactive Modal to Receive Inbound Inquiries (Text, Word, PDF, Excel) */}
+      <InboundInquiryModal
+        open={inboundModalOpen}
+        onOpenChange={setInboundModalOpen}
+        onSuccess={(newThreadId) => {
+          void refetchThreads();
+          setSelectedThreadId(newThreadId);
+        }}
+      />
     </div>
   );
 }
@@ -584,29 +606,10 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
 
                 {/* Attachments if any */}
                 {msg.attachments && msg.attachments.length > 0 && (
-                  <div className="pt-2 border-t border-border/40 flex flex-wrap gap-2">
-                    {msg.attachments.map((att, idx) => (
-                      <div
-                        key={idx}
-                        className="inline-flex items-center gap-1.5 rounded border border-border bg-surface px-2 py-1 text-xs"
-                      >
-                        <Paperclip className="h-3 w-3 text-muted-foreground" />
-                        <span className="font-medium text-[11px] text-foreground">{att.name}</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          ({(att.sizeBytes / 1024).toFixed(0)} KB)
-                        </span>
-                        {thread.quoteId && (
-                          <a
-                            href={`/api/v1/quotes/${thread.quoteId}/pdf`}
-                            download={att.name}
-                            className="ml-1 text-[10px] text-primary hover:underline font-medium"
-                          >
-                            Download
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <MessageAttachmentsList
+                    attachments={msg.attachments}
+                    quoteId={thread.quoteId}
+                  />
                 )}
               </div>
             );

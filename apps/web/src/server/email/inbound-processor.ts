@@ -3,6 +3,7 @@ import type {
   DecisionSource,
   EmailMessage,
   EmailThread,
+  MessageAttachment,
   Quote,
   QuoteDocument,
 } from "@/types/domain";
@@ -11,6 +12,7 @@ import { store } from "../store/session-store.ts";
 import { loadActiveCatalogue } from "../catalogue/loader.ts";
 import { buildQuote } from "../pricing/quote-builder.ts";
 import { renderQuotePdf } from "../documents/pdf-renderer.ts";
+import { parseInboundDocument } from "../documents/inbound-document-parser.ts";
 import { decideNextAction } from "../ai/sales-engineer.ts";
 import type { AiProvider } from "../ai/gemini-provider.ts";
 import {
@@ -20,6 +22,14 @@ import {
   type OutboundDispatchResult,
 } from "./resend-outbound.ts";
 import { formatMoney } from "../pricing/money.ts";
+
+export interface InboundAttachmentPayload {
+  filename: string;
+  contentType?: string;
+  /** Buffer, Uint8Array, or base64/plain string */
+  content?: Buffer | Uint8Array | string;
+  sizeBytes?: number;
+}
 
 export interface InboundEmailPayload {
   providerMessageId: string;
@@ -32,6 +42,8 @@ export interface InboundEmailPayload {
   html?: string;
   headers?: Record<string, string> | null;
   receivedAt?: string;
+  /** Optional file attachments (Word, PDF, Excel, text) */
+  attachments?: InboundAttachmentPayload[];
 }
 
 export interface InboundProcessingResult {
@@ -640,7 +652,61 @@ async function doProcessInboundEmail(
     store.saveThread(thread);
   }
 
-  // 4. Record Inbound Message
+  // 4. Record Inbound Message & Parse Attachments (Word, PDF, Excel, text)
+  const parsedAttachments: MessageAttachment[] = [];
+  const attachmentTextSections: string[] = [];
+
+  if (payload.attachments && payload.attachments.length > 0) {
+    for (const att of payload.attachments) {
+      try {
+        let buffer: Buffer;
+        if (Buffer.isBuffer(att.content)) {
+          buffer = att.content;
+        } else if (att.content instanceof Uint8Array) {
+          buffer = Buffer.from(att.content);
+        } else if (typeof att.content === "string") {
+          const base64Data = att.content.includes(";base64,")
+            ? att.content.split(";base64,")[1] || ""
+            : att.content;
+          buffer = Buffer.from(base64Data, "base64");
+        } else {
+          buffer = Buffer.alloc(0);
+        }
+
+        const parsed = await parseInboundDocument({
+          filename: att.filename,
+          contentType: att.contentType,
+          buffer,
+        });
+
+        parsedAttachments.push({
+          name: att.filename,
+          contentType: att.contentType || "application/octet-stream",
+          sizeBytes: att.sizeBytes || buffer.length,
+          scanned: true,
+          extractedText: parsed.text,
+          documentKind: parsed.documentKind,
+          contentBase64: buffer.length > 0 && buffer.length < 5000000 ? buffer.toString("base64") : undefined,
+        });
+
+        if (parsed.text.trim()) {
+          attachmentTextSections.push(
+            `\n[Attached ${parsed.documentKind.toUpperCase()} Document: "${att.filename}"]\n${parsed.text}`
+          );
+        }
+      } catch (err) {
+        console.error(`Failed to process attachment ${att.filename}:`, err);
+        parsedAttachments.push({
+          name: att.filename,
+          contentType: att.contentType || "application/octet-stream",
+          sizeBytes: att.sizeBytes || 0,
+          scanned: true,
+          documentKind: "other",
+        });
+      }
+    }
+  }
+
   const inboundMessage: EmailMessage = {
     id: `msg_in_${Date.now()}`,
     threadId: thread.id,
@@ -654,7 +720,7 @@ async function doProcessInboundEmail(
     occurredAt: now,
     deliveryId: null,
     securityNotes: [],
-    attachments: [],
+    attachments: parsedAttachments,
   };
 
   store.addMessage(inboundMessage);
@@ -667,7 +733,12 @@ async function doProcessInboundEmail(
   });
 
   // 5. AI Sales Engineer (Gemini first, deterministic rules engine as fallback)
-  const cleanReplyText = stripQuotedEmail(payload.text);
+  // Combine email body with any extracted text from Word, PDF, or Excel attachments
+  const combinedInboundText =
+    attachmentTextSections.length > 0
+      ? `${payload.text}\n\n${attachmentTextSections.join("\n\n")}`
+      : payload.text;
+  const cleanReplyText = stripQuotedEmail(combinedInboundText);
   const existingProfile = store.getProfile(thread.id);
   const catalogue = await loadActiveCatalogue();
 

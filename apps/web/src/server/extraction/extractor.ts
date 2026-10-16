@@ -47,8 +47,8 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const serverMatch =
     text.match(/(\d+)\s*(?:[a-z\s]{0,35}?)\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?)\b/i) ||
-    text.match(/(?:servers?|hosts?|vms?|instances?|nodes?|machines?)[^:\n\r\d]{0,50}[:=]\s*(\d+)/i) ||
-    text.match(/(?:servers?|hosts?|nodes?|instances?)\s*(?:count|total|:|=)\s*(\d+)/i);
+    text.match(/(?:servers?|hosts?|vms?|instances?|nodes?|machines?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*(\d+)/i) ||
+    text.match(/(?:servers?|hosts?|nodes?|instances?)\s*(?:count|total|:|=|,|\||\t)\s*(\d+)/i);
 
   if (serverMatch && serverMatch[1]) {
     serverCount = parseInt(serverMatch[1], 10);
@@ -91,8 +91,8 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const netMatch =
     text.match(/(\d+)\s*(?:[a-z\s]{0,30}?)\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)\b/i) ||
-    text.match(/(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)[^:\n\r\d]{0,50}[:=]\s*(\d+)/i) ||
-    text.match(/(?:network(?:\s+devices?)?|switches?|routers?)\s*(?:count|total|:|=)\s*(\d+)/i);
+    text.match(/(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*(\d+)/i) ||
+    text.match(/(?:network(?:\s+devices?)?|switches?|routers?)\s*(?:count|total|:|=|,|\||\t)\s*(\d+)/i);
 
   if (netMatch && netMatch[1]) {
     networkCount = parseInt(netMatch[1], 10);
@@ -136,13 +136,13 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const advMatch =
     text.match(/(\d+)\s*(?:[a-z\s]{0,35}?)\b(?:synthetic(?:\s+(?:transaction|web|browser))?|advanced(?:\s+web)?|transaction|critical\s+web)\s*(?:monitors?|endpoints?|urls?|checks?|apis?)\b/i) ||
-    text.match(/(?:synthetic(?:\s+transaction|\s+web|\s+browser)?|advanced(?:\s+web)?|transaction)[^:\n\r\d]{0,50}[:=]\s*(\d+)/i) ||
+    text.match(/(?:synthetic(?:\s+transaction|\s+web|\s+browser)?|advanced(?:\s+web)?|transaction)[^:\n\r\d,|]{0,50}[:=,|\t]\s*(\d+)/i) ||
     text.match(/(\d+)\s*(?:synthetic|advanced|transaction)\s*(?:(?:transaction|web|browser)\s+)?(?:monitors?|endpoints?|checks?|urls?|apis?)/i) ||
-    text.match(/(?:advanced|synthetic|transaction)\s*(?:monitors?|endpoints?|checks?)\s*(?:count|total|:|=)\s*(\d+)/i);
+    text.match(/(?:advanced|synthetic|transaction)\s*(?:monitors?|endpoints?|checks?)\s*(?:count|total|:|=|,|\||\t)\s*(\d+)/i);
 
   const appApmMatch =
     text.match(/(\d+)\s*(?:[a-z\s]{0,15}?)\b(?:java|node(?:\.js)?|python|\.net|php|ruby|go)?\s*(?:apps?|applications?|apm(?:\s+instances?|\s+monitors?)?)\b/i) ||
-    text.match(/(?:java|node(?:\.js)?|python|\.net|php|ruby|go|apm)\s*(?:apps?|applications?|instances?)\s*(?:count|total|:|=)\s*(\d+)/i);
+    text.match(/(?:java|node(?:\.js)?|python|\.net|php|ruby|go|apm)\s*(?:apps?|applications?|instances?)\s*(?:count|total|:|=|,|\||\t)\s*(\d+)/i);
 
   if (advMatch && advMatch[1]) {
     advancedCount += parseInt(advMatch[1], 10);
