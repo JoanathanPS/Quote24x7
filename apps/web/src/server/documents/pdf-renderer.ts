@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import type { PDFFont, PDFPage } from "pdf-lib";
 import type { Quote, EmailThread, CurrencyCode } from "@/types/domain";
@@ -230,9 +232,34 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
 
   // -- page 1 header -------------------------------------------------------
 
+  let logoDrawn = false;
+  try {
+    const candidatePaths = [
+      path.resolve(process.cwd(), "public", "logo.png"),
+      path.resolve(process.cwd(), "apps", "web", "public", "logo.png"),
+    ];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        const logoBytes = fs.readFileSync(p);
+        const logoImage = await pdfDoc.embedPng(logoBytes);
+        page.drawImage(logoImage, {
+          x: MARGIN,
+          y: y - 24,
+          width: 80,
+          height: 24,
+        });
+        logoDrawn = true;
+        break;
+      }
+    }
+  } catch {
+    logoDrawn = false;
+  }
+
   const brand = "Quote24x7";
-  text(brand, MARGIN, y - 16, { font: sansBold, size: 20, color: C.heading });
-  text("Commercial Proposal", MARGIN + sansBold.widthOfTextAtSize(brand, 20) + 10, y - 14, {
+  const brandX = logoDrawn ? MARGIN + 88 : MARGIN;
+  text(brand, brandX, y - 16, { font: sansBold, size: 20, color: C.heading });
+  text("Commercial Proposal", brandX + sansBold.widthOfTextAtSize(brand, 20) + 10, y - 14, {
     font: sansBold,
     size: 9,
     color: C.label,

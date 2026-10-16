@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Quote24x7Logo } from "@/components/ui/logo";
 
 function formatOptionLabel(type: OptionType): string {
   switch (type) {
@@ -240,11 +241,9 @@ export default function QuoteDocumentPage() {
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
             {/* Wordmark and Document Title */}
             <div>
-              <div className="flex items-baseline gap-2">
-                <span className="font-sans text-2xl font-bold tracking-tight text-foreground print:text-black">
-                  Quote<span className="text-primary font-black print:text-neutral-900">24x7</span>
-                </span>
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground print:text-neutral-600">
+              <div className="flex items-center gap-3">
+                <Quote24x7Logo size="lg" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground print:text-neutral-600 border-l border-border pl-3">
                   Commercial Proposal
                 </span>
               </div>
