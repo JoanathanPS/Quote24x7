@@ -207,15 +207,6 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
   const cleanSub = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
   const subject = `Re: ${cleanSub} - Proposal Ref #${input.quote.id} [Ref: #${input.thread.id}]`;
 
-  // Safe Public Proposal URL handling
-  const isPublicUrl = config.isPublicAppUrl;
-  const proposalUrl = isPublicUrl ? `${config.appBaseUrl}/proposals/${input.quote.id}` : null;
-  if (!isPublicUrl) {
-    console.warn(
-      `[resend-outbound] Configured appBaseUrl is not a public hostname ("${config.appBaseUrl}"). Omitting raw localhost portal link from quotation email to ${targetRecipient}.`
-    );
-  }
-
   const { inReplyTo, headers: threadingHeaders } = buildThreadingHeaders(input.thread.id);
 
   // Plain Text Version (Humanized, clear, no internal jargon)
@@ -229,20 +220,11 @@ RECOMMENDED CONFIGURATION (Best Value):
 • Total (${input.quote.billingPeriod}): ${bestValue ? formatMoney(bestValue.total, input.quote.currency) : "—"}
 • Sizing Note: ${bestValue?.rankReason ?? "Optimized for your required capacity with minimal excess."}
 ${lowestCost ? `\nLOWEST COMMITMENT OPTION:\n• Plan: ${lowestCost.planName}\n• Total (${input.quote.billingPeriod}): ${formatMoney(lowestCost.total, input.quote.currency)}\n• Note: ${lowestCost.rankReason}\n` : ""}${bestCoverage ? `\nMAXIMUM HEADROOM OPTION:\n• Plan: ${bestCoverage.planName}\n• Total (${input.quote.billingPeriod}): ${formatMoney(bestCoverage.total, input.quote.currency)}\n• Note: ${bestCoverage.headroomNotes?.[0] || bestCoverage.rankReason}\n` : ""}
-${
-  proposalUrl
-    ? `INTERACTIVE PROPOSAL & PURCHASE HANDOFF:
-You can review the full interactive proposal online, explore capacity allowances, or proceed to order activation here:
-${proposalUrl}`
-    : `ONLINE PROPOSAL & CAPACITY BREAKDOWN:
-Your official itemized breakdown, capacity allowances, and pricing terms are attached in the accompanying quotation document ("Quote24x7-Proposal-${input.quote.id}.pdf").`
-}
-
 OFFICIAL PDF QUOTATION:
-We have also attached your official quotation PDF ("Quote24x7-Proposal-${input.quote.id}.pdf") containing the itemized component packs, included allowances, and transparent unit rates for your procurement and budgeting records.
+Your official itemized breakdown, capacity allowances, and pricing terms are attached in the accompanying quotation document ("Quote24x7-Proposal-${input.quote.id}.pdf").
 
 NEXT STEPS:
-If you would like to adjust any server counts or add optional services, simply reply directly to this email or click "Proceed to Purchase Handoff" on your online proposal.
+If you would like to adjust any server counts or add optional services, simply reply directly to this email.
 
 Best regards,
 Quote24x7 Assistant
@@ -268,8 +250,6 @@ https://quotes.joanathan.in/
     .plan-name { font-size: 18px; font-weight: 700; color: #0f172a; margin: 6px 0 2px 0; }
     .price { font-size: 24px; font-weight: 800; color: #2563eb; font-family: monospace; margin-bottom: 8px; }
     .note { font-size: 13px; color: #475569; }
-    .btn-container { text-align: center; margin: 28px 0; }
-    .btn { display: inline-block; background-color: #2563eb; color: #ffffff !important; text-decoration: none; font-weight: 600; font-size: 14px; padding: 12px 28px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
     .attachment-box { background: #f1f5f9; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #334155; margin-top: 20px; }
     .disclaimer { font-size: 11px; color: #64748b; margin-top: 28px; border-top: 1px solid #e2e8f0; padding-top: 16px; line-height: 1.5; }
   </style>
@@ -291,17 +271,9 @@ https://quotes.joanathan.in/
       <div class="note">${bestValue?.rankReason ?? "Optimized for your required capacity with minimal excess."}</div>
     </div>
 
-    ${
-      proposalUrl
-        ? `
-    <div class="btn-container">
-      <a href="${proposalUrl}" class="btn" target="_blank">View Interactive Proposal Online →</a>
-    </div>`
-        : `
     <div class="attachment-box" style="margin: 20px 0; background: #eff6ff; border: 1px solid #bfdbfe;">
       📄 <strong>Itemized Quotation Attached:</strong> Complete capacity breakdown and transparent pricing are detailed in the attached PDF: <code>Quote24x7-Proposal-${input.quote.id}.pdf</code>.
-    </div>`
-    }
+    </div>
 
     ${
       lowestCost

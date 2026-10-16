@@ -8,7 +8,6 @@ import {
   Eye,
   CaretDown,
   CaretUp,
-  Sparkle,
   SlidersHorizontal,
   FilePdf,
 } from "@phosphor-icons/react";
@@ -250,17 +249,6 @@ export default function ConfigurationsPage() {
                         </Link>
                       </Button>
 
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        asChild
-                        className="h-8 gap-1.5 text-xs font-medium"
-                      >
-                        <Link href={`/proposals/${quote.id}`} target="_blank">
-                          <Sparkle className="h-3.5 w-3.5 text-primary" weight="bold" />
-                          <span>Customer Proposal Page</span>
-                        </Link>
-                      </Button>
 
                       <Button
                         variant="ghost"

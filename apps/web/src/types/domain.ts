@@ -488,7 +488,7 @@ export interface HealthComponent {
 export type AiAction = "ask_follow_up" | "prepare_quote" | "human_review";
 
 /** Which component actually produced the decision that was acted on. */
-export type DecisionSource = "gemini" | "rules_fallback";
+export type DecisionSource = "groq" | "gemini" | "rules_fallback";
 
 /** Why the AI path was not used, or not trusted. Safe for operator display. */
 export type AiFailureCategory =
@@ -570,4 +570,6 @@ export interface AiDecisionRecord {
   latencyMs: number | null;
   /** Catalogue version the decision was validated against. */
   catalogueVersion: string | null;
+  /** Natural language response addressing customer general/product questions. */
+  conversationalResponse?: string | null;
 }

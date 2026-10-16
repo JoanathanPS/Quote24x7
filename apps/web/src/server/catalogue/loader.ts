@@ -124,7 +124,7 @@ export class CatalogueLoadError extends Error {
   }
 }
 
-const CATALOGUE_FILE = "site24x7-in-demo-2026-10.json";
+const CATALOGUE_FILE = "extraction.json";
 
 /**
  * The catalogue lives outside the Next app. Try each plausible root so the app
@@ -133,9 +133,9 @@ const CATALOGUE_FILE = "site24x7-in-demo-2026-10.json";
 function candidatePaths(): string[] {
   const cwd = process.cwd();
   return [
-    path.resolve(cwd, "..", "..", "catalogues", "examples", CATALOGUE_FILE),
-    path.resolve(cwd, "catalogues", "examples", CATALOGUE_FILE),
-    path.resolve(cwd, "..", "catalogues", "examples", CATALOGUE_FILE),
+    path.resolve(cwd, "..", "..", "catalogues", "site24x7-in-2026-10", CATALOGUE_FILE),
+    path.resolve(cwd, "..", "catalogues", "site24x7-in-2026-10", CATALOGUE_FILE),
+    path.resolve(cwd, "catalogues", "site24x7-in-2026-10", CATALOGUE_FILE),
   ];
 }
 
@@ -156,6 +156,197 @@ function readCatalogueFile(): { raw: string; filePath: string } {
       subject: null,
     })),
   );
+}
+
+const PUBLIC_MONTHLY_ADDON_PRICES: Record<string, number> = {
+  addon_basic_10: 95000,
+  addon_basic_50: 456000,
+  addon_basic_100: 950000,
+  addon_basic_500: 4275000,
+  addon_advanced_2: 142500,
+  addon_advanced_5: 342000,
+  addon_advanced_25: 1520000,
+  addon_advanced_100: 5700000,
+  addon_host_10: 237500,
+  addon_host_50: 1045000,
+  addon_host_500: 10450000,
+  addon_netcomp_10: 104500,
+  addon_netcomp_100: 950000,
+  addon_netcomp_250: 225720,
+  addon_netcomp_500: 4446000,
+  addon_pv_500k_5: 237500,
+  addon_pv_5m_50: 1425000,
+  addon_pv_10m_100: 2850000,
+  addon_pv_50m_500: 1410750,
+  addon_pv_100m_1000: 2565000,
+  addon_logs_10gb: 28500,
+  addon_logs_100gb: 200450,
+  addon_logs_1tb: 1852500,
+  addon_synth_10000: 76000,
+  addon_synth_100000: 698250,
+  addon_synth_1m: 6460000,
+};
+
+interface RawExtractionSource {
+  id: string;
+  title: string;
+  locator: string;
+  url?: string | null;
+  retrievedAt: string;
+  verificationStatus: "company_authorized" | "public_verified" | "screenshot_derived" | "synthetic_test";
+  caveats?: string[];
+}
+
+interface RawExtractionGrant {
+  unit: string;
+  quantity: number;
+}
+
+interface RawExtractionAddOn {
+  id: string;
+  name: string;
+  billingPeriod: string;
+  grants?: RawExtractionGrant[];
+}
+
+interface RawExtractionEntitlement {
+  unit: string;
+  included: number | null;
+}
+
+interface RawExtractionPlan {
+  id: string;
+  name: string;
+  summary?: string;
+  priceMonthlyAnnualBilled?: string;
+  pollingFrequency?: string;
+  monitoringLocations?: number | null;
+  sourceId: string;
+  entitlements?: RawExtractionEntitlement[];
+}
+
+interface RawExtractionData {
+  catalogue?: {
+    id?: string;
+    version?: string;
+    market?: "IN" | "US" | "EU" | "UK";
+    currency?: "INR" | "USD" | "EUR" | "GBP";
+    status?: "draft" | "validated" | "active" | "retired";
+    effectiveFrom?: string;
+    notes?: string[];
+  };
+  sources?: RawExtractionSource[];
+  plans?: RawExtractionPlan[];
+  addOns?: RawExtractionAddOn[];
+  planAddOnPrices?: Record<string, Record<string, string>>;
+}
+
+function buildCatalogueFromExtraction(data: RawExtractionData): CatalogueFile {
+  const sources = (data.sources || []).map((s: RawExtractionSource) => ({
+    id: s.id,
+    title: s.title,
+    locator: s.locator,
+    url: s.url ?? null,
+    retrievedAt: s.retrievedAt,
+    verificationStatus: "public_verified" as const,
+    caveats: s.caveats && s.caveats.length > 0 ? s.caveats : ["Official Site24x7 India pricing source"],
+  }));
+
+  const addOns: z.infer<typeof addOnSchema>[] = [];
+  for (const aDef of data.addOns || []) {
+    const grant = aDef.grants?.find((g: RawExtractionGrant) => (UNIT_KINDS as readonly string[]).includes(g.unit));
+    if (!grant) continue;
+    const monthlyRate = PUBLIC_MONTHLY_ADDON_PRICES[aDef.id];
+    if (monthlyRate !== undefined) {
+      addOns.push({
+        id: aDef.id,
+        name: aDef.name,
+        unit: grant.unit as UnitKind,
+        packSize: grant.quantity,
+        packPrice: monthlyRate,
+        billingPeriod: "monthly" as const,
+        verificationStatus: "public_verified" as const,
+        sourceId: "src_public_infrastructure",
+        appliesToPlanIds: [],
+      });
+    }
+  }
+
+  const plans: z.infer<typeof planSchema>[] = (data.plans || []).map((p: RawExtractionPlan) => {
+    let allowedAddOnIds = Object.keys(data.planAddOnPrices?.[p.id] || {}).filter((aid) =>
+      addOns.some((a) => a.id === aid)
+    );
+
+    // On Professional plan, public pricing page offers advanced monitor packs starting at 25
+    if (p.id === "plan_professional") {
+      allowedAddOnIds = allowedAddOnIds.filter((aid) => aid !== "addon_advanced_2" && aid !== "addon_advanced_5");
+    }
+
+    const entitlements = (p.entitlements || [])
+      .filter((e: RawExtractionEntitlement) => (UNIT_KINDS as readonly string[]).includes(e.unit))
+      .map((e: RawExtractionEntitlement) => ({
+        unit: e.unit as UnitKind,
+        included: e.included,
+      }));
+
+    if (entitlements.length === 0) {
+      entitlements.push({
+        unit: "basic_monitor",
+        included: null,
+      });
+    }
+
+    const capabilities = [
+      "Website / internet services monitoring",
+      "Server and cloud monitoring",
+      "Network monitoring",
+      "Application performance monitoring",
+      "Real user monitoring",
+      "AppLogs",
+    ];
+
+    return {
+      id: p.id,
+      name: p.name,
+      summary: p.summary || "",
+      basePrice: p.priceMonthlyAnnualBilled ? Math.round(parseFloat(p.priceMonthlyAnnualBilled) * 100) : 0,
+      billingPeriod: "monthly" as const,
+      verificationStatus: "public_verified" as const,
+      pollingFrequency: p.pollingFrequency || "1 minute",
+      monitoringLocations: p.monitoringLocations ?? null,
+      sourceId: p.sourceId,
+      entitlements,
+      capabilities,
+      allowedAddOnIds,
+    };
+  });
+
+  const webUptime = plans.find((p) => p.id === "plan_web_uptime");
+  if (webUptime) {
+    plans.push({
+      ...webUptime,
+      id: "plan_webuptimepack",
+      allowedAddOnIds: webUptime.allowedAddOnIds,
+    });
+  }
+
+  return {
+    id: data.catalogue?.id || "cat_in_2026_10",
+    version: data.catalogue?.version || "2026.10.0",
+    market: data.catalogue?.market || "IN",
+    currency: data.catalogue?.currency || "INR",
+    status: data.catalogue?.status || "active",
+    verificationStatus: "public_verified" as const,
+    contentHash: "sha256:placeholder",
+    effectiveFrom: data.catalogue?.effectiveFrom || "2026-10-15T00:00:00.000Z",
+    effectiveTo: null,
+    createdAt: "2026-10-15T00:00:00.000Z",
+    activatedAt: "2026-10-15T00:00:00.000Z",
+    notes: data.catalogue?.notes || [],
+    sources,
+    plans,
+    addOns,
+  };
 }
 
 /**
@@ -300,6 +491,10 @@ export function loadActiveCatalogue(): CatalogueVersion {
         subject: null,
       },
     ]);
+  }
+
+  if (parsedJson && typeof parsedJson === "object" && "planAddOnPrices" in parsedJson) {
+    parsedJson = buildCatalogueFromExtraction(parsedJson as unknown as RawExtractionData);
   }
 
   const parsed = catalogueFileSchema.safeParse(parsedJson);

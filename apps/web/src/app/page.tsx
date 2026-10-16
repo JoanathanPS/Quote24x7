@@ -11,7 +11,6 @@ import {
   User,
   PaperPlaneTilt,
   ArrowDownLeft,
-  ArrowSquareOut,
   FilePdf,
   WarningOctagon,
   ClockCountdown,
@@ -398,20 +397,12 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
           {/* Action Links */}
           <div className="flex items-center gap-2 shrink-0">
             {thread.quoteId && (
-              <>
-                <Button variant="default" size="sm" asChild className="h-8 gap-1.5 text-xs shadow-xs">
-                  <Link href={`/proposals/${thread.quoteId}`}>
-                    <span>View Proposal</span>
-                    <ArrowSquareOut className="h-3.5 w-3.5" />
-                  </Link>
-                </Button>
-                <Button variant="outline" size="sm" asChild className="h-8 gap-1.5 text-xs" title="Download Official Vector PDF">
-                  <a href={`/api/v1/quotes/${thread.quoteId}/pdf`} download={`Quote24x7-Proposal-${thread.quoteId}.pdf`}>
-                    <FilePdf className="h-3.5 w-3.5 text-danger" />
-                    <span>PDF</span>
-                  </a>
-                </Button>
-              </>
+              <Button variant="default" size="sm" asChild className="h-8 gap-1.5 text-xs shadow-xs" title="Download Official Vector PDF">
+                <a href={`/api/v1/quotes/${thread.quoteId}/pdf`} download={`Quote24x7-Proposal-${thread.quoteId}.pdf`}>
+                  <FilePdf className="h-3.5 w-3.5" />
+                  <span>PDF Quote</span>
+                </a>
+              </Button>
             )}
             <Button variant="ghost" size="sm" asChild className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground">
               <Link href={`/threads/${thread.id}`} title="Inspect Operator Diagnostics">
