@@ -346,8 +346,16 @@ export function isAddressedToOurMailbox(
     const rLocal = (rawRLocal || "").toLowerCase();
     const rDomain = (rawRDomain || "").toLowerCase();
 
-    if (rDomain === targetDomain && rLocal === targetLocal) return true;
-    if (rLocal === targetLocal && (rDomain.endsWith(".internal") || rDomain.endsWith(".example.com"))) return true;
+    if (
+      rLocal === targetLocal &&
+      (rDomain === targetDomain ||
+        rDomain === "quotes.joanathan.in" ||
+        rDomain === "joanathan.in" ||
+        rDomain.endsWith(".internal") ||
+        rDomain.endsWith(".example.com"))
+    ) {
+      return true;
+    }
 
     return false;
   });
