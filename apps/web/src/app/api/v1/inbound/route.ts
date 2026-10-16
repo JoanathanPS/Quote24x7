@@ -7,6 +7,7 @@ import {
 import { verifyWebhookSignature, fetchInboundEmailContent } from "@/server/email/resend-inbound";
 import { getAppConfig } from "@/server/config";
 import { store } from "@/server/store/session-store";
+import { handleDeliveryTrackingEvent } from "@/server/email/delivery-tracker";
 
 /**
  * Inbound Email Webhook & Multi-Format Ingestion API.
@@ -119,6 +120,12 @@ export async function POST(request: NextRequest) {
       }
 
       const eventData = (body.data && typeof body.data === "object") ? (body.data as Record<string, unknown>) : body;
+      const eventType = typeof body.type === "string" ? body.type : "";
+
+      // If delivery event (e.g. email.delivered, email.bounced, email.sent), process via delivery tracker
+      if (eventType && eventType !== "email.received" && eventType.startsWith("email.")) {
+        return handleDeliveryTrackingEvent(eventType, body, eventData);
+      }
 
       // Early idempotency check for Resend email_id before fetching full email content
       if (typeof eventData.email_id === "string" && store.isMessageProcessed(eventData.email_id.trim())) {

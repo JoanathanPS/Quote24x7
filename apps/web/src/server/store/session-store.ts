@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   AiDecisionRecord,
   DeliveryRecord,
@@ -168,7 +169,7 @@ class SessionStore {
     const candidateBaselinePaths = [
       path.resolve(process.cwd(), "src", "server", "fixtures", "baseline-store.json"),
       path.resolve(process.cwd(), "apps", "web", "src", "server", "fixtures", "baseline-store.json"),
-      path.resolve(__dirname, "..", "fixtures", "baseline-store.json"),
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "baseline-store.json"),
     ];
 
     for (const bp of candidateBaselinePaths) {
