@@ -23,10 +23,8 @@ import {
   Calendar,
   Buildings,
   EnvelopeSimple,
-  Plus,
 } from "@phosphor-icons/react";
 
-import { InboundInquiryModal } from "@/components/inbox/inbound-inquiry-modal";
 import { MessageAttachmentsList } from "@/components/inbox/message-attachments";
 
 import {
@@ -88,7 +86,6 @@ export default function InboxPage() {
   const [search, setSearch] = React.useState("");
   const [activeFilter, setActiveFilter] = React.useState<HumanFilter>("all");
   const [selectedThreadId, setSelectedThreadId] = React.useState<string | null>(null);
-  const [inboundModalOpen, setInboundModalOpen] = React.useState(false);
 
   const {
     data: threads,
@@ -162,14 +159,6 @@ export default function InboxPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            onClick={() => setInboundModalOpen(true)}
-            className="h-8 gap-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Receive Inbound Inquiry
-          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -360,16 +349,6 @@ export default function InboxPage() {
           )}
         </div>
       </div>
-
-      {/* Interactive Modal to Receive Inbound Inquiries (Text, Word, PDF, Excel) */}
-      <InboundInquiryModal
-        open={inboundModalOpen}
-        onOpenChange={setInboundModalOpen}
-        onSuccess={(newThreadId) => {
-          void refetchThreads();
-          setSelectedThreadId(newThreadId);
-        }}
-      />
     </div>
   );
 }
