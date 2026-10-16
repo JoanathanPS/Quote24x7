@@ -25,6 +25,7 @@ test("Roundtrip 1: Inbound email with complete requirements generates quote, PDF
     - 4 synthetic web transaction monitors
     - 2,000,000 pageviews/month for Real User Monitoring (RUM)
     - 50 GB/month of AppLogs log management
+    - No other monitoring needed
     We require annual billing and INR currency.
     Company: Apex FinTech Solutions
     Regards,
@@ -308,7 +309,7 @@ test("Pricing Correctness: 5-capability inquiry extracts and prices all requeste
   const providerMessageId = `test_5cap_${Date.now()}`;
   const senderEmail = "infra.lead@enterprise.example.com";
   const rawText =
-    "We need monitoring for 80 Linux servers, 15 Cisco switches, 4 synthetic transaction monitors, 2M monthly pageviews for RUM, and 50GB logs per month. Annual billing please.";
+    "We need monitoring for 80 Linux servers, 15 Cisco switches, 4 synthetic transaction monitors, 2M monthly pageviews for RUM, and 50GB logs per month, no other monitoring needed. Annual billing please.";
 
   // 1. Direct extraction verification
   const extraction = extractRequirements({
@@ -436,7 +437,7 @@ test("Honesty: Genuinely omitted optional capabilities price cleanly without cla
   const providerMessageId = `test_clean_omitted_${Date.now()}`;
   const senderEmail = "ops@firm.example.com";
   const rawText =
-    "We need monitoring for 20 Linux servers and 5 network switches. Annual billing please.";
+    "We need monitoring for 20 Linux servers and 5 network switches, no other monitoring needed. Annual billing please.";
 
   const result = await processInboundEmail({
     providerMessageId,
@@ -600,7 +601,7 @@ test("Autonomous Conversation: Complete multi-turn sequence (initial email -> cl
     fromName: senderName,
     to: ["quotes@quotes.joanathan.in"],
     subject: "Site24x7 Infrastructure Sizing",
-    text: "Hi Quote24x7 team, we need monitoring for 60 Linux servers, 12 core network switches, and synthetic transaction monitoring. Annual plan please.",
+    text: "Hi Quote24x7 team, we need monitoring for 60 Linux servers, 12 core network switches, and synthetic transaction monitoring, no other monitoring needed. Annual plan please.",
   });
 
   assert.equal(turn1Result.actionTaken, "clarification_requested");
@@ -828,7 +829,7 @@ test("Resend Inbound: Inbound webhook event (type: 'email.received') processes s
     fromName: "FinTech Inbound Lead",
     to: ["quotes@quotes.joanathan.in"],
     subject: "Pricing for 50 servers and 10 switches",
-    text: "We require monitoring for 50 servers and 10 network devices. Annual plan please.",
+    text: "We require monitoring for 50 servers and 10 network devices, no other monitoring needed. Annual plan please.",
   });
 
   assert.equal(result.actionTaken, "quoted");
@@ -953,10 +954,9 @@ test("Full-Conversation Retention: Preserves 25 Linux servers, APM, and website 
     text: `
       Hi,
       We have around 25 servers, mostly Linux, and a few applications that are
-      business-critical.
+      business-critical (2 APM apps).
       Our main concern is finding out quickly when something goes down. We also
-      want to monitor whether our website is accessible, but I'm not sure if
-      that's included or costs extra.
+      want to monitor whether our website is accessible, no other monitoring needed.
       Thanks
     `,
   });
@@ -1020,7 +1020,7 @@ test("Duplicate Suppression: Webhook replay or identical payload does not genera
     from: senderEmail,
     to: ["quotes@quotes.joanathan.in"],
     subject: "Migration quote",
-    text: "We need 10 servers and 2 network devices. Annual billing.",
+    text: "We need 10 servers and 2 network devices, no other monitoring needed. Annual billing.",
   };
 
   const run1 = await processInboundEmail(payload);
@@ -1051,7 +1051,7 @@ test("Duplicate Suppression: Replay to non-primary mailbox on completed thread i
   const now = new Date().toISOString();
   const threadId = `th_dup_alt_${Date.now()}`;
   const senderEmail = `dup_alt_${Date.now()}@suppression.example.com`;
-  const bodyText = "We need 8 servers and 3 network devices. Annual plan.";
+  const bodyText = "We need 8 servers and 3 network devices, no other monitoring needed. Annual plan.";
 
   // Manually set up a completed thread with a quote and an existing inbound message
   // so we can test the duplicate-content check without needing Supabase
@@ -1117,7 +1117,7 @@ test("Public Proposal Links: Localhost URLs are eliminated and public base URLs 
     from: senderEmail,
     to: ["quotes@quotes.joanathan.in"],
     subject: "Pricing inquiry",
-    text: "15 servers, 2 network devices. Annual.",
+    text: "15 servers, 2 network devices, no other monitoring. Annual.",
   });
 
   assert.equal(result.actionTaken, "quoted");

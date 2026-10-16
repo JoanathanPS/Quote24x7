@@ -529,6 +529,9 @@ function buildAiDecision(
       : [],
     answeredQuestions: resolveAnsweredQuestions(input.existingProfile, knownFieldKeys),
     clarificationRound: action === "ask_follow_up" ? roundsSpent + 1 : roundsSpent,
+    intakeRequirements: rulesResult.intakeRequirements,
+    optionalParameters: rulesResult.optionalParameters,
+    triageCategory: rulesResult.triageCategory,
   };
 
   const validation: AiValidationOutcome = {
@@ -578,6 +581,10 @@ function buildAiDecision(
       billingPeriod: rulesResult.billingPeriod,
       currency: rulesResult.currency,
       conversationalResponse: output.conversationalResponse || null,
+      triageCategory: rulesResult.triageCategory,
+      isSubstantive: rulesResult.isSubstantive,
+      intakeRequirements: rulesResult.intakeRequirements,
+      optionalParameters: rulesResult.optionalParameters,
     },
   };
 }

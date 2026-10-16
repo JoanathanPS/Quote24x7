@@ -75,7 +75,7 @@ test("Acceptance Test 1: 25 servers -> Lite ₹87,210/yr, Professional ₹99,180
     senderEmail: "buyer@example.com",
     senderName: "Buyer",
     subject: "Quotation request",
-    bodyText: "Hi, please give me a quotation for 25 servers.",
+    bodyText: "Hi, please give me a quotation for 25 servers only.",
   });
   assert.equal(extracted.demand.host_monitor, 25);
   assert.equal(extracted.isComplete, true);

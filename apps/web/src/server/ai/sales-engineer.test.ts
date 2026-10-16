@@ -107,8 +107,8 @@ function engineerInput(overrides: Partial<Parameters<typeof decideNextAction>[0]
   const thread = baseThread(`th_ai_${Date.now()}_${Math.random().toString(16).slice(2, 7)}`);
   return {
     thread,
-    latestMessageText: "We run around 25 Linux servers and worry about website downtime.",
-    cumulativeText: "We run around 25 Linux servers and worry about website downtime.",
+    latestMessageText: "We run around 25 Linux servers and worry about website downtime, no other monitoring needed.",
+    cumulativeText: "We run around 25 Linux servers and worry about website downtime, no other monitoring needed.",
     priorMessages: [],
     existingProfile: undefined,
     catalogue: loadActiveCatalogue(),
@@ -879,7 +879,7 @@ test("Pipeline: a provider outage still yields a quote via the rules fallback", 
       fromName: "Devika",
       to: ["quotes@quote24x7.internal"],
       subject: "Site24x7 quote",
-      text: "We need monitoring for 80 servers, 15 network switches and 4 synthetic monitors. Annual billing in INR.",
+      text: "We need monitoring for 80 servers, 15 network switches and 4 synthetic monitors, no other monitoring needed. Annual billing in INR.",
     },
     provider,
   );
@@ -898,7 +898,7 @@ test("Pipeline: a provider outage still yields a quote via the rules fallback", 
 
 test("Pipeline: pricing is identical whether Gemini or the rules engine supplied the demand", async () => {
   const body =
-    "We need monitoring for 80 servers, 15 network switches and 4 synthetic monitors. Annual billing in INR.";
+    "We need monitoring for 80 servers, 15 network switches and 4 synthetic monitors, no other monitoring needed. Annual billing in INR.";
 
   const viaRules = await processInboundEmail(
     {

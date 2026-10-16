@@ -6,7 +6,7 @@ import { store } from "../store/session-store.ts";
 import { getAppConfig } from "../config.ts";
 import { validateOutboundPolicy } from "./resend-outbound.ts";
 
-test("Acceptance Test 1: 'we have 25 servers' -> NEEDS_INFO, one email with the 7,980 / 8,740 estimate and one question, no PDF", async () => {
+test("Acceptance Test 1: 'we have 25 servers' -> NEEDS_INFO, clarification inquiry with no quote, no PDF, no price mentioned", async () => {
   const providerMessageId = `msg_25servers_${Date.now()}`;
   const senderEmail = `buyer_${Date.now()}@infra-testing.example.com`;
   const senderName = "Priya";
@@ -27,26 +27,10 @@ test("Acceptance Test 1: 'we have 25 servers' -> NEEDS_INFO, one email with the 
   assert.equal(result.duplicate, false);
 
   // 2. No PDF generated or attached
-  assert.equal(result.pdfGenerated, false);
+  assert.ok(!result.pdfGenerated, "No PDF generated");
 
-  // 3. One email with the 7,980 / 8,740 estimate and one question
-  assert.ok(result.quote, "Estimate quote must be created");
-  assert.equal(result.quote.status, "estimate");
-
-  const liteOpt = result.quote.options.find(
-    (o) => o.planId === "lite" || o.planName.toLowerCase().includes("lite")
-  );
-  const proOpt = result.quote.options.find(
-    (o) => o.planId === "pro" || o.planName.toLowerCase().includes("professional")
-  );
-
-  assert.ok(liteOpt, "Lite option must be present in quote options");
-  assert.ok(proOpt, "Professional option must be present in quote options");
-
-  // Lite: 87,210 INR/yr (8,721,000 paise)
-  assert.equal(liteOpt.total, 8721000, "Lite for 25 servers must be 87,210 INR/yr");
-  // Professional: 99,180 INR/yr (9,918,000 paise)
-  assert.equal(proOpt.total, 9918000, "Professional for 25 servers must be 99,180 INR/yr");
+  // 3. No quote or estimate generated (never quote with a material gap)
+  assert.equal(result.quote, undefined, "No quote must be generated while requirements have gaps");
 
   // Verify outbound message
   const messages = store.getMessages(result.threadId);
@@ -57,20 +41,18 @@ test("Acceptance Test 1: 'we have 25 servers' -> NEEDS_INFO, one email with the 
   assert.ok(outbound, "Outbound message must be recorded");
   assert.equal(outbound.attachments.length, 0, "No PDF attachment should be present");
 
-  // Verify email body contains both estimates
-  assert.ok(
-    outbound.bodyText.includes("87,210") || outbound.bodyText.includes("87210"),
-    "Email body must include 87,210 estimate",
-  );
-  assert.ok(
-    outbound.bodyText.includes("99,180") || outbound.bodyText.includes("99180"),
-    "Email body must include 99,180 estimate",
+  // Verify email body contains NO prices, no totals, no ranges
+  assert.equal(
+    /\b(?:87,?210|99,?180|₹|INR)\b/i.test(outbound.bodyText),
+    false,
+    "Email body must never mention prices or estimates in clarification inquiry",
   );
 
-  // Verify exactly one question asking about unmentioned categories
+  // Verify clarification questions are numbered (at most 3)
   assert.match(
     outbound.bodyText,
-    /Do you also require monitoring for websites, applications, or network devices\?/i
+    /1\.\s+Do you have network devices/i,
+    "Must ask numbered question about remaining units",
   );
 });
 
@@ -115,7 +97,7 @@ test("Acceptance Test 3: The same Message-ID twice -> one thread and one outboun
     fromName: "DevOps Lead",
     to: ["quotes@quotes.joanathan.in"],
     subject: "Need monitoring for 30 servers and 5 network devices",
-    text: "We need 30 servers and 5 network devices. Annual plan.",
+    text: "We need 30 servers and 5 network devices only, no other monitoring needed. Annual plan.",
   };
 
   // First delivery: processes normally
@@ -144,18 +126,18 @@ test("Acceptance Test 4: A changed quantity -> quote v2 supersedes v1", async ()
   const senderEmail = `client_${Date.now()}@supersede-test.example.com`;
   const senderName = "Vikram";
 
-  // Turn 1: 25 servers (produces estimate quote v1)
+  // Turn 1: 25 servers with no other needs (produces validated quote v1)
   const turn1 = await processInboundEmail({
     providerMessageId: `turn1_${Date.now()}`,
     messageId: `<turn1_${Date.now()}@supersede-test.example.com>`,
     from: senderEmail,
     fromName: senderName,
     to: ["quotes@quotes.joanathan.in"],
-    subject: "Site24x7 Pricing Estimate",
-    text: "we have 25 servers",
+    subject: "Site24x7 Pricing Request",
+    text: "we have 25 servers, just servers no websites or other monitoring",
   });
 
-  assert.equal(turn1.status, "NEEDS_INFO");
+  assert.equal(turn1.status, "QUOTED");
   assert.ok(turn1.quote);
   const quoteV1Id = turn1.quote.id;
   const threadId = turn1.threadId;
@@ -163,17 +145,17 @@ test("Acceptance Test 4: A changed quantity -> quote v2 supersedes v1", async ()
   // Verify quote v1 in store
   const quoteV1Before = store.getQuote(quoteV1Id);
   assert.ok(quoteV1Before);
-  assert.equal(quoteV1Before.status, "estimate");
+  assert.equal(quoteV1Before.status, "validated");
 
-  // Turn 2: Customer replies with changed quantity (30 servers) and rules out other monitoring
+  // Turn 2: Customer replies with changed quantity (30 servers)
   const turn2 = await processInboundEmail({
     providerMessageId: `turn2_${Date.now()}`,
     messageId: `<turn2_${Date.now()}@supersede-test.example.com>`,
     from: senderEmail,
     fromName: senderName,
     to: ["quotes@quotes.joanathan.in"],
-    subject: `Re: Site24x7 Pricing Estimate [Ref: #${threadId}]`,
-    text: "We only need servers, no websites or apps. We actually have 30 servers now.",
+    subject: `Re: Site24x7 Pricing Request [Ref: #${threadId}]`,
+    text: "We actually have 30 servers now. Still just servers.",
     headers: {
       "in-reply-to": `<turn1_${Date.now()}@supersede-test.example.com>`,
     },

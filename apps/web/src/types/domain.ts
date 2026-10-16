@@ -231,6 +231,36 @@ export interface MessageAttachment {
 
 export type FieldState = "provided" | "inferred" | "missing" | "conflicting";
 
+export type IntakeUnit =
+  | "host_monitor"
+  | "basic_monitor"
+  | "advanced_monitor"
+  | "network_component"
+  | "rum_pageview"
+  | "applog_gb";
+
+export type IntakeUnitState = "stated" | "none" | "unknown";
+
+export interface IntakeRequirement {
+  unit: IntakeUnit;
+  state: IntakeUnitState;
+  quantity: number | null;
+  evidence: string | null;
+}
+
+export type EmailTriageCategory =
+  | "actionable_rfq"
+  | "vague_inquiry"
+  | "non_substantive"
+  | "unsupported";
+
+export interface OptionalRequirementParameters {
+  usersOver10?: boolean | null;
+  logRetentionOver30Days?: boolean | null;
+  statusPages?: boolean | null;
+  anomalyDetection?: boolean | null;
+}
+
 export interface RequirementField {
   key: string;
   label: string;
@@ -239,6 +269,7 @@ export interface RequirementField {
   value: number | string | null;
   unit: string | null;
   state: FieldState;
+  intakeState?: IntakeUnitState;
   /** 0–1. Only meaningful for `provided` and `inferred`. */
   confidence: number | null;
   /** Verbatim span from the buyer's email supporting the value. */
@@ -267,6 +298,9 @@ export interface RequirementProfile {
   answeredQuestions: ClarificationQuestion[];
   /** Rounds already spent, against the configured limit. */
   clarificationRound: number;
+  intakeRequirements?: Record<IntakeUnit, IntakeRequirement>;
+  optionalParameters?: OptionalRequirementParameters;
+  triageCategory?: EmailTriageCategory;
 }
 
 export interface ClarificationQuestion {

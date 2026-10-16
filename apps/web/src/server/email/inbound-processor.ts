@@ -17,9 +17,16 @@ import {
   sendQuoteEmail,
   sendClarificationEmail,
   sendUnpriceableNotificationEmail,
+  sendNonSubstantiveReplyEmail,
+  sendFinalYieldEmail,
   type OutboundDispatchResult,
 } from "./resend-outbound.ts";
-import { formatMoney } from "../pricing/money.ts";
+import {
+  triageInboundEmail,
+  buildClarificationQuestions,
+  INTAKE_UNITS,
+  UNIT_TO_FIELD_KEY,
+} from "../extraction/extractor.ts";
 
 export interface InboundEmailPayload {
   providerMessageId: string;
@@ -634,8 +641,21 @@ async function doProcessInboundEmail(
       quoteTotal: null,
       currency: "INR",
       statusDetail: null,
+      state: "idle",
+      roundsUsed: 0,
+      nonproductiveStreak: 0,
+      inboundCount: 1,
+      lastInboundAt: now,
+      subjectCanonical: cleanSubject(payload.subject),
     };
     store.saveThread(thread);
+  } else {
+    thread.inboundCount = (thread.inboundCount ?? 0) + 1;
+    thread.lastInboundAt = now;
+    store.updateThread(thread.id, {
+      inboundCount: thread.inboundCount,
+      lastInboundAt: thread.lastInboundAt,
+    });
   }
 
   // 4. Record Inbound Message
@@ -664,8 +684,59 @@ async function doProcessInboundEmail(
     status: "extracting",
   });
 
-  // 5. AI Sales Engineer (Gemini first, deterministic rules engine as fallback)
+  // 5. Inbound Triage (Phase 6)
   const cleanReplyText = stripQuotedEmail(payload.text);
+  const triage = triageInboundEmail(payload.subject, cleanReplyText, payload.from);
+
+  // 5a. Unsupported Inbound
+  if (triage === "unsupported") {
+    const detail =
+      "Inquiry type unsupported for automated quoting (reseller request, RFP attachment, non-India market, or custom feature request). Parked for human review.";
+    thread.state = "needs_review";
+    thread.status = "unsupported";
+    store.updateThread(thread.id, {
+      state: "needs_review",
+      status: "unsupported",
+      statusDetail: detail,
+    });
+
+    const reviewResult = await sendUnpriceableNotificationEmail({
+      thread,
+      rejectionReasons: [detail, "A sales engineer will review your inquiry and follow up directly."],
+      recipientEmail: payload.from,
+      recipientName: payload.fromName,
+    });
+
+    return {
+      threadId: thread.id,
+      duplicate: false,
+      actionTaken: "unsupported",
+      status: "UNSUPPORTED",
+      outboundResult: reviewResult,
+      message: detail,
+    };
+  }
+
+  // 5b. Non-Substantive Inbound ("hi", "thanks", "ok", etc.)
+  if (triage === "non_substantive") {
+    // Reply with short polite message. DO NOT consume a clarification round, DO NOT increment nonproductive streak.
+    const replyResult = await sendNonSubstantiveReplyEmail({
+      thread,
+      recipientEmail: payload.from,
+      recipientName: payload.fromName,
+    });
+
+    return {
+      threadId: thread.id,
+      duplicate: false,
+      actionTaken: "clarification_requested",
+      status: "NEEDS_INFO",
+      outboundResult: replyResult,
+      message: "Non-substantive acknowledgment dispatched without consuming a clarification round.",
+    };
+  }
+
+  // 5c. Actionable RFQ or Vague Inquiry
   const existingProfile = store.getProfile(thread.id);
   const catalogue = await loadActiveCatalogue();
 
@@ -673,8 +744,6 @@ async function doProcessInboundEmail(
     .getMessages(thread.id)
     .filter((m) => m.id !== inboundMessage.id);
 
-  // The rules engine works from cumulative inbound text so a regex pass never
-  // loses an earlier turn. Gemini receives the structured history instead.
   const previousInboundTexts = priorMessages
     .filter((m) => m.direction === "inbound")
     .map((m) => stripQuotedEmail(m.bodyText))
@@ -717,7 +786,82 @@ async function doProcessInboundEmail(
     store.updateThread(thread.id, { organisation: extraction.organization });
   }
 
-  // 6. Branch on the validated decision
+  // Update nonproductive streak based on whether reply is substantive
+  if (extraction.isSubstantive) {
+    thread.nonproductiveStreak = 0;
+  } else {
+    thread.nonproductiveStreak = (thread.nonproductiveStreak ?? 0) + 1;
+  }
+
+  // Yield check 1: 2 consecutive non-productive buyer replies -> park thread as needs_review and send final email
+  if ((thread.nonproductiveStreak ?? 0) >= 2) {
+    thread.state = "needs_review";
+    thread.status = "unsupported";
+    const detail =
+      "Parked for human review after 2 consecutive non-productive replies without required sizing parameters.";
+    store.updateThread(thread.id, {
+      state: "needs_review",
+      status: "unsupported",
+      statusDetail: detail,
+      nonproductiveStreak: thread.nonproductiveStreak,
+    });
+
+    const unknownUnits = INTAKE_UNITS.filter((u) => extraction.intakeRequirements[u]?.state === "unknown");
+    const missingDescriptions = unknownUnits.map((u) => UNIT_TO_FIELD_KEY[u]);
+
+    const finalResult = await sendFinalYieldEmail({
+      thread,
+      missingUnits: missingDescriptions,
+      recipientEmail: payload.from,
+      recipientName: payload.fromName,
+    });
+
+    return {
+      threadId: thread.id,
+      duplicate: false,
+      actionTaken: "unsupported",
+      status: "UNSUPPORTED",
+      outboundResult: finalResult,
+      message: detail,
+      ...decisionMeta,
+    };
+  }
+
+  // Yield check 2: 3 clarification rounds exhausted and requirements still incomplete -> park thread as needs_review
+  if ((thread.roundsUsed ?? 0) >= 3 && !extraction.isComplete) {
+    thread.state = "needs_review";
+    thread.status = "unsupported";
+    const detail =
+      "Parked for human review: maximum clarification allowance (3 rounds) reached with requirements incomplete.";
+    store.updateThread(thread.id, {
+      state: "needs_review",
+      status: "unsupported",
+      statusDetail: detail,
+      roundsUsed: thread.roundsUsed,
+    });
+
+    const unknownUnits = INTAKE_UNITS.filter((u) => extraction.intakeRequirements[u]?.state === "unknown");
+    const missingDescriptions = unknownUnits.map((u) => UNIT_TO_FIELD_KEY[u]);
+
+    const finalResult = await sendFinalYieldEmail({
+      thread,
+      missingUnits: missingDescriptions,
+      recipientEmail: payload.from,
+      recipientName: payload.fromName,
+    });
+
+    return {
+      threadId: thread.id,
+      duplicate: false,
+      actionTaken: "unsupported",
+      status: "UNSUPPORTED",
+      outboundResult: finalResult,
+      message: detail,
+      ...decisionMeta,
+    };
+  }
+
+  // Check if AI or validation flagged human_review
   if (decision.action === "human_review") {
     const reasons =
       decision.record.humanReviewReasons.length > 0
@@ -725,7 +869,13 @@ async function doProcessInboundEmail(
         : ["This request needs a sales engineer to review it before a quotation can be issued."];
 
     const detail = `Escalated for human review by ${decision.record.source}: ${reasons[0]}`;
-    store.updateThread(thread.id, { status: "unsupported", statusDetail: detail });
+    thread.state = "needs_review";
+    thread.status = "unsupported";
+    store.updateThread(thread.id, {
+      state: "needs_review",
+      status: "unsupported",
+      statusDetail: detail,
+    });
 
     const reviewResult = await sendUnpriceableNotificationEmail({
       thread,
@@ -738,23 +888,38 @@ async function doProcessInboundEmail(
       threadId: thread.id,
       duplicate: false,
       actionTaken: "unsupported",
+      status: "UNSUPPORTED",
       outboundResult: reviewResult,
       message: detail,
       ...decisionMeta,
     };
   }
 
-  if (decision.action === "ask_follow_up" && extraction.suggestedQuestion) {
+  // 6. If requirements are NOT sufficient: consume a round, ask follow-up questions (NO prices, at most 3 numbered questions)
+  if (!extraction.isComplete) {
+    thread.roundsUsed = (thread.roundsUsed ?? 0) + 1;
+    thread.state = "clarifying";
+    thread.status = "awaiting_reply";
+
+    const unknownUnits = INTAKE_UNITS.filter((u) => extraction.intakeRequirements[u]?.state === "unknown");
+    const missingSuffix =
+      extraction.missingMaterialFields.length > 0
+        ? ` on: ${extraction.missingMaterialFields.join(", ")}`
+        : "";
     store.updateThread(thread.id, {
+      state: "clarifying",
       status: "awaiting_reply",
-      statusDetail:
-        `Awaiting clarification (round ${extraction.profile.clarificationRound}, decided by ${decision.record.source})` +
-        `${extraction.missingMaterialFields.length > 0 ? ` on: ${extraction.missingMaterialFields.join(", ")}` : ""}`,
+      roundsUsed: thread.roundsUsed,
+      nonproductiveStreak: thread.nonproductiveStreak,
+      statusDetail: `Awaiting clarification (round ${thread.roundsUsed} of 3, decided by ${decision.record.source})${missingSuffix}`,
     });
+
+    const questionText =
+      extraction.suggestedQuestion?.question || buildClarificationQuestions(unknownUnits).join("\n");
 
     const clarificationResult = await sendClarificationEmail({
       thread,
-      questionText: extraction.suggestedQuestion.question,
+      questionText,
       recipientEmail: payload.from,
       recipientName: payload.fromName,
       conversationalResponse: extraction.conversationalResponse,
@@ -764,88 +929,11 @@ async function doProcessInboundEmail(
       threadId: thread.id,
       duplicate: false,
       actionTaken: "clarification_requested",
+      status: "NEEDS_INFO",
       outboundResult: clarificationResult,
-      message: `Clarification dispatched by ${decision.record.source}${
-        extraction.missingMaterialFields.length > 0
-          ? ` for: ${extraction.missingMaterialFields.join(", ")}`
-          : ""
-      }.`,
+      message: `Clarification dispatched by ${decision.record.source} for unknown parameters.`,
       ...decisionMeta,
     };
-  }
-
-  // 7. Check for unmentioned monitoring categories
-  const priorInboundCount = priorMessages.filter((m) => m.direction === "inbound").length;
-  const categoryCheck = checkUnmentionedCategories(
-    extraction.demand,
-    cumulativeText,
-    priorInboundCount
-  );
-
-  if (categoryCheck.unmentioned) {
-    const quoteId = `qt_${Date.now()}`;
-    const { quote } = buildQuote({
-      quoteId,
-      threadId: thread.id,
-      profile: extraction.profile,
-      demand: extraction.demand,
-      catalogue,
-      createdAt: now,
-      status: "estimate",
-    });
-
-    if (quote.options.length > 0 && quote.integrityChecks.every((c) => c.passed)) {
-      // One active quote per thread. New quotes supersede old ones.
-      const priorQuotes = store.getQuotesByThreadId(thread.id);
-      for (const pq of priorQuotes) {
-        if (pq.id !== quote.id) {
-          store.updateQuote(pq.id, { status: "superseded" });
-        }
-      }
-      store.saveQuote(quote);
-
-      const liteOpt = quote.options.find(
-        (o) => o.planId === "lite" || o.planName.toLowerCase().includes("lite")
-      );
-      const proOpt = quote.options.find(
-        (o) => o.planId === "pro" || o.planName.toLowerCase().includes("professional")
-      );
-
-      const clarificationResult = await sendClarificationEmail({
-        thread,
-        questionText: categoryCheck.singleQuestion,
-        recipientEmail: payload.from,
-        recipientName: payload.fromName,
-        conversationalResponse: extraction.conversationalResponse,
-        estimate: {
-          liteTotal: liteOpt ? liteOpt.total : (quote.options[0]?.total ?? 0),
-          proTotal: proOpt ? proOpt.total : (quote.options[0]?.total ?? 0),
-          currency: quote.currency,
-          billingPeriod: "month",
-          statedWorkload: formatStatedWorkload(extraction.demand),
-        },
-      });
-
-      store.updateThread(thread.id, {
-        status: "awaiting_reply",
-        statusDetail: `Estimate provided for ${formatStatedWorkload(extraction.demand)} (${formatMoney(liteOpt?.total ?? 0, quote.currency)} Lite / ${formatMoney(proOpt?.total ?? 0, quote.currency)} Pro); awaiting confirmation on other categories.`,
-        quoteId: quote.id,
-        quoteTotal: liteOpt ? liteOpt.total : (quote.options[0]?.total ?? null),
-        currency: quote.currency,
-      });
-
-      return {
-        threadId: thread.id,
-        duplicate: false,
-        actionTaken: "clarification_requested",
-        status: "NEEDS_INFO",
-        quote,
-        pdfGenerated: false,
-        outboundResult: clarificationResult,
-        message: `Estimate sent (${formatMoney(liteOpt?.total ?? 0, quote.currency)} Lite / ${formatMoney(proOpt?.total ?? 0, quote.currency)} Pro). Single question asked for unmentioned categories; no PDF generated.`,
-        ...decisionMeta,
-      };
-    }
   }
 
   // 8. Deterministic Pricing Execution
@@ -952,6 +1040,7 @@ async function doProcessInboundEmail(
     quote.options.find((o) => o.optionType === "best_value") ?? quote.options[0];
 
   store.updateThread(thread.id, {
+    state: "quoted",
     status: dispatchResult.success ? "completed" : "failed",
     statusDetail: dispatchResult.success
       ? `Proposal sent to ${dispatchResult.dispatchedTo} (Resend ID: ${dispatchResult.providerMessageId})`
