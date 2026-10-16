@@ -178,6 +178,12 @@ export interface EmailThread {
   currency: CurrencyCode | null;
   /** Operator-safe explanation for failed / unsupported threads. */
   statusDetail: string | null;
+  state?: string;
+  roundsUsed?: number;
+  nonproductiveStreak?: number;
+  inboundCount?: number;
+  lastInboundAt?: IsoDateTime | null;
+  subjectCanonical?: string | null;
 }
 
 export type MessageDirection = "inbound" | "outbound";
@@ -199,6 +205,9 @@ export interface EmailMessage {
   /** Set when ingress flagged the message, e.g. a prompt-injection attempt. */
   securityNotes: string[];
   attachments: MessageAttachment[];
+  messageIdHeader?: string | null;
+  inReplyTo?: string | null;
+  references?: string | null;
 }
 
 export interface MessageAttachment {
@@ -360,6 +369,8 @@ export interface Quote {
   documents: QuoteDocument[];
   /** Why fewer than three options exist, when that is the case. */
   optionCountNote: string | null;
+  version?: number;
+  supersededBy?: string | null;
 }
 
 export interface IntegrityCheck {
@@ -572,4 +583,21 @@ export interface AiDecisionRecord {
   catalogueVersion: string | null;
   /** Natural language response addressing customer general/product questions. */
   conversationalResponse?: string | null;
+  provider?: string | null;
+  decisionSource?: "ai" | "rules_fallback" | null;
+  fallbackReason?: string | null;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
 }
+
+export interface WebhookEventRecord {
+  id: string;
+  provider: string;
+  providerEventId: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+  status: "pending" | "processed" | "failed" | "ignored";
+  processedAt: IsoDateTime | null;
+  createdAt: IsoDateTime;
+}
+

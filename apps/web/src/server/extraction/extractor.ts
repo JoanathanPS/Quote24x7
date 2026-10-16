@@ -24,6 +24,7 @@ export interface ExtractionResult {
   organization: string | null;
   billingPeriod: BillingPeriod;
   currency: CurrencyCode;
+  conversationalResponse?: string | null;
 }
 
 /**

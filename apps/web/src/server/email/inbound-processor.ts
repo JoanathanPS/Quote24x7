@@ -759,6 +759,7 @@ async function doProcessInboundEmail(
       questionText: extraction.suggestedQuestion.question,
       recipientEmail: payload.from,
       recipientName: payload.fromName,
+      conversationalResponse: extraction.conversationalResponse,
     });
 
     return {
@@ -817,6 +818,7 @@ async function doProcessInboundEmail(
         questionText: categoryCheck.singleQuestion,
         recipientEmail: payload.from,
         recipientName: payload.fromName,
+        conversationalResponse: extraction.conversationalResponse,
         estimate: {
           liteTotal: liteOpt ? liteOpt.total : (quote.options[0]?.total ?? 0),
           proTotal: proOpt ? proOpt.total : (quote.options[0]?.total ?? 0),
@@ -944,6 +946,7 @@ async function doProcessInboundEmail(
     pdfBuffer,
     recipientEmail: payload.from,
     recipientName: payload.fromName,
+    conversationalResponse: extraction.conversationalResponse,
   });
 
   // 11. Finalize Thread Record

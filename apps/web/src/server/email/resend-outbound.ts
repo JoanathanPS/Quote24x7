@@ -29,6 +29,7 @@ export interface SendQuoteEmailInput {
   pdfBuffer: Buffer;
   recipientEmail: string;
   recipientName?: string | null;
+  conversationalResponse?: string | null;
 }
 
 export interface SendClarificationEmailInput {
@@ -36,6 +37,7 @@ export interface SendClarificationEmailInput {
   questionText: string;
   recipientEmail: string;
   recipientName?: string | null;
+  conversationalResponse?: string | null;
   estimate?: {
     liteTotal: number;
     proTotal: number;
@@ -212,7 +214,7 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
   // Plain Text Version (Humanized, clear, no internal jargon)
   const textContent = `
 Hi ${input.recipientName || "there"},
-
+${input.conversationalResponse ? `\n${input.conversationalResponse}\n` : ""}
 Thank you for reaching out about your Site24x7 monitoring setup. Based on your stated infrastructure requirements, we've tailored a custom configuration to fully cover your workload.
 
 RECOMMENDED CONFIGURATION (Best Value):
@@ -262,6 +264,14 @@ https://quotes.joanathan.in/
     </div>
 
     <p>Hi ${escapeHtml(input.recipientName || "there")},</p>
+    ${
+      input.conversationalResponse
+        ? `
+    <div style="background: #f8fafc; border-left: 4px solid #2563eb; border-radius: 6px; padding: 14px 18px; margin: 18px 0; font-size: 14px; color: #1e293b; line-height: 1.6;">
+      ${escapeHtml(input.conversationalResponse)}
+    </div>`
+        : ""
+    }
     <p>Thank you for reaching out about your Site24x7 monitoring setup. Based on your stated infrastructure requirements, we've designed a tailored configuration to cover your workload.</p>
 
     <div class="card highlight">
@@ -470,7 +480,7 @@ export async function sendClarificationEmail(
 
   const textContent = `
 Hi ${input.recipientName || "there"},
-
+${input.conversationalResponse ? `\n${input.conversationalResponse}\n` : ""}
 Thank you for reaching out regarding Site24x7 monitoring.
 ${estimateText}
 To ensure our pricing engine configures the best-value plan and accurately provisions any necessary add-on capacity for your infrastructure, could you please clarify:
@@ -517,6 +527,14 @@ https://quotes.joanathan.in/
     </div>
 
     <p>Hi ${escapeHtml(input.recipientName || "there")},</p>
+    ${
+      input.conversationalResponse
+        ? `
+    <div style="background: #f8fafc; border-left: 4px solid #2563eb; border-radius: 6px; padding: 14px 18px; margin: 18px 0; font-size: 14px; color: #1e293b; line-height: 1.6;">
+      ${escapeHtml(input.conversationalResponse)}
+    </div>`
+        : ""
+    }
     <p>Thank you for reaching out regarding Site24x7 monitoring. To configure the best-value plan and accurately provision any required add-on capacity for your infrastructure, could you clarify a few details?</p>
     ${
       input.estimate

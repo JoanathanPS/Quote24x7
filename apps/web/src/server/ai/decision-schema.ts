@@ -131,6 +131,14 @@ export const aiDecisionSchema = z.object({
     .array(z.string().max(300))
     .max(6)
     .describe("Why a human is needed. Empty unless action is human_review."),
+  conversationalResponse: z
+    .string()
+    .max(800)
+    .nullable()
+    .optional()
+    .describe(
+      "If the customer asked a general or product question (e.g. 'What is the use of your product?', 'What does Site24x7 do?'), provide a direct, friendly 1-3 sentence explanation here. Null or omitted if they did not ask any questions.",
+    ),
 });
 
 export type AiDecisionOutput = z.infer<typeof aiDecisionSchema>;

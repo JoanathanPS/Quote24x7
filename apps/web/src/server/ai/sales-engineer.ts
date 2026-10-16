@@ -22,13 +22,15 @@ import {
 import { buildSalesContext, deriveSupportedCategories } from "./context-builder.ts";
 import { QUANTITY_BOUNDS, type AiDecisionOutput } from "./decision-schema.ts";
 import { geminiProvider, type AiProvider } from "./gemini-provider.ts";
+import { groqProvider } from "./groq-provider.ts";
+import type { DecisionSource } from "@/types/domain";
 
 /**
  * The AI sales engineer.
  *
  * Three parties with strictly separated authority:
  *
- *   Gemini            decides what the customer needs and what to do next.
+ *   Gemini / Groq     decides what the customer needs and what to do next.
  *   This module        validates that decision against the catalogue and
  *                      corrects or escalates it when it does not hold up.
  *   The pricing engine owns every amount, untouched by either of the above.
@@ -115,11 +117,12 @@ export interface AiAvailability {
 export function getAiAvailability(): AiAvailability {
   const config = getAppConfig();
 
-  if (!config.geminiApiKey) {
+  if (!config.groqApiKey && !config.geminiApiKey) {
     return {
       available: false,
       category: "not_configured",
-      detail: "GEMINI_API_KEY is not configured; the rules-based engine decided this thread.",
+      detail:
+        "Neither GROQ_API_KEY nor GEMINI_API_KEY is configured (GEMINI_API_KEY is not configured); the rules-based engine decided this thread.",
     };
   }
   if (process.env.DISABLE_AI === "true") {
@@ -149,8 +152,7 @@ export function getAiAvailability(): AiAvailability {
  *
  * An explicitly supplied `provider` is itself the configuration decision and
  * is always used — that is how tests exercise the AI path without credentials.
- * When none is supplied, the live Gemini adapter is used only if the
- * environment genuinely permits it.
+ * When none is supplied, Groq is attempted first, followed by Gemini.
  */
 export async function decideNextAction(
   input: SalesEngineerInput,
@@ -178,20 +180,6 @@ export async function decideNextAction(
     return buildFallbackDecision(input, rulesResult, "empty_input", "Inbound message had no usable body text.");
   }
 
-  let activeProvider = provider;
-  if (!activeProvider) {
-    const availability = getAiAvailability();
-    if (!availability.available) {
-      return buildFallbackDecision(
-        input,
-        rulesResult,
-        availability.category ?? "not_configured",
-        availability.detail ?? "AI provider unavailable.",
-      );
-    }
-    activeProvider = geminiProvider;
-  }
-
   const context = buildSalesContext({
     thread: input.thread,
     latestMessageText: input.latestMessageText,
@@ -200,16 +188,84 @@ export async function decideNextAction(
     catalogue: input.catalogue,
   });
 
-  const result = await activeProvider.generateDecision({
-    systemInstruction: context.systemInstruction,
-    userPrompt: context.userPrompt,
-  });
+  if (provider) {
+    const result = await provider.generateDecision({
+      systemInstruction: context.systemInstruction,
+      userPrompt: context.userPrompt,
+    });
 
-  if (!result.ok) {
-    return buildFallbackDecision(input, rulesResult, result.category, result.detail, result.latencyMs);
+    if (!result.ok) {
+      return buildFallbackDecision(input, rulesResult, result.category, result.detail, result.latencyMs);
+    }
+
+    const source: DecisionSource = provider.name === "groq" ? "groq" : "gemini";
+    return buildAiDecision(input, rulesResult, result.decision, result.model, result.latencyMs, source);
   }
 
-  return buildAiDecision(input, rulesResult, result.decision, result.model, result.latencyMs);
+  const availability = getAiAvailability();
+  if (!availability.available) {
+    return buildFallbackDecision(
+      input,
+      rulesResult,
+      availability.category ?? "not_configured",
+      availability.detail ?? "AI provider unavailable.",
+    );
+  }
+
+  const config = getAppConfig();
+
+  // Primary: Groq (ultra-fast LPU inference, generous free tier limits)
+  if (config.groqApiKey) {
+    const groqResult = await groqProvider.generateDecision({
+      systemInstruction: context.systemInstruction,
+      userPrompt: context.userPrompt,
+    });
+
+    if (groqResult.ok) {
+      return buildAiDecision(
+        input,
+        rulesResult,
+        groqResult.decision,
+        groqResult.model,
+        groqResult.latencyMs,
+        "groq",
+      );
+    }
+
+    // If Groq fails and Gemini is not configured, fall back to rules
+    if (!config.geminiApiKey) {
+      return buildFallbackDecision(input, rulesResult, groqResult.category, groqResult.detail, groqResult.latencyMs);
+    }
+  }
+
+  // Secondary: Gemini
+  if (config.geminiApiKey) {
+    const geminiResult = await geminiProvider.generateDecision({
+      systemInstruction: context.systemInstruction,
+      userPrompt: context.userPrompt,
+    });
+
+    if (geminiResult.ok) {
+      return buildAiDecision(
+        input,
+        rulesResult,
+        geminiResult.decision,
+        geminiResult.model,
+        geminiResult.latencyMs,
+        "gemini",
+      );
+    }
+
+    return buildFallbackDecision(
+      input,
+      rulesResult,
+      geminiResult.category,
+      geminiResult.detail,
+      geminiResult.latencyMs,
+    );
+  }
+
+  return buildFallbackDecision(input, rulesResult, "not_configured", "No AI provider configured.");
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +278,7 @@ function buildAiDecision(
   output: AiDecisionOutput,
   model: string,
   latencyMs: number,
+  source: DecisionSource = "gemini",
 ): SalesDecision {
   const supportedCategories = deriveSupportedCategories(input.catalogue);
   const errors: string[] = [];
@@ -463,7 +520,7 @@ function buildAiDecision(
     version: (input.existingProfile?.version ?? 0) + 1,
     supersedesProfileId: input.existingProfile?.id ?? null,
     createdAt: new Date().toISOString(),
-    extractorModel: `gemini:${model}`,
+    extractorModel: `${source}:${model}`,
     extractorRunId: `ai_${Date.now()}`,
     fields,
     summary: output.customerSummary,
@@ -487,7 +544,7 @@ function buildAiDecision(
     threadId: input.thread.id,
     profileId: profile.id,
     createdAt: new Date().toISOString(),
-    source: "gemini",
+    source,
     model,
     action,
     originalAction: action === output.action ? null : output.action,
@@ -505,6 +562,7 @@ function buildAiDecision(
     failureDetail: null,
     latencyMs,
     catalogueVersion: input.catalogue.version,
+    conversationalResponse: output.conversationalResponse || null,
   };
 
   return {
@@ -519,6 +577,7 @@ function buildAiDecision(
       organization: rulesResult.organization,
       billingPeriod: rulesResult.billingPeriod,
       currency: rulesResult.currency,
+      conversationalResponse: output.conversationalResponse || null,
     },
   };
 }

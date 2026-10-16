@@ -23,15 +23,19 @@ export interface AppConfig {
   appBaseUrl: string;
   /** Whether the configured appBaseUrl is a genuinely public hostname (not localhost / loopback) */
   isPublicAppUrl: boolean;
+  /** Groq API key for the AI sales engineer. Server-side only. */
+  groqApiKey: string | null;
+  /** Configured Groq model identifier (e.g. "llama-3.3-70b-versatile") */
+  groqModel: string;
   /** Google Gemini API key for the AI sales engineer. Server-side only. */
   geminiApiKey: string | null;
   /** Configured Gemini model identifier (e.g. "gemini-3.8-flash") */
   geminiModel: string;
   /** Whether the AI sales engineer can be attempted. False forces the rules-based fallback. */
   isAiEnabled: boolean;
-  /** Hard timeout for a single Gemini request, in milliseconds */
+  /** Hard timeout for a single AI provider request, in milliseconds */
   aiTimeoutMs: number;
-  /** Maximum attempts (initial + retries) for transient Gemini failures */
+  /** Maximum attempts (initial + retries) for transient AI provider failures */
   aiMaxAttempts: number;
   /** Supabase Project URL */
   supabaseUrl: string | null;
@@ -40,6 +44,9 @@ export interface AppConfig {
   /** Whether Supabase is configured and ready for live persistence */
   isSupabaseConfigured: boolean;
 }
+
+/** Default Groq model used for fast, high-limit LPU inference */
+export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
 
 /** Default model used only when GEMINI_MODEL is absent. Never a silent substitution for a configured value. */
 export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
@@ -115,29 +122,25 @@ export function getAppConfig(): AppConfig {
     (rawAppBaseUrl.startsWith("http://") || rawAppBaseUrl.startsWith("https://"));
   const appBaseUrl = rawAppBaseUrl || "http://localhost:3000";
 
-  // AI provider. The key stays server-side: it is read from process.env only and
-  // is never placed in a NEXT_PUBLIC_* variable, an API response, or a log line.
+  // AI providers. Keys stay server-side: they are read from process.env only and
+  // are never placed in a NEXT_PUBLIC_* variable, an API response, or a log line.
+  const groqApiKey = process.env.GROQ_API_KEY?.trim() || null;
+  const groqModel = process.env.GROQ_MODEL?.trim() || DEFAULT_GROQ_MODEL;
   const geminiApiKey = process.env.GEMINI_API_KEY?.trim() || null;
   const geminiModel = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
-  // An explicit opt-out so the rules fallback can be exercised without removing the key.
+  // An explicit opt-out so the rules fallback can be exercised without removing keys.
   const aiDisabledByFlag = process.env.DISABLE_AI === "true";
   // Automated tests never reach the live provider unless explicitly allowed.
   const aiBlockedByTestRuntime = isTestRuntime() && process.env.ALLOW_AI_IN_TESTS !== "true";
-  const isAiEnabled = Boolean(geminiApiKey) && !aiDisabledByFlag && !aiBlockedByTestRuntime;
+  const isAiEnabled =
+    (Boolean(groqApiKey) || Boolean(geminiApiKey)) && !aiDisabledByFlag && !aiBlockedByTestRuntime;
   const aiTimeoutMs = Number.parseInt(process.env.AI_TIMEOUT_MS ?? "", 10) || 30_000;
   const aiMaxAttempts = Number.parseInt(process.env.AI_MAX_ATTEMPTS ?? "", 10) || 3;
 
   // Supabase PostgreSQL Database Integration
-  const supabaseUrl =
-    process.env.SUPABASE_URL?.trim() ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
-    null;
-  const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-    process.env.SUPABASE_SERVICE_KEY?.trim() ||
-    process.env.SUPABASE_ANON_KEY?.trim() ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
-    null;
+  // Strictly requires SUPABASE_SERVICE_ROLE_KEY. Anon key is forbidden for these tables.
+  const supabaseUrl = process.env.SUPABASE_URL?.trim() || null;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || null;
   const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
 
   return {
@@ -148,6 +151,8 @@ export function getAppConfig(): AppConfig {
     isLiveDispatchEnabled,
     appBaseUrl,
     isPublicAppUrl,
+    groqApiKey,
+    groqModel,
     geminiApiKey,
     geminiModel,
     isAiEnabled,

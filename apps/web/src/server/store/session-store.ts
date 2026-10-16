@@ -75,11 +75,8 @@ class SessionStore {
     );
   }
 
-  private getStoragePath(): string {
-    if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-      return path.join("/tmp", "session-store.json");
-    }
-    return path.resolve(process.cwd(), ".data", "session-store.json");
+  private persistToDisk(): void {
+    // No-op: JSON session store persistence removed. Supabase is the only persistent runtime store.
   }
 
   /** Merges a persisted snapshot into memory. Safe to call repeatedly with the same snapshot. */
@@ -122,55 +119,6 @@ class SessionStore {
     }
   }
 
-  private persistToDisk(): void {
-    if (this.isTestEnvironment()) return;
-    try {
-      const filePath = this.getStoragePath();
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      const allMessages: EmailMessage[] = [];
-      for (const list of this.messages.values()) {
-        allMessages.push(...list);
-      }
-      const allAiDecisions: AiDecisionRecord[] = [];
-      for (const list of this.aiDecisions.values()) {
-        allAiDecisions.push(...list);
-      }
-      const data: PersistedState = {
-        threads: Array.from(this.threads.values()),
-        messages: allMessages,
-        profiles: Array.from(this.profiles.entries()),
-        quotes: Array.from(this.quotes.entries()),
-        deliveries: Array.from(this.deliveries.values()),
-        processedMessageIds: Array.from(this.processedMessageIds),
-        aiDecisions: allAiDecisions,
-        outboundSendingPaused: this.outboundSendingPaused,
-      };
-      const tmpPath = `${filePath}.tmp`;
-      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf8");
-      fs.renameSync(tmpPath, filePath);
-
-      // Optional: Remote Cloud KV sync if configured (e.g. Vercel KV / Upstash Redis)
-      const kvUrl = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL)?.trim();
-      const kvToken = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN)?.trim();
-      if (kvUrl && kvToken) {
-        fetch(`${kvUrl}/set/quote24x7_state`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${kvToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(data),
-        }).catch((err) => {
-          console.warn("[session-store] Failed to sync state to Redis KV:", err);
-        });
-      }
-    } catch {
-      // Graceful fallback for read-only or restricted environments
-    }
-  }
 
   /**
    * Completely purges all threads, messages, profiles, quotes, deliveries,
@@ -207,29 +155,19 @@ class SessionStore {
     if (this.initialized) return;
     this.initialized = true;
 
-    if (this.isTestEnvironment()) return;
-
-    // 1. Try reading persisted data from active storage path (/tmp on Vercel or .data locally)
-    const filePath = this.getStoragePath();
-    if (fs.existsSync(filePath)) {
-      try {
-        const raw = fs.readFileSync(filePath, "utf8");
-        const parsed = JSON.parse(raw) as PersistedState;
-        if (Array.isArray(parsed.threads)) {
-          this.loadState(parsed);
-          return;
-        }
-      } catch {
-        // Fall back to baseline fixture
-      }
+    const config = getAppConfig();
+    if (process.env.NODE_ENV === "production" && !config.isSupabaseConfigured) {
+      throw new Error(
+        "In-memory store is not selectable when NODE_ENV=production. Supabase is the only permitted runtime store."
+      );
     }
 
-    // 2. If storage file is missing (e.g. fresh Vercel serverless deployment), load from bundled baseline store
+    if (this.isTestEnvironment()) return;
+
+    // Load bundled baseline store in local development if present
     const candidateBaselinePaths = [
       path.resolve(process.cwd(), "src", "server", "fixtures", "baseline-store.json"),
       path.resolve(process.cwd(), "apps", "web", "src", "server", "fixtures", "baseline-store.json"),
-      path.resolve(process.cwd(), ".data", "session-store.json"),
-      path.resolve(process.cwd(), "apps", "web", ".data", "session-store.json"),
       path.resolve(__dirname, "..", "fixtures", "baseline-store.json"),
     ];
 
@@ -240,8 +178,6 @@ class SessionStore {
           const parsed = JSON.parse(raw) as PersistedState;
           if (Array.isArray(parsed.threads)) {
             this.loadState(parsed);
-            // Write snapshot to storage path (/tmp on Vercel) so subsequent operations can update it
-            this.persistToDisk();
             return;
           }
         } catch {
@@ -628,7 +564,9 @@ class SessionStore {
     // Observed latency of the most recent genuine Gemini call, if there was one.
     // Never a fabricated figure: null until the provider has actually answered.
     const lastAiCall = this.getAllAiDecisions().find(
-      (decision) => decision.source === "gemini" && decision.latencyMs !== null
+      (decision) =>
+        (decision.source === "groq" || decision.source === "gemini") &&
+        decision.latencyMs !== null
     );
     const aiLatency = lastAiCall?.latencyMs ?? null;
 
@@ -667,14 +605,16 @@ class SessionStore {
       },
       {
         id: "ai-sales-engineer",
-        name: "AI Sales Engineer (Gemini)",
+        name: config.groqApiKey ? "AI Sales Engineer (Groq)" : "AI Sales Engineer (Gemini)",
         // Degraded, not down: the pipeline keeps working on the rules engine.
         level: config.isAiEnabled ? "ok" : "degraded",
         detail: config.isAiEnabled
-          ? `Gemini configured (model ${config.geminiModel}); AI decides requirements and next action, with the rules engine as fallback`
-          : config.geminiApiKey
+          ? config.groqApiKey
+            ? `Groq configured (model ${config.groqModel}); ultra-fast LPU inference active with rules engine fallback`
+            : `Gemini configured (model ${config.geminiModel}); AI decides requirements and next action, with the rules engine as fallback`
+          : (config.groqApiKey || config.geminiApiKey)
             ? "AI disabled by DISABLE_AI=true; all threads decided by the deterministic rules engine"
-            : "GEMINI_API_KEY not configured; all threads decided by the deterministic rules engine",
+            : "Neither GROQ_API_KEY nor GEMINI_API_KEY configured; all threads decided by the deterministic rules engine",
         latencyMs: aiLatency,
       },
       {
@@ -818,6 +758,17 @@ class SessionStore {
           : "Running on JSON file-backed local store (.data/session-store.json). Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to enable Supabase.",
         requiredEnvVars: ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"],
         docsPath: "docs/integrations/database.md",
+      },
+      {
+        id: "int_ai_groq",
+        name: "Groq LPU (AI Sales Engineer)",
+        category: "ai",
+        state: config.groqApiKey ? "configured" : "not_configured",
+        detail: config.groqApiKey
+          ? `Model ${config.groqModel}. High-speed LPU inference with generous free-tier limits.`
+          : "No GROQ_API_KEY. Add GROQ_API_KEY to apps/web/.env.local for ultra-fast LPU inference.",
+        requiredEnvVars: ["GROQ_API_KEY", "GROQ_MODEL"],
+        docsPath: "docs/integrations/ai-provider.md",
       },
       {
         id: "int_ai_gemini",
