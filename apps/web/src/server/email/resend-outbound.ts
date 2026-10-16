@@ -740,7 +740,7 @@ https://quotes.joanathan.in/
       const res = await resend.emails.send({
         from: formatFromEmail(config.outboundFromEmail),
         to: targetRecipient,
-        replyTo: formatFromEmail(config.inboundAddress || "quotes@joanathan.in"),
+        replyTo: formatFromEmail(config.inboundAddress || "quotes@quotes.joanathan.in"),
         subject,
         text: textContent,
         headers: Object.keys(threadingHeaders).length > 0 ? threadingHeaders : undefined,

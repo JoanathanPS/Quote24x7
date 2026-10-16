@@ -349,8 +349,6 @@ export function isAddressedToOurMailbox(
     if (
       rLocal === targetLocal &&
       (rDomain === targetDomain ||
-        rDomain === "quotes.joanathan.in" ||
-        rDomain === "joanathan.in" ||
         rDomain.endsWith(".internal") ||
         rDomain.endsWith(".example.com"))
     ) {

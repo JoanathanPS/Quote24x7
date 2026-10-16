@@ -70,7 +70,7 @@ test("Body format: quoted reply history is separated from the new text", () => {
   const reply = [
     "We have 30 servers now, not 25.",
     "",
-    "On Thu, 16 Oct 2026 at 09:30, Quote24x7 Assistant <quotes@joanathan.in>",
+    "On Thu, 16 Oct 2026 at 09:30, Quote24x7 Assistant <quotes@quotes.joanathan.in>",
     "wrote:",
     "",
     "> Hi there,",

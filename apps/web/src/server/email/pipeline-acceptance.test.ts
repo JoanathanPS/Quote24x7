@@ -16,7 +16,7 @@ test("Acceptance Test 1: 'we have 25 servers' -> NEEDS_INFO, one email with the 
     messageId: `<${providerMessageId}@infra-testing.example.com>`,
     from: senderEmail,
     fromName: senderName,
-    to: ["quotes@joanathan.in"],
+    to: ["quotes@quotes.joanathan.in"],
     subject: "Pricing inquiry for our infrastructure",
     text: "we have 25 servers",
   });
@@ -83,7 +83,7 @@ test("Acceptance Test 2: A DMARC report -> no reply", async () => {
     messageId: `<${dmarcMsgId}@dmarc.google.com>`,
     from: "dmarc-noreply@google.com",
     fromName: "Google DMARC Reporting",
-    to: ["quotes@joanathan.in"],
+    to: ["quotes@quotes.joanathan.in"],
     subject: "Report Domain: quote24x7.internal Submitter: google.com Report-ID: <1234567890>",
     text: "This is an automated DMARC aggregate report xml payload.",
     headers: {
@@ -113,7 +113,7 @@ test("Acceptance Test 3: The same Message-ID twice -> one thread and one outboun
     messageId: sharedRfcId,
     from: senderEmail,
     fromName: "DevOps Lead",
-    to: ["quotes@joanathan.in"],
+    to: ["quotes@quotes.joanathan.in"],
     subject: "Need monitoring for 30 servers and 5 network devices",
     text: "We need 30 servers and 5 network devices. Annual plan.",
   };
@@ -150,7 +150,7 @@ test("Acceptance Test 4: A changed quantity -> quote v2 supersedes v1", async ()
     messageId: `<turn1_${Date.now()}@supersede-test.example.com>`,
     from: senderEmail,
     fromName: senderName,
-    to: ["quotes@joanathan.in"],
+    to: ["quotes@quotes.joanathan.in"],
     subject: "Site24x7 Pricing Estimate",
     text: "we have 25 servers",
   });
@@ -171,7 +171,7 @@ test("Acceptance Test 4: A changed quantity -> quote v2 supersedes v1", async ()
     messageId: `<turn2_${Date.now()}@supersede-test.example.com>`,
     from: senderEmail,
     fromName: senderName,
-    to: ["quotes@joanathan.in"],
+    to: ["quotes@quotes.joanathan.in"],
     subject: `Re: Site24x7 Pricing Estimate [Ref: #${threadId}]`,
     text: "We only need servers, no websites or apps. We actually have 30 servers now.",
     headers: {
@@ -342,10 +342,27 @@ test("Acceptance Test 7: Mail addressed to the wrong mailbox is rejected, not pr
   assert.equal(result.outboundResult, undefined);
 });
 
+test("Acceptance Test 7b: Mail addressed to old apex domain quotes@joanathan.in is rejected", async () => {
+  const providerMessageId = `msg_apex_recip_${Date.now()}`;
+  const result = await processInboundEmail({
+    providerMessageId,
+    messageId: `<${providerMessageId}@infra-testing.example.com>`,
+    from: "apex_lead@infra-testing.example.com",
+    fromName: "Old Domain Sender",
+    to: ["quotes@joanathan.in"],
+    subject: "Pricing inquiry for our infrastructure",
+    text: "we have 25 servers",
+  });
+
+  assert.equal(result.status, "REJECTED_RECIPIENT");
+  assert.equal(result.actionTaken, "rejected_recipient");
+  assert.equal(result.duplicate, false);
+});
+
 test("Acceptance Test 8: Mail to a +tagged variant of our mailbox is not rejected by the recipient guard", async () => {
   const providerMessageId = `msg_tagged_${Date.now()}`;
   // If Supabase is unavailable the pipeline throws before pricing; if available it
-  // proceeds to classification. Either way the recipient guard must NOT reject —
+  // proceeds to classification. Either way the recipient guard must NOT reject ï¿½
   // a failure, if any, must come from the catalogue step rather than REJECTED_RECIPIENT.
   try {
     const result = await processInboundEmail({
@@ -353,7 +370,7 @@ test("Acceptance Test 8: Mail to a +tagged variant of our mailbox is not rejecte
       messageId: `<${providerMessageId}@infra-testing.example.com>`,
       from: "tagged_lead@infra-testing.example.com",
       fromName: "Tagged",
-      to: ["quotes+ref-th-abc123@joanathan.in"],
+      to: ["quotes+ref-th-abc123@quotes.joanathan.in"],
       subject: "Pricing inquiry for our infrastructure",
       text: "we have 25 servers",
     });
