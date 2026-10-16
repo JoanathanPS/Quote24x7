@@ -117,11 +117,12 @@ test("Phase 9 - PDF Generation: Render PDF, assert byte size > 5KB, no NaN or un
   assert.equal(pdfText.includes("undefined"), false, "Document must not contain 'undefined'");
 
   // 4. Header metadata verification
-  assert.ok(pdfText.includes("Quote"), "Must contain brand header Quote");
-  assert.ok(pdfText.includes("24x7"), "Must contain brand header 24x7");
+  assert.ok(pdfText.includes("ESTIMATE"), "Must contain title ESTIMATE");
   assert.ok(pdfText.includes(quote.id), "Must contain quote ID");
   assert.ok(pdfText.includes(thread.id), "Must contain thread ID");
   assert.ok(pdfText.includes("Validity: 30 days"), "Must state 30 days validity");
+  assert.ok(pdfText.includes("Quote Type: New Purchase"), "Must state quote type");
+  assert.ok(pdfText.includes("Subscription: Yearly"), "Must state subscription frequency");
 
   // 5. Customer details verification
   assert.ok(pdfText.includes("Rajesh Verma"), "Must contain customer name");
@@ -152,11 +153,12 @@ test("Phase 9 - PDF Generation: Render PDF, assert byte size > 5KB, no NaN or un
     `Grand total ${formattedGrandTotal} must match engine output`
   );
 
-  // 8. Transparent calculation note
+  // 8. Transparent calculation note & what's included
   assert.ok(
     pdfText.includes("Add-on rates reflect the plan-specific per-year pricing from the Zoho Store."),
     "Must include calculation note"
   );
+  assert.ok(pdfText.includes("WHAT'S INCLUDED"), "Must include what's included section");
 
   // 9. Terms & conditions from quote.png verbatim
   assert.ok(
@@ -176,7 +178,17 @@ test("Phase 9 - PDF Generation: Render PDF, assert byte size > 5KB, no NaN or un
     "Must include privacy policy link from quote.png"
   );
 
-  // 10. Drop capacity points matrix completely
+  // 10. Required footer notice
+  assert.ok(
+    pdfText.includes("Independent estimate based on Site24x7 India public pricing captured"),
+    "Must include mandatory footer notice"
+  );
+  assert.ok(
+    pdfText.includes("Not an official Zoho document"),
+    "Must state not an official Zoho document"
+  );
+
+  // 11. Banned elements check (Phase 9 and 11 rule 15)
   assert.equal(
     pdfText.includes("WORKLOAD CAPACITY FULFILLMENT MATRIX"),
     false,
@@ -186,6 +198,21 @@ test("Phase 9 - PDF Generation: Render PDF, assert byte size > 5KB, no NaN or un
     pdfText.includes("Capacity Points"),
     false,
     "Capacity points abstraction must not exist in document"
+  );
+  assert.equal(
+    pdfText.includes("Valued Customer"),
+    false,
+    "Document must never contain 'Valued Customer'"
+  );
+  assert.equal(
+    pdfText.includes("..."),
+    false,
+    "Document must not contain '...' truncation"
+  );
+  assert.equal(
+    pdfText.includes("[x]"),
+    false,
+    "Document must not contain '[x]'"
   );
 });
 
@@ -248,5 +275,8 @@ test("Phase 9 - PDF Generation across multiple test quotes", async () => {
     const text = extractPdfText(buf);
     assert.equal(text.includes("NaN"), false, `PDF for ${tc.name} must not contain NaN`);
     assert.equal(text.includes("undefined"), false, `PDF for ${tc.name} must not contain undefined`);
+    assert.equal(text.includes("Valued Customer"), false);
+    assert.equal(text.includes("..."), false);
+    assert.equal(text.includes("[x]"), false);
   }
 });
