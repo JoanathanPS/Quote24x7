@@ -535,7 +535,7 @@ export function renderQuoteEmail(input: {
     const feature =
       bestValue?.whatItAdds && bestValue.whatItAdds.length > 0
         ? bestValue.whatItAdds[0]
-        : "faster polling and additional check capacity";
+        : "additional monitor headroom";
     comparisonLine = `A lighter configuration on ${lowestCost.planName} would cost ${formatMoney(lowestCost.total, input.quote.currency)}, but leaves no headroom for ${feature}.`;
   }
 
