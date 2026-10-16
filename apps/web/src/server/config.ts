@@ -92,10 +92,10 @@ export function getAppConfig(): AppConfig {
   const outboundFromEmail =
     cleanedFrom && cleanedFrom.includes("@")
       ? cleanedFrom
-      : "Quote24x7 <quotes@quotes.joanathan.in>";
+      : "Quote24x7 <quotes@joanathan.in>";
   const rawInboundAddress = formatFromEmail(process.env.INBOUND_TO_EMAIL || "");
   const inboundAddress =
-    rawInboundAddress.includes("@") ? rawInboundAddress : "quotes@quotes.joanathan.in";
+    rawInboundAddress.includes("@") ? rawInboundAddress : "quotes@joanathan.in";
   const resendWebhookSecret = process.env.RESEND_WEBHOOK_SECRET?.trim() || null;
   const isLiveDispatchEnabled =
     Boolean(resendApiKey) && process.env.ALLOW_EXTERNAL_DISPATCH === "true";
