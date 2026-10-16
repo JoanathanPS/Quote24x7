@@ -599,3 +599,31 @@ export async function deleteProcessedMessageFromSupabase(providerMessageId: stri
     console.warn(`[supabase] Failed to release processed message ${providerMessageId}:`, err);
   }
 }
+
+export async function insertWebhookEventToSupabase(
+  provider: string,
+  eventId: string,
+  eventType: string,
+  payload: unknown,
+): Promise<{ isDuplicate: boolean }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { isDuplicate: false };
+  try {
+    const { error } = await supabase.from("webhook_events").insert({
+      provider,
+      event_id: eventId,
+      event_type: eventType,
+      payload: typeof payload === "object" ? payload : { raw: payload },
+    });
+    if (!error) return { isDuplicate: false };
+    if (error.code === "23505") {
+      return { isDuplicate: true };
+    }
+    console.warn(`[supabase] Could not insert webhook_event ${eventId}:`, error);
+    return { isDuplicate: false };
+  } catch (err) {
+    console.warn(`[supabase] Exception inserting webhook_event ${eventId}:`, err);
+    return { isDuplicate: false };
+  }
+}
+

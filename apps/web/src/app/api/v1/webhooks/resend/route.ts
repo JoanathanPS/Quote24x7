@@ -56,6 +56,21 @@ export async function POST(request: NextRequest) {
 
     const eventType = String(body.type || "unknown");
     const eventData = (body.data && typeof body.data === "object" ? body.data : {}) as Record<string, unknown>;
+    const providerEventId = String(svixId || body.id || eventData.id || eventData.email_id || "").trim();
+
+    if (providerEventId) {
+      const { isDuplicate } = await store.recordWebhookEvent("resend", providerEventId, eventType, body);
+      if (isDuplicate) {
+        return NextResponse.json(
+          {
+            received: true,
+            duplicate: true,
+            message: `Duplicate webhook event ${providerEventId} dropped.`,
+          },
+          { status: 200 }
+        );
+      }
+    }
 
     // Branch 1: Inbound Email Received
     if (eventType === "email.received") {

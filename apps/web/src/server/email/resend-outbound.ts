@@ -74,14 +74,28 @@ export interface OutboundDispatchResult {
  * Resolves standard RFC 2822 / 5322 In-Reply-To and References headers for email threading.
  * Gathers prior messages from the thread history to maintain email client conversation grouping.
  */
-export function buildThreadingHeaders(threadId: string): {
+export function buildThreadingHeaders(
+  threadId: string,
+  customPrefix?: string
+): {
+  messageId: string;
   inReplyTo?: string;
   references?: string;
   headers: Record<string, string>;
 } {
+  const config = getAppConfig();
+  const domainMatch = config.outboundFromEmail.match(/@([^>]+)/);
+  const domain = domainMatch?.[1]?.replace(/>/g, "").trim() || "quotes.joanathan.in";
+  const prefix = customPrefix || `msg_${Date.now()}`;
+  const messageId = `<${prefix}.${Date.now()}@${domain}>`;
+
+  const headers: Record<string, string> = {
+    "Message-ID": messageId,
+  };
+
   const messages = store.getMessages(threadId);
   if (!messages || messages.length === 0) {
-    return { headers: {} };
+    return { messageId, headers };
   }
 
   const formatMsgId = (id: string): string => {
@@ -90,25 +104,32 @@ export function buildThreadingHeaders(threadId: string): {
     return `<${trimmed}>`;
   };
 
-  // Predecessor message IDs (exclude internal unpersisted placeholder IDs)
+  // Predecessor message IDs: prioritize messageIdHeader if set, else format providerMessageId
   const validPredecessors = messages
-    .filter((m) => Boolean(m.providerMessageId) && !m.providerMessageId.startsWith("local_out_"))
-    .map((m) => formatMsgId(m.providerMessageId));
+    .filter(
+      (m) =>
+        Boolean(m.messageIdHeader || m.providerMessageId) &&
+        !m.providerMessageId.startsWith("local_out_")
+    )
+    .map((m) => (m.messageIdHeader ? formatMsgId(m.messageIdHeader) : formatMsgId(m.providerMessageId)));
 
   // The latest inbound or prior message to reply directly to
   const lastInbound = [...messages].reverse().find((m) => m.direction === "inbound");
   const immediateParent = lastInbound || messages[messages.length - 1];
-  const inReplyTo = immediateParent?.providerMessageId
-    ? formatMsgId(immediateParent.providerMessageId)
+  const inReplyTo = immediateParent
+    ? immediateParent.messageIdHeader
+      ? formatMsgId(immediateParent.messageIdHeader)
+      : immediateParent.providerMessageId
+        ? formatMsgId(immediateParent.providerMessageId)
+        : undefined
     : undefined;
 
   const references = validPredecessors.length > 0 ? validPredecessors.join(" ") : inReplyTo;
 
-  const headers: Record<string, string> = {};
   if (inReplyTo) headers["In-Reply-To"] = inReplyTo;
   if (references) headers["References"] = references;
 
-  return { inReplyTo, references, headers };
+  return { messageId, inReplyTo, references, headers };
 }
 
 export interface OutboundPolicyCheck {
@@ -214,8 +235,10 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
 
   const cleanSub = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
   const subject = `Re: ${cleanSub} - Proposal Ref #${input.quote.id} [Ref: #${input.thread.id}]`;
-
-  const { inReplyTo, headers: threadingHeaders } = buildThreadingHeaders(input.thread.id);
+  const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
+    input.thread.id,
+    input.quote.id
+  );
 
   // Plain Text Version (Humanized, clear, no internal jargon)
   const textContent = `
@@ -441,6 +464,9 @@ https://quotes.joanathan.in/
         scanned: true,
       },
     ],
+    messageIdHeader: messageId,
+    inReplyTo: inReplyTo ?? null,
+    references: references ?? null,
   };
 
   store.addMessage(outboundMessage);
@@ -560,7 +586,10 @@ https://quotes.joanathan.in/
   let mode: "live" | "dry_run" = "dry_run";
   let errorMessage: string | undefined;
 
-  const { inReplyTo, headers: threadingHeaders } = buildThreadingHeaders(input.thread.id);
+  const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
+    input.thread.id,
+    `clar_${Date.now()}`
+  );
 
   const isSendingPaused = store.getOutboundSendingPaused();
 
@@ -649,6 +678,9 @@ https://quotes.joanathan.in/
     deliveryId,
     securityNotes: [],
     attachments: [],
+    messageIdHeader: messageId,
+    inReplyTo: inReplyTo ?? null,
+    references: references ?? null,
   };
 
   store.addMessage(outboundMessage);
@@ -696,7 +728,10 @@ https://quotes.joanathan.in/
   let mode: "live" | "dry_run" = "dry_run";
   let errorMessage: string | undefined;
 
-  const { inReplyTo, headers: threadingHeaders } = buildThreadingHeaders(input.thread.id);
+  const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
+    input.thread.id,
+    `ack_${Date.now()}`
+  );
   const isSendingPaused = store.getOutboundSendingPaused();
 
   if (isSendingPaused) {
@@ -781,6 +816,9 @@ https://quotes.joanathan.in/
     deliveryId,
     securityNotes: [],
     attachments: [],
+    messageIdHeader: messageId,
+    inReplyTo: inReplyTo ?? null,
+    references: references ?? null,
   };
 
   store.addMessage(outboundMessage);
@@ -838,7 +876,10 @@ https://quotes.joanathan.in/
   let mode: "live" | "dry_run" = "dry_run";
   let errorMessage: string | undefined;
 
-  const { inReplyTo, headers: threadingHeaders } = buildThreadingHeaders(input.thread.id);
+  const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
+    input.thread.id,
+    `yield_${Date.now()}`
+  );
   const isSendingPaused = store.getOutboundSendingPaused();
 
   if (isSendingPaused) {
@@ -923,6 +964,9 @@ https://quotes.joanathan.in/
     deliveryId,
     securityNotes: [],
     attachments: [],
+    messageIdHeader: messageId,
+    inReplyTo: inReplyTo ?? null,
+    references: references ?? null,
   };
 
   store.addMessage(outboundMessage);
@@ -982,7 +1026,10 @@ https://quotes.joanathan.in/
   let mode: "live" | "dry_run" = "dry_run";
   let errorMessage: string | undefined;
 
-  const { inReplyTo, headers: threadingHeaders } = buildThreadingHeaders(input.thread.id);
+  const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
+    input.thread.id,
+    `unp_${Date.now()}`
+  );
 
   const isSendingPaused = store.getOutboundSendingPaused();
 
@@ -1070,6 +1117,9 @@ https://quotes.joanathan.in/
     deliveryId,
     securityNotes: [],
     attachments: [],
+    messageIdHeader: messageId,
+    inReplyTo: inReplyTo ?? null,
+    references: references ?? null,
   };
 
   store.addMessage(outboundMessage);

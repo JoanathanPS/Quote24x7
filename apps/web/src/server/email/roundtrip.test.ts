@@ -1134,3 +1134,272 @@ test("Public Proposal Links: Localhost URLs are eliminated and public base URLs 
   assert.match(outboundQuoteMsg.bodyText, /quotation document/i);
 });
 
+test("Phase 7 - Webhook Signature & Duplicate Event Suppression", async () => {
+  const origSecret = process.env.RESEND_WEBHOOK_SECRET;
+  try {
+    process.env.RESEND_WEBHOOK_SECRET = "whsec_testsecret1234567890abcdef";
+
+    // 1. Missing / invalid Svix signature rejected by cryptographic verification
+    const invalidRes = verifyWebhookSignature(
+      JSON.stringify({ type: "email.delivered", data: { email_id: "em_invalid" } }),
+      {
+        id: "msg_p7_invalid",
+        timestamp: "1729000000",
+        signature: "v1,invalidsignature",
+      }
+    );
+    assert.equal(invalidRes.valid, false, "Invalid webhook signature must fail verification");
+    assert.match(invalidRes.error || "", /verification failed/i);
+
+    // 2. Webhook event with unique event ID records successfully
+    const eventId = `evt_p7_${Date.now()}`;
+    const payload = {
+      type: "email.delivered",
+      created_at: new Date().toISOString(),
+      data: {
+        email_id: `em_p7_${Date.now()}`,
+        to: ["customer@test.com"],
+      },
+    };
+
+    const firstRecord = await store.recordWebhookEvent("resend", eventId, "email.delivered", payload);
+    assert.equal(firstRecord.isDuplicate, false, "Initial webhook event must not be duplicate");
+
+    // 3. Webhook replay with duplicate event ID is flagged as duplicate
+    const retryRecord = await store.recordWebhookEvent("resend", eventId, "email.delivered", payload);
+    assert.equal(retryRecord.isDuplicate, true, "Replay with same event ID must be flagged as duplicate");
+  } finally {
+    if (origSecret) process.env.RESEND_WEBHOOK_SECRET = origSecret;
+    else delete process.env.RESEND_WEBHOOK_SECRET;
+  }
+});
+
+test("Phase 7 - Delivery Lifecycle: Bounce event sets delivery to bounced and thread to failed", async () => {
+  const threadId = `th_bounce_${Date.now()}`;
+  const deliveryId = `del_bounce_${Date.now()}`;
+  const providerMessageId = `resend_bounce_${Date.now()}`;
+
+  store.saveThread({
+    id: threadId,
+    provider: "resend",
+    providerThreadId: providerMessageId,
+    senderEmail: "bounce.user@example.com",
+    senderName: "Bouncy",
+    organisation: null,
+    subject: "Pricing Inquiry",
+    status: "sending",
+    requestType: "quote",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    lastMessageAt: new Date().toISOString(),
+    messageCount: 1,
+    quoteId: "qt_dummy",
+    quoteTotal: 100000,
+    currency: "INR",
+    statusDetail: "Dispatched",
+  });
+
+  store.saveDelivery({
+    id: deliveryId,
+    threadId,
+    quoteId: "qt_dummy",
+    provider: "resend",
+    providerMessageId,
+    recipient: "bounce.user@example.com",
+    subject: "Quote Proposal",
+    status: "queued",
+    attemptCount: 1,
+    maxAttempts: 3,
+    lastErrorCode: null,
+    lastErrorMessage: null,
+    nextRetryAt: null,
+    retryEligible: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    events: [{ at: new Date().toISOString(), status: "queued", detail: "Dispatched" }],
+  });
+
+  // Simulate Resend bounce webhook processing
+  const delivery = store.getDeliveryByProviderMessageId(providerMessageId);
+  assert.ok(delivery);
+  const detail = "Message bounced: mailbox_full";
+  store.updateDelivery(delivery.id, {
+    status: "bounced",
+    lastErrorMessage: detail,
+    lastErrorCode: "BOUNCE_PERMANENT",
+    events: [
+      ...delivery.events,
+      {
+        at: new Date().toISOString(),
+        status: "bounced",
+        detail,
+      },
+    ],
+  });
+  store.updateThread(threadId, {
+    status: "failed",
+    statusDetail: `Delivery failed: ${detail}`,
+  });
+
+  const updatedDelivery = store.getDelivery(deliveryId);
+  assert.equal(updatedDelivery?.status, "bounced");
+  assert.equal(updatedDelivery?.lastErrorCode, "BOUNCE_PERMANENT");
+
+  const updatedThread = store.getThread(threadId);
+  assert.equal(updatedThread?.status, "failed");
+  assert.match(updatedThread?.statusDetail || "", /delivery failed/i);
+});
+
+test("Phase 7 - Loop Prevention: Inbound email from own domain is dropped", async () => {
+  const ownEmail1 = "quotes@quotes.joanathan.in";
+  const ownEmail2 = "sales@joanathan.in";
+
+  const res1 = await processInboundEmail({
+    providerMessageId: `msg_own1_${Date.now()}`,
+    from: ownEmail1,
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Monitoring request",
+    text: "Need 25 servers",
+  });
+  assert.equal(res1.actionTaken, "dropped_loop");
+  assert.equal(res1.status, "DROPPED_LOOP");
+  assert.match(res1.message || "", /own domain/i);
+
+  const res2 = await processInboundEmail({
+    providerMessageId: `msg_own2_${Date.now()}`,
+    from: ownEmail2,
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Monitoring request",
+    text: "Need 25 servers",
+  });
+  assert.equal(res2.actionTaken, "dropped_loop");
+  assert.equal(res2.status, "DROPPED_LOOP");
+  assert.match(res2.message || "", /own domain/i);
+});
+
+test("Phase 7 - Thread Continuity across 3 replies & RFC Threading Headers", async () => {
+  const senderEmail = `buyer_threading_${Date.now()}@example.com`;
+  const baseSubject = "Site24x7 Infrastructure Sizing";
+
+  // --- Turn 1: Inbound with partial requirements (20 servers) ---
+  const rfcId1 = `<buyer_msg_turn1_${Date.now()}@example.com>`;
+  const turn1 = await processInboundEmail({
+    providerMessageId: `in_turn1_${Date.now()}`,
+    messageId: rfcId1,
+    from: senderEmail,
+    to: ["quotes@quotes.joanathan.in"],
+    subject: baseSubject,
+    text: "Hello, we need monitoring for 20 Linux servers. What would this cost?",
+  });
+
+  assert.equal(turn1.actionTaken, "clarification_requested");
+  const threadId = turn1.threadId;
+
+  const msgsAfterTurn1 = store.getMessages(threadId);
+  assert.equal(msgsAfterTurn1.length, 2); // 1 inbound, 1 outbound clarification
+  const outbound1 = msgsAfterTurn1[1];
+  assert.ok(outbound1);
+  assert.equal(outbound1.direction, "outbound");
+  assert.ok(outbound1.messageIdHeader);
+  assert.match(outbound1.messageIdHeader, /^<clar_\d+\.\d+@/);
+  assert.equal(outbound1.inReplyTo, rfcId1);
+  assert.ok(outbound1.references?.includes(rfcId1));
+
+  // --- Turn 2: Buyer replies to outbound1 adding 3 websites ---
+  const rfcId2 = `<buyer_msg_turn2_${Date.now()}@example.com>`;
+  const turn2 = await processInboundEmail({
+    providerMessageId: `in_turn2_${Date.now()}`,
+    messageId: rfcId2,
+    from: senderEmail,
+    to: ["quotes@quotes.joanathan.in"],
+    subject: `Re: ${baseSubject} [Ref: #${threadId}]`,
+    text: "We also have 3 websites to monitor.",
+    headers: {
+      "in-reply-to": outbound1.messageIdHeader!,
+      references: `${rfcId1} ${outbound1.messageIdHeader!}`,
+    },
+  });
+
+  assert.equal(turn2.threadId, threadId, "Turn 2 must match the existing thread");
+  assert.equal(turn2.actionTaken, "clarification_requested");
+
+  const msgsAfterTurn2 = store.getMessages(threadId);
+  assert.equal(msgsAfterTurn2.length, 4); // 2 inbound, 2 outbound
+  const outbound2 = msgsAfterTurn2[3];
+  assert.ok(outbound2);
+  assert.equal(outbound2.direction, "outbound");
+  assert.ok(outbound2.messageIdHeader);
+  assert.equal(outbound2.inReplyTo, rfcId2);
+  assert.ok(outbound2.references?.includes(rfcId1));
+  assert.ok(outbound2.references?.includes(outbound1.messageIdHeader!));
+  assert.ok(outbound2.references?.includes(rfcId2));
+
+  // --- Turn 3: Buyer completes requirements with "no other monitoring needed, annual" ---
+  const rfcId3 = `<buyer_msg_turn3_${Date.now()}@example.com>`;
+  const turn3 = await processInboundEmail({
+    providerMessageId: `in_turn3_${Date.now()}`,
+    messageId: rfcId3,
+    from: senderEmail,
+    to: ["quotes@quotes.joanathan.in"],
+    subject: `Re: ${baseSubject} [Ref: #${threadId}]`,
+    text: "No other monitoring needed. Please send annual pricing.",
+    headers: {
+      "in-reply-to": outbound2.messageIdHeader!,
+      references: `${rfcId1} ${outbound1.messageIdHeader!} ${rfcId2} ${outbound2.messageIdHeader!}`,
+    },
+  });
+
+  assert.equal(turn3.threadId, threadId, "Turn 3 must match the existing thread");
+  assert.equal(turn3.actionTaken, "quoted");
+
+  const msgsAfterTurn3 = store.getMessages(threadId);
+  assert.equal(msgsAfterTurn3.length, 6); // 3 inbound, 3 outbound
+  const outbound3 = msgsAfterTurn3[5];
+  assert.ok(outbound3);
+  assert.equal(outbound3.direction, "outbound");
+  assert.ok(outbound3.messageIdHeader);
+  assert.match(outbound3.messageIdHeader, /^<qt_\w+\.\d+@/);
+  assert.equal(outbound3.inReplyTo, rfcId3);
+  assert.ok(outbound3.references?.includes(rfcId1));
+  assert.ok(outbound3.references?.includes(outbound2.messageIdHeader!));
+  assert.ok(outbound3.references?.includes(rfcId3));
+
+  const thread = store.getThread(threadId);
+  assert.equal(thread?.inboundCount, 3);
+  assert.equal(thread?.status, "completed");
+});
+
+test("Phase 7 - Idempotency: Duplicate RFC Message-ID drops replay without producing second reply", async () => {
+  const rfcMessageId = `<rfc_idemp_${Date.now()}@company.com>`;
+  const senderEmail = `idemp_${Date.now()}@company.com`;
+
+  const payload = {
+    providerMessageId: `in_msg_idemp_1_${Date.now()}`,
+    messageId: rfcMessageId,
+    from: senderEmail,
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Idempotency Test",
+    text: "15 servers, no other monitoring. Annual.",
+  };
+
+  const firstResult = await processInboundEmail(payload);
+  assert.equal(firstResult.actionTaken, "quoted");
+  assert.equal(firstResult.duplicate, false);
+
+  const initialDeliveryCount = store.getDeliveries().length;
+
+  // Replay exact same RFC Message-ID with new provider internal ID
+  const replayPayload = {
+    ...payload,
+    providerMessageId: `in_msg_idemp_2_${Date.now()}`,
+  };
+
+  const replayResult = await processInboundEmail(replayPayload);
+  assert.equal(replayResult.duplicate, true, "Replay with identical RFC Message-ID must be marked duplicate");
+  assert.equal(replayResult.actionTaken, "dropped_loop");
+
+  const finalDeliveryCount = store.getDeliveries().length;
+  assert.equal(finalDeliveryCount, initialDeliveryCount, "Duplicate replay must not trigger an outbound delivery");
+});
+
+

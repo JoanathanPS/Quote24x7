@@ -237,6 +237,21 @@ export function classifyInboundEmail(
   }
 
   // 3. noreply / mailer-daemon / bounce / postmaster / self-loop / test sinks
+  const senderDomain = senderEmail.split("@")[1] || "";
+  const systemDomain = cleanSystemEmail.split("@")[1] || "";
+  const config = getAppConfig();
+  const inboundDomain = (config.inboundAddress || "").split("@")[1] || "";
+
+  const isOwnDomain =
+    (systemDomain.length > 0 && (senderDomain === systemDomain || senderDomain.endsWith(`.${systemDomain}`))) ||
+    (inboundDomain.length > 0 && (senderDomain === inboundDomain || senderDomain.endsWith(`.${inboundDomain}`))) ||
+    senderDomain === "quotes.joanathan.in" ||
+    senderDomain === "joanathan.in";
+
+  if (isOwnDomain) {
+    return { drop: true, reason: `Sender is from our own domain: ${senderEmail}` };
+  }
+
   if (
     senderEmail.startsWith("noreply@") ||
     senderEmail.startsWith("no-reply@") ||
@@ -562,18 +577,26 @@ async function doProcessInboundEmail(
     }
   }
 
-  // C. Match active thread for this sender only if this is a reply
+  // C. Match active thread for this sender only if this is a reply (within 30 days)
   if (!thread && isReply) {
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
     const openThread = store.getActiveThreadBySender(normalizedSender);
     if (openThread) {
-      thread = openThread;
-    } else {
-      // Fuzzy match subject for this sender
+      const lastAt = new Date(openThread.lastInboundAt || openThread.updatedAt || openThread.createdAt).getTime();
+      if (Date.now() - lastAt <= thirtyDaysMs) {
+        thread = openThread;
+      }
+    }
+    if (!thread) {
+      // Fuzzy match subject for this sender within 30 days
       const targetClean = cleanSubject(payload.subject);
       const subjectMatch = store.getThreads().find((t) => {
         const tSender = extractEmail(t.senderEmail);
         const tClean = cleanSubject(t.subject);
+        const lastAt = new Date(t.lastInboundAt || t.updatedAt || t.createdAt).getTime();
+        const within30Days = Date.now() - lastAt <= thirtyDaysMs;
         return (
+          within30Days &&
           tSender === normalizedSender &&
           (tClean === targetClean || tClean.includes(targetClean) || targetClean.includes(tClean))
         );
@@ -659,8 +682,10 @@ async function doProcessInboundEmail(
   }
 
   // 4. Record Inbound Message
+  const inReplyToHdrVal = payload.headers?.["in-reply-to"] || payload.headers?.["In-Reply-To"] || null;
+  const referencesHdrVal = payload.headers?.["references"] || payload.headers?.["References"] || null;
   const inboundMessage: EmailMessage = {
-    id: `msg_in_${Date.now()}`,
+    id: `msg_in_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     threadId: thread.id,
     providerMessageId: rfcMessageId || providerMessageId,
     direction: "inbound",
@@ -673,6 +698,9 @@ async function doProcessInboundEmail(
     deliveryId: null,
     securityNotes: [],
     attachments: [],
+    messageIdHeader: rfcMessageId || null,
+    inReplyTo: inReplyToHdrVal,
+    references: referencesHdrVal,
   };
 
   store.addMessage(inboundMessage);

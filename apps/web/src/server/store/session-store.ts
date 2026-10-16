@@ -26,6 +26,7 @@ import {
   claimProcessedMessageInSupabase,
   deleteProcessedMessageFromSupabase,
   clearAllEmailDataFromSupabase,
+  insertWebhookEventToSupabase,
 } from "../db/supabase.ts";
 
 export interface PersistedState {
@@ -53,6 +54,7 @@ class SessionStore {
   private deliveries: Map<string, DeliveryRecord> = new Map(); // keyed by deliveryId
   private aiDecisions: Map<string, AiDecisionRecord[]> = new Map(); // keyed by threadId
   private processedMessageIds: Set<string> = new Set(); // for idempotency
+  private webhookEvents: Set<string> = new Set(); // for webhook event idempotency (provider:eventId)
   private outboundSendingPaused = false;
   private initialized = false;
 
@@ -132,6 +134,7 @@ class SessionStore {
     this.deliveries.clear();
     this.aiDecisions.clear();
     this.processedMessageIds.clear();
+    this.webhookEvents.clear();
     this.outboundSendingPaused = false;
     this.initialized = true;
     this.persistToDisk();
@@ -146,6 +149,7 @@ class SessionStore {
     this.deliveries.clear();
     this.aiDecisions.clear();
     this.processedMessageIds.clear();
+    this.webhookEvents.clear();
     this.outboundSendingPaused = false;
     this.initialized = false;
     this.ensureInitialized();
@@ -291,7 +295,8 @@ class SessionStore {
       const found = msgs.find((m) => {
         const pClean = (m.providerMessageId || "").replace(/[<>]/g, "").trim().toLowerCase();
         const mClean = (m.id || "").replace(/[<>]/g, "").trim().toLowerCase();
-        return pClean === cleanId || mClean === cleanId;
+        const hClean = (m.messageIdHeader || "").replace(/[<>]/g, "").trim().toLowerCase();
+        return pClean === cleanId || mClean === cleanId || hClean === cleanId;
       });
       if (found) return found;
     }
@@ -486,6 +491,35 @@ class SessionStore {
     this.processedMessageIds.delete(providerMessageId);
     this.persistToDisk();
     await deleteProcessedMessageFromSupabase(providerMessageId);
+  }
+
+  // --- Webhook Events (Idempotency & Audit) ---
+  async recordWebhookEvent(
+    provider: string,
+    eventId: string,
+    eventType: string,
+    payload: unknown
+  ): Promise<{ isDuplicate: boolean }> {
+    this.ensureInitialized();
+    if (!eventId) {
+      return { isDuplicate: false };
+    }
+    const key = `${provider}:${eventId}`;
+    if (this.webhookEvents.has(key)) {
+      return { isDuplicate: true };
+    }
+    const res = await insertWebhookEventToSupabase(provider, eventId, eventType, payload);
+    if (res.isDuplicate) {
+      this.webhookEvents.add(key);
+      return { isDuplicate: true };
+    }
+    this.webhookEvents.add(key);
+    return { isDuplicate: false };
+  }
+
+  isWebhookEventProcessed(provider: string, eventId: string): boolean {
+    this.ensureInitialized();
+    return this.webhookEvents.has(`${provider}:${eventId}`);
   }
 
   // --- Metrics ---

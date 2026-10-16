@@ -69,7 +69,24 @@ export async function POST(request: NextRequest) {
     let headers: Record<string, string> | null = null;
 
     // Resend Inbound webhook format: { type: "email.received", data: { ... } } or { data: { ... } }
+    const eventType = String(body.type || "email.inbound");
     const eventData = (body.data && typeof body.data === "object") ? (body.data as Record<string, unknown>) : body;
+    const providerEventId = String(svixId || body.id || eventData.id || eventData.email_id || "").trim();
+
+    if (providerEventId) {
+      const { isDuplicate } = await store.recordWebhookEvent("resend", providerEventId, eventType, body);
+      if (isDuplicate) {
+        return NextResponse.json(
+          {
+            status: "processed",
+            duplicate: true,
+            actionTaken: "dropped_loop",
+            message: `Duplicate webhook event ${providerEventId} dropped.`,
+          },
+          { status: 200 }
+        );
+      }
+    }
 
     // Early idempotency check for Resend email_id before fetching full email content
     if (typeof eventData.email_id === "string" && store.isMessageProcessed(eventData.email_id.trim())) {
