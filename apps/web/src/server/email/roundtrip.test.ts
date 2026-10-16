@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import zlib from "node:zlib";
 import * as XLSX from "xlsx";
 
 import { processInboundEmail } from "./inbound-processor.ts";
@@ -1422,7 +1421,7 @@ test("Multi-Format: Inbound email with Excel (.xlsx) attachment extracts require
     fromName: "Sanjay Kumar",
     to: ["quotes@quotes.joanathan.in"],
     subject: "Monitoring sizing for our data center infrastructure",
-    text: "Hi team, please find our server counts in the attached inventory spreadsheet. Annual billing please.",
+    text: "Hi team, please find our server counts in the attached inventory spreadsheet. No other monitoring needed. Annual billing please.",
     attachments: [
       {
         filename: "infra_inventory.xlsx",
@@ -1446,7 +1445,7 @@ test("Multi-Format: Inbound email with Excel (.xlsx) attachment extracts require
 
   const quote = store.getQuote(thread.quoteId!);
   assert.ok(quote);
-  const bestValue = quote.options.find((o) => o.tier === "best_value");
+  const bestValue = quote.options.find((o) => o.optionType === "best_value");
   assert.ok(bestValue);
   const serverRow = bestValue.coverage.find((c) => c.unit === "host_monitor");
   assert.equal(serverRow?.required, 50);
@@ -1462,7 +1461,7 @@ test("Multi-Format: Inbound email with CSV attachment extracts requirements and 
     from: senderEmail,
     to: ["quotes@quotes.joanathan.in"],
     subject: "Sizing quote request",
-    text: "Please see attached CSV for our workload specifications. Annual.",
+    text: "Please see attached CSV for our workload specifications. No other monitoring needed. Annual.",
     attachments: [
       {
         filename: "servers.csv",
@@ -1477,7 +1476,7 @@ test("Multi-Format: Inbound email with CSV attachment extracts requirements and 
   assert.ok(thread);
   const quote = store.getQuote(thread.quoteId!);
   assert.ok(quote);
-  const bestValue = quote.options.find((o) => o.tier === "best_value");
+  const bestValue = quote.options.find((o) => o.optionType === "best_value");
   const serverRow = bestValue?.coverage.find((c) => c.unit === "host_monitor");
   assert.equal(serverRow?.required, 35);
 });
@@ -1497,7 +1496,7 @@ test("Multi-Format: Inbound email with Image attachment stores scan metadata and
     from: senderEmail,
     to: ["quotes@quotes.joanathan.in"],
     subject: "Infrastructure diagram attached",
-    text: "We have 20 servers as shown in the attached screenshot. Annual billing.",
+    text: "We have 20 servers as shown in the attached screenshot. No other monitoring needed. Annual billing.",
     attachments: [
       {
         filename: "aws_architecture.png",
