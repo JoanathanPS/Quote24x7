@@ -764,6 +764,18 @@ class SessionStore {
 
     const sendingEnabled = !this.outboundSendingPaused && Boolean(config.isLiveDispatchEnabled);
 
+    // 5. AI vs rules_fallback counts over last 24 hours (Phase 11)
+    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const allDecisions = this.getAllAiDecisions();
+    const recentDecisions = allDecisions.filter(
+      (d) => new Date(d.createdAt).getTime() > twentyFourHoursAgo
+    );
+    const aiCount = recentDecisions.filter((d) => d.source === "groq" || d.source === "gemini").length;
+    const rulesFallbackCount = recentDecisions.filter((d) => d.source === "rules_fallback").length;
+    const lastError = recentDecisions
+      .filter((d) => d.failureCategory !== null)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]?.failureCategory ?? null;
+
     return {
       overall: hasDown ? "down" : hasDegraded ? "degraded" : "ok",
       checkedAt: new Date().toISOString(),
@@ -776,6 +788,11 @@ class SessionStore {
       stuckMessagesOver10m,
       lastWebhookAt,
       liveLatencyMs: aiLatency,
+      aiDecisionCounts: {
+        aiCount,
+        rulesFallbackCount,
+        lastError,
+      },
     };
   }
 

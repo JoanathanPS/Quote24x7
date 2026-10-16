@@ -739,7 +739,7 @@ export function renderClarificationEmail(input: {
     </p>
 
     <div class="footer">
-      Quote24x7 Assistant • Site24x7 India Autonomous Sales Desk
+      Quote24x7 Assistant • Automated assistant using Site24x7's public India pricing
     </div>
   </div>
 </body>

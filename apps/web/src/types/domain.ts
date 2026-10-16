@@ -547,6 +547,12 @@ export interface SystemHealth {
   stuckMessagesOver10m?: number;
   lastWebhookAt?: string | null;
   liveLatencyMs?: number | null;
+  /** AI decision counts over last 24 hours (Phase 11). */
+  aiDecisionCounts?: {
+    aiCount: number;
+    rulesFallbackCount: number;
+    lastError: string | null;
+  };
 }
 
 export interface HealthComponent {

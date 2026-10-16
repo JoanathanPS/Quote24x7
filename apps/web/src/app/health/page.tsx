@@ -275,6 +275,64 @@ export default function HealthPage() {
         </CardContent>
       </Card>
 
+      {/* AI vs Rules Fallback Decision Counts (Phase 11 specification) */}
+      {health.aiDecisionCounts && (
+        <Card className="border-border bg-surface shadow-xs">
+          <CardHeader className="p-5 pb-3 border-b border-border/40">
+            <CardTitle className="text-sm font-semibold text-foreground">
+              AI vs Rules Engine Decisions (Last 24h)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              How many thread decisions were made by the AI sales engineer versus the deterministic rules fallback, with the last error category.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="rounded-lg border border-border/60 bg-surface-sunken/40 p-4 text-center space-y-1">
+                <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium block">
+                  AI Decisions
+                </span>
+                <div className="text-2xl font-bold font-mono text-success">
+                  {health.aiDecisionCounts.aiCount}
+                </div>
+                <span className="text-[11px] text-muted-foreground block">
+                  Gemini or Groq provider
+                </span>
+              </div>
+
+              <div className="rounded-lg border border-border/60 bg-surface-sunken/40 p-4 text-center space-y-1">
+                <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium block">
+                  Rules Fallback
+                </span>
+                <div
+                  className={cn(
+                    "text-2xl font-bold font-mono",
+                    health.aiDecisionCounts.rulesFallbackCount > 0 ? "text-warning" : "text-success"
+                  )}
+                >
+                  {health.aiDecisionCounts.rulesFallbackCount}
+                </div>
+                <span className="text-[11px] text-muted-foreground block">
+                  Deterministic engine took over
+                </span>
+              </div>
+
+              <div className="rounded-lg border border-border/60 bg-surface-sunken/40 p-4 text-center space-y-1">
+                <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium block">
+                  Last Error
+                </span>
+                <div className="text-sm font-semibold font-mono text-foreground truncate mt-1">
+                  {health.aiDecisionCounts.lastError ?? "None"}
+                </div>
+                <span className="text-[11px] text-muted-foreground block">
+                  Most recent failure category
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Component Readiness Table */}
       <Card className="border-border bg-surface shadow-xs">
         <CardHeader className="p-5 pb-3 border-b border-border/40">
