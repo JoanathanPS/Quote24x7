@@ -512,7 +512,7 @@ export function renderQuoteEmail(input: {
   const lineItems = bestValue?.lineItems ?? [];
   const textTableLines = [
     "Itemized Pricing Table:",
-    "Item | Included Units | Purchased Units | Pack Size | Pack Count | Line Total",
+    "Item | Included | Purchased | Pack Size | Packs | Annual (INR)",
     "--------------------------------------------------------------------------------",
     ...lineItems.map((item) => {
       const isBase = item.ruleId === "RULE-PLAN-BASE";
@@ -655,12 +655,12 @@ ${htmlUnderstoodList}
       <table>
         <thead>
           <tr>
-            <th style="text-align: left;">Line Item</th>
-            <th style="text-align: right;">Included Units</th>
-            <th style="text-align: right;">Purchased Units</th>
+            <th style="text-align: left;">Item</th>
+            <th style="text-align: right;">Included</th>
+            <th style="text-align: right;">Purchased</th>
             <th style="text-align: right;">Pack Size</th>
-            <th style="text-align: right;">Pack Count</th>
-            <th style="text-align: right;">Line Total</th>
+            <th style="text-align: right;">Packs</th>
+            <th style="text-align: right;">Annual (INR)</th>
           </tr>
         </thead>
         <tbody>

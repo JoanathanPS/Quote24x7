@@ -174,7 +174,7 @@ test("Phase 8 - Quote Template: Complete itemized breakdown, transparent cadence
 
   // 4. Itemized table: Plan base + each add-on with all 6 columns
   assert.ok(textContent.includes("Itemized Pricing Table:"));
-  assert.ok(textContent.includes("Item | Included Units | Purchased Units | Pack Size | Pack Count | Line Total"));
+  assert.ok(textContent.includes("Item | Included | Purchased | Pack Size | Packs | Annual (INR)"));
   for (const item of bestValue.lineItems) {
     const formattedLineTotal = formatMoney(item.lineTotal, "INR");
     assert.ok(
