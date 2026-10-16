@@ -25,6 +25,7 @@ import type { QuoteOption } from "@/types/domain";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Quote24x7Logo } from "@/components/ui/logo";
 import {
   Dialog,
   DialogContent,
@@ -93,11 +94,9 @@ export default function CustomerProposalPage() {
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-30 border-b border-border bg-surface/90 backdrop-blur px-4 py-3">
         <div className="mx-auto flex max-w-4xl items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-lg tracking-tight">
-              Quote<span className="text-primary font-black">24x7</span>
-            </span>
-            <span className="text-xs text-muted-foreground border-l border-border pl-2 font-mono">
+          <div className="flex items-center gap-3">
+            <Quote24x7Logo size="md" />
+            <span className="text-xs text-muted-foreground border-l border-border pl-3 font-mono">
               Proposal #{quote.id}
             </span>
           </div>

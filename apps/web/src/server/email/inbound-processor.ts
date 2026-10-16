@@ -3,6 +3,7 @@ import type {
   DecisionSource,
   EmailMessage,
   EmailThread,
+  MessageAttachment,
   Quote,
   QuoteDocument,
 } from "@/types/domain";
@@ -11,6 +12,7 @@ import { store } from "../store/session-store.ts";
 import { loadActiveCatalogue } from "../catalogue/loader.ts";
 import { buildQuote } from "../pricing/quote-builder.ts";
 import { renderQuotePdf } from "../documents/pdf-renderer.ts";
+import { parseInboundDocument } from "../documents/inbound-document-parser.ts";
 import { decideNextAction } from "../ai/sales-engineer.ts";
 import type { AiProvider } from "../ai/gemini-provider.ts";
 import {
@@ -28,6 +30,14 @@ import {
   UNIT_TO_FIELD_KEY,
 } from "../extraction/extractor.ts";
 
+export interface InboundAttachmentPayload {
+  filename: string;
+  contentType?: string;
+  /** Buffer, Uint8Array, or base64 string */
+  content?: Buffer | Uint8Array | string;
+  sizeBytes?: number;
+}
+
 export interface InboundEmailPayload {
   providerMessageId: string;
   messageId?: string | null;
@@ -39,6 +49,8 @@ export interface InboundEmailPayload {
   html?: string;
   headers?: Record<string, string> | null;
   receivedAt?: string;
+  /** Optional email attachments (PDF, Excel, CSV, text, images, Word) */
+  attachments?: InboundAttachmentPayload[];
 }
 
 export interface InboundProcessingResult {
@@ -681,7 +693,61 @@ async function doProcessInboundEmail(
     });
   }
 
-  // 4. Record Inbound Message
+  // 4. Record Inbound Message & Parse Attachments (PDF, Excel, CSV, text, images, Word)
+  const parsedAttachments: MessageAttachment[] = [];
+  const attachmentTextSections: string[] = [];
+
+  if (payload.attachments && payload.attachments.length > 0) {
+    for (const att of payload.attachments) {
+      try {
+        let buffer: Buffer;
+        if (Buffer.isBuffer(att.content)) {
+          buffer = att.content;
+        } else if (att.content instanceof Uint8Array) {
+          buffer = Buffer.from(att.content);
+        } else if (typeof att.content === "string") {
+          const base64Data = att.content.includes(";base64,")
+            ? att.content.split(";base64,")[1] || ""
+            : att.content;
+          buffer = Buffer.from(base64Data, "base64");
+        } else {
+          buffer = Buffer.alloc(0);
+        }
+
+        const parsed = await parseInboundDocument({
+          filename: att.filename,
+          contentType: att.contentType,
+          buffer,
+        });
+
+        parsedAttachments.push({
+          name: att.filename,
+          contentType: att.contentType || "application/octet-stream",
+          sizeBytes: att.sizeBytes || buffer.length,
+          scanned: true,
+          extractedText: parsed.text,
+          documentKind: parsed.documentKind,
+          contentBase64: parsed.contentBase64,
+        });
+
+        if (parsed.text.trim()) {
+          attachmentTextSections.push(
+            `\n[Attached ${parsed.documentKind.toUpperCase()} File: "${att.filename}"]\n${parsed.text}`
+          );
+        }
+      } catch (err) {
+        console.error(`Failed to process attachment ${att.filename}:`, err);
+        parsedAttachments.push({
+          name: att.filename,
+          contentType: att.contentType || "application/octet-stream",
+          sizeBytes: att.sizeBytes || 0,
+          scanned: true,
+          documentKind: "other",
+        });
+      }
+    }
+  }
+
   const inReplyToHdrVal = payload.headers?.["in-reply-to"] || payload.headers?.["In-Reply-To"] || null;
   const referencesHdrVal = payload.headers?.["references"] || payload.headers?.["References"] || null;
   const inboundMessage: EmailMessage = {
@@ -697,7 +763,7 @@ async function doProcessInboundEmail(
     occurredAt: now,
     deliveryId: null,
     securityNotes: [],
-    attachments: [],
+    attachments: parsedAttachments,
     messageIdHeader: rfcMessageId || null,
     inReplyTo: inReplyToHdrVal,
     references: referencesHdrVal,
@@ -712,8 +778,12 @@ async function doProcessInboundEmail(
     status: "extracting",
   });
 
-  // 5. Inbound Triage (Phase 6)
-  const cleanReplyText = stripQuotedEmail(payload.text);
+  // 5. Inbound Triage (Phase 6) & Combined Text
+  const combinedInboundText =
+    attachmentTextSections.length > 0
+      ? `${payload.text}\n\n${attachmentTextSections.join("\n\n")}`
+      : payload.text;
+  const cleanReplyText = stripQuotedEmail(combinedInboundText);
   const triage = triageInboundEmail(payload.subject, cleanReplyText, payload.from);
 
   // 5a. Unsupported Inbound
@@ -795,6 +865,7 @@ async function doProcessInboundEmail(
       senderEmail: payload.from,
       senderName: payload.fromName || null,
       subject: payload.subject,
+      attachments: parsedAttachments,
     },
     aiProvider
   );

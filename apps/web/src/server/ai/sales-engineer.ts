@@ -7,6 +7,7 @@ import type {
   ClarificationQuestion,
   EmailMessage,
   EmailThread,
+  MessageAttachment,
   ProductCategory,
   RequirementField,
   RequirementProfile,
@@ -92,6 +93,8 @@ export interface SalesEngineerInput {
   senderEmail: string;
   senderName: string | null;
   subject: string;
+  /** Optional email attachments received with this message (PDF, Excel, CSV, text, images). */
+  attachments?: MessageAttachment[];
 }
 
 export interface SalesDecision {
@@ -186,6 +189,7 @@ export async function decideNextAction(
     priorMessages: input.priorMessages,
     existingProfile: input.existingProfile,
     catalogue: input.catalogue,
+    attachments: input.attachments,
   });
 
   if (provider) {

@@ -14,6 +14,7 @@ import {
 
 import { useSystemHealth } from "@/hooks/use-api";
 import { useUIStore } from "@/stores/ui-store";
+import { Quote24x7Logo } from "@/components/ui/logo";
 import { cn } from "@/lib/utils";
 
 interface BreadcrumbItem {
@@ -112,10 +113,13 @@ export function TopBar() {
 
         {/* Breadcrumb */}
         <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm min-w-0">
-          <span className="text-subtle-foreground font-medium hidden sm:inline">
+          <Link href="/" className="md:hidden flex items-center mr-2">
+            <Quote24x7Logo size="sm" />
+          </Link>
+          <span className="text-subtle-foreground font-medium hidden md:inline">
             Quote24x7
           </span>
-          <CaretRight className="h-3 w-3 text-subtle-foreground shrink-0 hidden sm:inline" />
+          <CaretRight className="h-3 w-3 text-subtle-foreground shrink-0 hidden md:inline" />
 
           {breadcrumbs.map((crumb, idx) => {
             const isLast = idx === breadcrumbs.length - 1;

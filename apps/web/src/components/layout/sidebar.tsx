@@ -17,6 +17,7 @@ import {
 
 import { useSystemHealth, useCatalogues } from "@/hooks/use-api";
 import { useUIStore } from "@/stores/ui-store";
+import { Quote24x7Logo } from "@/components/ui/logo";
 import { cn } from "@/lib/utils";
 import type { HealthLevel, VerificationStatus } from "@/types/domain";
 
@@ -143,9 +144,9 @@ function SidebarContent({ onItemClick, isMobile }: SidebarContentProps) {
             <Link
               href="/"
               onClick={onItemClick}
-              className="font-semibold text-base tracking-tight text-foreground transition-opacity hover:opacity-90"
+              className="flex items-center transition-opacity hover:opacity-90 py-1"
             >
-              Quote<span className="text-primary">24x7</span>
+              <Quote24x7Logo size="md" />
             </Link>
           </div>
           {isMobile && (

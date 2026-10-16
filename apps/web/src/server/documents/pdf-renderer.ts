@@ -61,17 +61,25 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
   const page1 = pdfDoc.addPage([pageWidth, pageHeight]);
   let y = pageHeight - margin;
 
-  // Header Banner
-  page1.drawText("Quote24x7", {
+  // Header Banner with brand styling
+  page1.drawText("Quote", {
     x: margin,
     y: y - 16,
     size: 20,
     font: fontSansBold,
-    color: rgb(0.12, 0.14, 0.2),
+    color: rgb(0, 0.44, 0.92), // #0070ea vivid blue
+  });
+
+  page1.drawText("24x7", {
+    x: margin + 63,
+    y: y - 16,
+    size: 20,
+    font: fontSansBold,
+    color: rgb(0, 0.17, 0.4), // #002b66 deep navy
   });
 
   page1.drawText("Commercial Proposal", {
-    x: margin + 115,
+    x: margin + 125,
     y: y - 14,
     size: 9,
     font: fontSansBold,

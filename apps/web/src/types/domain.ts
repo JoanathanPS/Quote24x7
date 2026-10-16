@@ -217,12 +217,20 @@ export interface EmailMessage {
   references?: string | null;
 }
 
+export type DocumentFormatKind = "pdf" | "excel" | "csv" | "text" | "image" | "word" | "other";
+
 export interface MessageAttachment {
   name: string;
   contentType: string;
   sizeBytes: number;
-  /** Attachments are stored and listed but never parsed or executed in Phase 1. */
+  /** Whether the attachment was scanned and verified safe. */
   scanned: boolean;
+  /** Plain text or structured tabular markdown extracted from document attachments. */
+  extractedText?: string;
+  /** Classified document kind (pdf, excel, csv, text, image, word, or other). */
+  documentKind?: DocumentFormatKind;
+  /** Base64 encoded file payload if retained for multimodal vision. */
+  contentBase64?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +352,8 @@ export interface QuoteLineItem {
   /** Quantity already covered by the plan base price. */
   includedQuantity: number | null;
   sourceId: string;
+  packSize?: number | null;
+  purchasedUnits?: number | null;
 }
 
 export interface CoverageRow {

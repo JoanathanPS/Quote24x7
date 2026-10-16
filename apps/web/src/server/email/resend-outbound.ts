@@ -4,6 +4,7 @@ import { getAppConfig, isTestRuntime, formatFromEmail } from "../config.ts";
 import { store } from "../store/session-store.ts";
 import { dryRunStore } from "../store/dryrun-store.ts";
 import { formatMoney } from "../pricing/money.ts";
+import { loadActiveCatalogue } from "../catalogue/loader.ts";
 
 /**
  * Escapes text that originates outside this module before it is placed in an
@@ -214,6 +215,264 @@ function resolveOutboundRecipient(
  * Transmits commercial quotation proposals with attached PDF documents,
  * or clarification inquiries when material requirements are missing.
  */
+/**
+ * Deterministically renders the plain text and responsive HTML quotation email.
+ * Adheres strictly to Phase 8 specifications:
+ * - Polite greeting with buyer's name.
+ * - Summary of understood requirements.
+ * - Selected plan name, billing cadence: 'annual upfront, quoted as equivalent per-month rate of X paise plus add-ons; total billed today is Y'.
+ * - Itemized table: Plan base + each add-on (name, included units, purchased units, pack size, pack count, line total).
+ * - Transparent calculation note: 'Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.'
+ * - Comparison line (when applicable): 'A lighter configuration on <Alternative Plan> would cost <Z>, but leaves no headroom for <feature>.'
+ * - Mention official quotation PDF is attached ("Quote24x7-Proposal-${input.quote.id}.pdf").
+ * - Disclaimer: quotes generated against current Site24x7 India pricing and final checkout occurs via Zoho Store.
+ * - Prompt: 'Reply to this email if you'd like to adjust counts, add capabilities, or change billing frequency.'
+ * - Both plain text and responsive HTML versions.
+ */
+export function renderQuoteEmail(input: {
+  recipientName?: string | null;
+  quote: Quote;
+  threadId: string;
+  conversationalResponse?: string | null;
+}): { textContent: string; htmlContent: string } {
+  const greeting = input.recipientName ? `Hi ${input.recipientName},` : "Hi there,";
+  const bestValue =
+    input.quote.options.find((o) => o.optionType === "best_value") ?? input.quote.options[0];
+  const lowestCost = input.quote.options.find((o) => o.optionType === "lowest_cost");
+
+  // 1. Summary of understood requirements
+  const understoodLines: string[] = [];
+  if (bestValue?.coverage && bestValue.coverage.length > 0) {
+    for (const row of bestValue.coverage) {
+      if (row.required > 0) {
+        understoodLines.push(`• ${row.label}: ${row.required.toLocaleString("en-IN")}`);
+      }
+    }
+  }
+  if (understoodLines.length === 0) {
+    understoodLines.push("• Sizing parameters provided in your inquiry");
+  }
+
+  // 2. Selected plan name & billing cadence
+  const catalogue = loadActiveCatalogue();
+  const plan = catalogue.plans.find((p) => p.id === bestValue?.planId);
+  const planMonthlyPaise =
+    plan?.priceMonthlyAnnualBilled ??
+    plan?.basePrice ??
+    (bestValue?.lineItems?.[0]?.lineTotal
+      ? Math.floor(bestValue.lineItems[0].lineTotal / 12)
+      : 0);
+  const totalBilledToday = formatMoney(bestValue?.total ?? 0, input.quote.currency);
+
+  const planName = bestValue?.planName ?? "Recommended Plan";
+  const cadenceString = `annual upfront, quoted as equivalent per-month rate of ${planMonthlyPaise} paise plus add-ons; total billed today is ${totalBilledToday}`;
+
+  // 3. Itemized table (Plan base + each add-on: name, included units, purchased units, pack size, pack count, line total)
+  const lineItems = bestValue?.lineItems ?? [];
+  const textTableLines = [
+    "Itemized Pricing Table:",
+    "Item | Included Units | Purchased Units | Pack Size | Pack Count | Line Total",
+    "--------------------------------------------------------------------------------",
+    ...lineItems.map((item) => {
+      const isBase = item.ruleId === "RULE-PLAN-BASE";
+      const name = isBase ? `${planName} Base Subscription` : item.description;
+      const includedUnits = isBase ? "Base entitlements" : String(item.includedQuantity ?? 0);
+      const purchasedUnits = String(item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1)));
+      const packSize = String(item.packSize ?? 1);
+      const packCount = String(item.quantity);
+      const lineTotal = formatMoney(item.lineTotal, input.quote.currency);
+      return `${name} | ${includedUnits} | ${purchasedUnits} | ${packSize} | ${packCount} | ${lineTotal}`;
+    }),
+    "--------------------------------------------------------------------------------",
+    `Total Billed Today: ${totalBilledToday}`,
+  ];
+
+  // 4. Transparent calculation note
+  const calculationNote = "Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.";
+
+  // 5. Comparison line (when applicable)
+  let comparisonLine: string | null = null;
+  if (lowestCost && lowestCost.planId !== bestValue?.planId) {
+    const feature =
+      bestValue?.whatItAdds && bestValue.whatItAdds.length > 0
+        ? bestValue.whatItAdds[0]
+        : "faster polling and additional check capacity";
+    comparisonLine = `A lighter configuration on ${lowestCost.planName} would cost ${formatMoney(lowestCost.total, input.quote.currency)}, but leaves no headroom for ${feature}.`;
+  }
+
+  // 6. Mention official quotation PDF is attached
+  const pdfNotice = `Your official quotation document (PDF) is attached: Quote24x7-Proposal-${input.quote.id}.pdf`;
+
+  // 7. Disclaimer
+  const disclaimer = "Disclaimer: quotes generated against current Site24x7 India pricing and final checkout occurs via Zoho Store.";
+
+  // 8. Prompt
+  const prompt = "Reply to this email if you'd like to adjust counts, add capabilities, or change billing frequency.";
+
+  // Build Plain Text Content
+  const textParts = [
+    greeting,
+    "",
+    "Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, we have prepared a tailored quotation.",
+    "",
+    "Summary of understood requirements:",
+    ...understoodLines,
+    "",
+    `Selected plan: ${planName}`,
+    `Billing cadence: ${cadenceString}`,
+    "",
+    textTableLines.join("\n"),
+    "",
+    calculationNote,
+    ...(comparisonLine ? ["", comparisonLine] : []),
+    "",
+    pdfNotice,
+    "",
+    disclaimer,
+    "",
+    prompt,
+    "",
+    "Best regards,",
+    "Quote24x7 Assistant",
+  ];
+
+  const textContent = textParts.join("\n").trim();
+
+  // Build HTML Content
+  const htmlTableRows = lineItems
+    .map((item) => {
+      const isBase = item.ruleId === "RULE-PLAN-BASE";
+      const name = isBase ? `${planName} Base Subscription` : item.description;
+      const includedUnits = isBase ? "Base entitlements" : String(item.includedQuantity ?? 0);
+      const purchasedUnits = String(item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1)));
+      const packSize = String(item.packSize ?? 1);
+      const packCount = String(item.quantity);
+      const lineTotal = formatMoney(item.lineTotal, input.quote.currency);
+
+      return `      <tr style="border-bottom: 1px solid #e2e8f0;">
+        <td style="padding: 10px; color: #0f172a; font-weight: ${isBase ? "600" : "normal"};">${escapeHtml(name)}</td>
+        <td style="padding: 10px; color: #64748b; text-align: right;">${escapeHtml(includedUnits)}</td>
+        <td style="padding: 10px; color: #0f172a; text-align: right;">${escapeHtml(purchasedUnits)}</td>
+        <td style="padding: 10px; color: #64748b; text-align: right;">${escapeHtml(packSize)}</td>
+        <td style="padding: 10px; color: #0f172a; text-align: right;">${escapeHtml(packCount)}</td>
+        <td style="padding: 10px; color: #0f172a; text-align: right; font-weight: 600;">${escapeHtml(lineTotal)}</td>
+      </tr>`;
+    })
+    .join("\n");
+
+  const htmlUnderstoodList = understoodLines
+    .map((l) => `<li style="margin-bottom: 4px;">${escapeHtml(l.replace(/^•\s*/, ""))}</li>`)
+    .join("\n");
+
+  const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; margin: 0; padding: 24px; background-color: #f8fafc; }
+    .container { max-width: 680px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .header { border-bottom: 2px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; }
+    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
+    .ref { font-size: 12px; color: #64748b; font-family: monospace; margin-top: 4px; }
+    .requirements-box { background: #f8fafc; border-left: 4px solid #2563eb; border-radius: 4px; padding: 14px 18px; margin: 18px 0; }
+    .table-container { margin: 20px 0; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { background-color: #f1f5f9; padding: 10px; color: #334155; font-weight: 600; border-bottom: 2px solid #cbd5e1; }
+    .note { font-size: 12px; color: #64748b; margin-top: 8px; font-style: italic; }
+    .comparison-box { background: #fefce8; border-left: 4px solid #eab308; border-radius: 4px; padding: 12px 16px; margin: 18px 0; font-size: 13px; color: #713f12; }
+    .attachment-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #1e40af; margin: 20px 0; }
+    .disclaimer { font-size: 11px; color: #64748b; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 16px; line-height: 1.5; }
+    .reply-prompt { font-size: 14px; font-weight: 500; color: #0f172a; margin: 20px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header" style="border-bottom: 2px solid #0070ea; padding-bottom: 16px; margin-bottom: 24px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td align="left" valign="middle">
+            <a href="https://quotes.joanathan.in/" target="_blank" style="text-decoration: none; display: inline-block;">
+              <img src="https://quotes.joanathan.in/logo.png" alt="Quote24x7" width="160" height="auto" style="display: block; max-width: 160px; height: auto; border: 0;" />
+            </a>
+          </td>
+          <td align="right" valign="middle">
+            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #0070ea; letter-spacing: 0.5px;">Commercial Proposal</div>
+            <div class="ref" style="margin-top: 2px;">Proposal #${escapeHtml(input.quote.id)}</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <p>${escapeHtml(greeting)}</p>
+    <p>Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, we have prepared a tailored quotation.</p>
+
+    <div class="requirements-box">
+      <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: #1e40af; letter-spacing: 0.5px; margin-bottom: 6px;">Summary of Understood Requirements</div>
+      <ul style="margin: 0; padding-left: 18px; color: #334155; font-size: 13px;">
+${htmlUnderstoodList}
+      </ul>
+    </div>
+
+    <div style="margin: 18px 0;">
+      <div style="font-size: 15px; font-weight: 700; color: #0f172a;">Selected Plan: ${escapeHtml(planName)}</div>
+      <div style="font-size: 13px; color: #475569; margin-top: 4px;"><strong>Billing Cadence:</strong> ${escapeHtml(cadenceString)}</div>
+    </div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align: left;">Line Item</th>
+            <th style="text-align: right;">Included Units</th>
+            <th style="text-align: right;">Purchased Units</th>
+            <th style="text-align: right;">Pack Size</th>
+            <th style="text-align: right;">Pack Count</th>
+            <th style="text-align: right;">Line Total</th>
+          </tr>
+        </thead>
+        <tbody>
+${htmlTableRows}
+          <tr style="border-top: 2px solid #0f172a; font-weight: 700; background-color: #f8fafc;">
+            <td colspan="5" style="padding: 12px 10px;">Total Billed Today</td>
+            <td style="padding: 12px 10px; text-align: right; color: #2563eb; font-size: 15px;">${escapeHtml(totalBilledToday)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note">${escapeHtml(calculationNote)}</div>
+    </div>
+
+${
+  comparisonLine
+    ? `    <div class="comparison-box">
+      <strong>Alternative Comparison:</strong> ${escapeHtml(comparisonLine)}
+    </div>`
+    : ""
+}
+
+    <div class="attachment-box">
+      📎 <strong>PDF Attached:</strong> ${escapeHtml(pdfNotice)}
+    </div>
+
+    <div class="reply-prompt">
+      ${escapeHtml(prompt)}
+    </div>
+
+    <div class="disclaimer">
+      ${escapeHtml(disclaimer)}
+    </div>
+  </div>
+</body>
+</html>`.trim();
+
+  return { textContent, htmlContent };
+}
+
+/**
+ * Resend Outbound Email Service.
+ * Transmits commercial quotation proposals with attached PDF documents,
+ * or clarification inquiries when material requirements are missing.
+ */
 export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<OutboundDispatchResult> {
   const config = getAppConfig();
   const deliveryId = `del_${Date.now()}`;
@@ -228,11 +487,6 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
     );
   }
 
-  const bestValue =
-    input.quote.options.find((o) => o.optionType === "best_value") ?? input.quote.options[0];
-  const lowestCost = input.quote.options.find((o) => o.optionType === "lowest_cost");
-  const bestCoverage = input.quote.options.find((o) => o.optionType === "best_coverage");
-
   const cleanSub = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
   const subject = `Re: ${cleanSub} - Proposal Ref #${input.quote.id} [Ref: #${input.thread.id}]`;
   const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
@@ -240,119 +494,13 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
     input.quote.id
   );
 
-  // Plain Text Version (Humanized, clear, no internal jargon)
-  const textContent = `
-Hi ${input.recipientName || "there"},
-${input.conversationalResponse ? `\n${input.conversationalResponse}\n` : ""}
-Thank you for reaching out about your Site24x7 monitoring setup. Based on your stated infrastructure requirements, we've tailored a custom configuration to fully cover your workload.
+  const { textContent, htmlContent } = renderQuoteEmail({
+    recipientName: input.recipientName,
+    quote: input.quote,
+    threadId: input.thread.id,
+    conversationalResponse: input.conversationalResponse,
+  });
 
-RECOMMENDED CONFIGURATION (Best Value):
-• Plan: ${bestValue?.planName ?? "Recommended Plan"}
-• Total (${input.quote.billingPeriod}): ${bestValue ? formatMoney(bestValue.total, input.quote.currency) : "—"}
-• Sizing Note: ${bestValue?.rankReason ?? "Optimized for your required capacity with minimal excess."}
-${lowestCost ? `\nLOWEST COMMITMENT OPTION:\n• Plan: ${lowestCost.planName}\n• Total (${input.quote.billingPeriod}): ${formatMoney(lowestCost.total, input.quote.currency)}\n• Note: ${lowestCost.rankReason}\n` : ""}${bestCoverage ? `\nMAXIMUM HEADROOM OPTION:\n• Plan: ${bestCoverage.planName}\n• Total (${input.quote.billingPeriod}): ${formatMoney(bestCoverage.total, input.quote.currency)}\n• Note: ${bestCoverage.headroomNotes?.[0] || bestCoverage.rankReason}\n` : ""}
-OFFICIAL PDF QUOTATION:
-Your official itemized breakdown, capacity allowances, and pricing terms are attached in the accompanying quotation document ("Quote24x7-Proposal-${input.quote.id}.pdf").
-
-NEXT STEPS:
-If you would like to adjust any server counts or add optional services, simply reply directly to this email.
-
-Best regards,
-Quote24x7 Assistant
-https://quotes.joanathan.in/
-  `.trim();
-
-  // Responsive HTML Version (Clean, professional, humanized)
-  const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; margin: 0; padding: 24px; background-color: #f8fafc; }
-    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    .header { border-bottom: 2px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; }
-    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
-    .ref { font-size: 12px; color: #64748b; font-family: monospace; margin-top: 4px; }
-    .card { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 20px; margin: 20px 0; }
-    .card.highlight { background: #eff6ff; border-color: #93c5fd; }
-    .card-tag { font-size: 11px; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; }
-    .plan-name { font-size: 18px; font-weight: 700; color: #0f172a; margin: 6px 0 2px 0; }
-    .price { font-size: 24px; font-weight: 800; color: #2563eb; font-family: monospace; margin-bottom: 8px; }
-    .note { font-size: 13px; color: #475569; }
-    .attachment-box { background: #f1f5f9; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #334155; margin-top: 20px; }
-    .disclaimer { font-size: 11px; color: #64748b; margin-top: 28px; border-top: 1px solid #e2e8f0; padding-top: 16px; line-height: 1.5; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1 class="title">Site24x7 Monitoring Proposal</h1>
-      <div class="ref">Proposal Reference #${input.quote.id}  •  Billing: ${input.quote.billingPeriod}</div>
-    </div>
-
-    <p>Hi ${escapeHtml(input.recipientName || "there")},</p>
-    ${
-      input.conversationalResponse
-        ? `
-    <div style="background: #f8fafc; border-left: 4px solid #2563eb; border-radius: 6px; padding: 14px 18px; margin: 18px 0; font-size: 14px; color: #1e293b; line-height: 1.6;">
-      ${escapeHtml(input.conversationalResponse)}
-    </div>`
-        : ""
-    }
-    <p>Thank you for reaching out about your Site24x7 monitoring setup. Based on your stated infrastructure requirements, we've designed a tailored configuration to cover your workload.</p>
-
-    <div class="card highlight">
-      <div class="card-tag">Recommended Configuration (Best Value)</div>
-      <div class="plan-name">${bestValue?.planName ?? "Recommended Plan"}</div>
-      <div class="price">${bestValue ? formatMoney(bestValue.total, input.quote.currency) : "—"} <span style="font-size: 13px; font-weight: normal; color: #64748b;">/${input.quote.billingPeriod}</span></div>
-      <div class="note">${bestValue?.rankReason ?? "Optimized for your required capacity with minimal excess."}</div>
-    </div>
-
-    <div class="attachment-box" style="margin: 20px 0; background: #eff6ff; border: 1px solid #bfdbfe;">
-      📄 <strong>Itemized Quotation Attached:</strong> Complete capacity breakdown and transparent pricing are detailed in the attached PDF: <code>Quote24x7-Proposal-${input.quote.id}.pdf</code>.
-    </div>
-
-    ${
-      lowestCost
-        ? `
-    <div class="card">
-      <div class="card-tag" style="color: #475569;">Lowest Commitment Option</div>
-      <div class="plan-name">${lowestCost.planName}</div>
-      <div class="price" style="font-size: 18px; color: #0f172a;">${formatMoney(lowestCost.total, input.quote.currency)} <span style="font-size: 12px; font-weight: normal; color: #64748b;">/${input.quote.billingPeriod}</span></div>
-      <div class="note">${lowestCost.rankReason}</div>
-    </div>`
-        : ""
-    }
-
-    ${
-      bestCoverage
-        ? `
-    <div class="card">
-      <div class="card-tag" style="color: #475569;">Maximum Headroom Option</div>
-      <div class="plan-name">${bestCoverage.planName}</div>
-      <div class="price" style="font-size: 18px; color: #0f172a;">${formatMoney(bestCoverage.total, input.quote.currency)} <span style="font-size: 12px; font-weight: normal; color: #64748b;">/${input.quote.billingPeriod}</span></div>
-      <div class="note">${bestCoverage.headroomNotes?.[0] || bestCoverage.rankReason}</div>
-    </div>`
-        : ""
-    }
-
-    <div class="attachment-box">
-      📎 <strong>Attached:</strong> <code>Quote24x7-Proposal-${input.quote.id}.pdf</code> (official quotation breakdown with itemized packs and unit rates).
-    </div>
-
-    <p style="font-size: 13px; color: #475569; margin-top: 20px;">
-      To proceed or request any adjustments, simply reply directly to this email or use the purchase handoff option in your online proposal.
-    </p>
-
-    <div class="disclaimer">
-      <strong>Notice:</strong> This proposal is calculated from active Site24x7 pricing for planning and procurement.
-    </div>
-  </div>
-</body>
-</html>
-  `.trim();
 
   let providerMessageId: string | null = null;
   let status: "accepted" | "failed" = "accepted";
@@ -374,7 +522,7 @@ https://quotes.joanathan.in/
       const res = await resend.emails.send({
         from: formatFromEmail(config.outboundFromEmail),
         to: targetRecipient,
-        replyTo: formatFromEmail(config.inboundAddress || "quotes@joanathan.in"),
+        replyTo: formatFromEmail(config.inboundAddress || "quotes@quotes.joanathan.in"),
         subject,
         text: textContent,
         html: htmlContent,
@@ -482,6 +630,124 @@ https://quotes.joanathan.in/
   };
 }
 
+export function extractClarificationQuestions(questionText: string, maxQuestions = 3): string[] {
+  const lines = questionText
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const cleanQuestions: string[] = [];
+  for (const line of lines) {
+    const cleaned = line.replace(/^(?:\d+[\.\)]|[-•*])\s*/, "").trim();
+    if (cleaned.length > 0) {
+      cleanQuestions.push(cleaned);
+      if (cleanQuestions.length >= maxQuestions) break;
+    }
+  }
+
+  if (cleanQuestions.length === 0) {
+    cleanQuestions.push("Could you specify your estimated server, website, or network monitoring counts?");
+  }
+
+  return cleanQuestions;
+}
+
+/**
+ * Deterministically renders the plain text and responsive HTML clarification email.
+ * Adheres strictly to Phase 8 specifications:
+ * - Polite greeting with buyer's name if known.
+ * - At most 3 numbered questions (e.g. 1., 2., 3.). No prices anywhere in the body.
+ * - Strict limit under 120 words.
+ * - Both plain text and responsive HTML versions.
+ */
+export function renderClarificationEmail(input: {
+  recipientName?: string | null;
+  questionText: string;
+  conversationalResponse?: string | null;
+  threadId: string;
+}): { textContent: string; htmlContent: string; wordCount: number } {
+  const greeting = input.recipientName ? `Hi ${input.recipientName},` : "Hi there,";
+  const questions = extractClarificationQuestions(input.questionText, 3);
+  const numberedList = questions.map((q, idx) => `${idx + 1}. ${q}`).join("\n");
+
+  const textContent = [
+    greeting,
+    "",
+    "Thank you for contacting us about Site24x7. To configure the best-value plan and accurately size your monitoring requirements, could you please clarify:",
+    "",
+    numberedList,
+    "",
+    "Reply directly to this email with your counts, and we will prepare your customized quotation.",
+    "",
+    "Best regards,",
+    "Quote24x7 Assistant",
+  ].join("\n").trim();
+
+  const words = textContent.split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+
+  const htmlList = questions
+    .map((q) => `<li style="margin-bottom: 8px;">${escapeHtml(q)}</li>`)
+    .join("\n        ");
+
+  const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; margin: 0; padding: 24px; background-color: #f8fafc; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .header { border-bottom: 2px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; }
+    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
+    .ref { font-size: 12px; color: #64748b; font-family: monospace; margin-top: 4px; }
+    .card { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin: 20px 0; }
+    .card-title { font-size: 13px; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    ol { margin: 0; padding-left: 20px; color: #1e293b; }
+    .footer { font-size: 11px; color: #64748b; margin-top: 28px; border-top: 1px solid #e2e8f0; padding-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header" style="border-bottom: 2px solid #0070ea; padding-bottom: 16px; margin-bottom: 24px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td align="left" valign="middle">
+            <a href="https://quotes.joanathan.in/" target="_blank" style="text-decoration: none; display: inline-block;">
+              <img src="https://quotes.joanathan.in/logo.png" alt="Quote24x7" width="160" height="auto" style="display: block; max-width: 160px; height: auto; border: 0;" />
+            </a>
+          </td>
+          <td align="right" valign="middle">
+            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #0070ea; letter-spacing: 0.5px;">Sizing Clarification</div>
+            <div class="ref" style="margin-top: 2px;">Conversation #${escapeHtml(input.threadId)}</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <p>${escapeHtml(greeting)}</p>
+    <p>Thank you for contacting us about Site24x7. To configure the best-value plan and accurately size your monitoring requirements, could you please clarify:</p>
+    <div class="card">
+      <div class="card-title">Sizing Questions</div>
+      <ol>
+        ${htmlList}
+      </ol>
+    </div>
+
+    <p style="font-size: 14px; font-weight: 500; color: #0f172a;">
+      Reply directly to this email with your counts, and we will prepare your customized quotation.
+    </p>
+
+    <div class="footer">
+      Quote24x7 Assistant • Site24x7 India Autonomous Sales Desk
+    </div>
+  </div>
+</body>
+</html>`.trim();
+
+  return { textContent, htmlContent, wordCount };
+}
+
 /**
  * Transmits a clarification inquiry when requirements are missing.
  */
@@ -496,90 +762,12 @@ export async function sendClarificationEmail(
   const cleanSubject = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
   const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Quick Sizing Clarification`;
 
-  // Parse questions into clean list
-  const formattedQuestions = input.questionText
-    .split("\n")
-    .map((q) => q.trim())
-    .filter((q) => q.length > 0)
-    .map((q) => (q.startsWith("•") || q.startsWith("-") || /^\d+\./.test(q) ? q : `• ${q}`))
-    .join("\n");
-
-  const textContent = `
-Hi ${input.recipientName || "there"},
-${input.conversationalResponse ? `\n${input.conversationalResponse}\n` : ""}
-Thank you for reaching out regarding Site24x7 monitoring.
-
-To ensure our pricing engine configures the best-value plan and accurately provisions any necessary add-on capacity for your infrastructure, could you please clarify:
-
-${formattedQuestions}
-
-Simply reply directly to this email with your counts or requirements, and we will calculate your configuration options and send over your quotation.
-
-Best regards,
-Quote24x7 Assistant
-https://quotes.joanathan.in/
-  `.trim();
-
-  const htmlQuestions = input.questionText
-    .split("\n")
-    .map((q) => q.trim().replace(/^[-•*]\s*/, "").replace(/^\d+\.\s*/, ""))
-    .filter((q) => q.length > 0)
-    .map((q) => `<li style="margin-bottom: 8px;">${escapeHtml(q)}</li>`)
-    .join("");
-
-  const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; margin: 0; padding: 24px; background-color: #f8fafc; }
-    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    .header { border-bottom: 2px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; }
-    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
-    .ref { font-size: 12px; color: #64748b; font-family: monospace; margin-top: 4px; }
-    .card { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin: 20px 0; }
-    .card-title { font-size: 13px; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
-    ul { margin: 0; padding-left: 20px; color: #1e293b; }
-    .footer { font-size: 11px; color: #64748b; margin-top: 28px; border-top: 1px solid #e2e8f0; padding-top: 16px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1 class="title">Site24x7 Sizing Clarification</h1>
-      <div class="ref">Conversation #${input.thread.id}</div>
-    </div>
-
-    <p>Hi ${escapeHtml(input.recipientName || "there")},</p>
-    ${
-      input.conversationalResponse
-        ? `
-    <div style="background: #f8fafc; border-left: 4px solid #2563eb; border-radius: 6px; padding: 14px 18px; margin: 18px 0; font-size: 14px; color: #1e293b; line-height: 1.6;">
-      ${escapeHtml(input.conversationalResponse)}
-    </div>`
-        : ""
-    }
-    <p>Thank you for reaching out regarding Site24x7 monitoring. To configure the best-value plan and accurately provision any required add-on capacity for your infrastructure, could you clarify a few details?</p>
-    <div class="card">
-      <div class="card-title">Sizing Questions</div>
-      <ul>
-        ${htmlQuestions}
-      </ul>
-    </div>
-
-    <p style="font-size: 14px; font-weight: 500; color: #0f172a;">
-      Simply reply directly to this email with your counts, and we'll immediately calculate your configuration options and generate your proposal.
-    </p>
-
-    <div class="footer">
-      Quote24x7 Autonomous Operations • <a href="https://quotes.joanathan.in/">https://quotes.joanathan.in/</a>
-    </div>
-  </div>
-</body>
-</html>
-  `.trim();
+  const { textContent, htmlContent } = renderClarificationEmail({
+    recipientName: input.recipientName,
+    questionText: input.questionText,
+    conversationalResponse: input.conversationalResponse,
+    threadId: input.thread.id,
+  });
 
   let providerMessageId: string | null = null;
   let status: "accepted" | "failed" = "accepted";
@@ -604,7 +792,7 @@ https://quotes.joanathan.in/
       const res = await resend.emails.send({
         from: formatFromEmail(config.outboundFromEmail),
         to: targetRecipient,
-        replyTo: formatFromEmail(config.inboundAddress || "quotes@joanathan.in"),
+        replyTo: formatFromEmail(config.inboundAddress || "quotes@quotes.joanathan.in"),
         subject,
         text: textContent,
         html: htmlContent,

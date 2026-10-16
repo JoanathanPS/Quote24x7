@@ -358,6 +358,8 @@ export function evaluateCandidate(
     lineTotal: planBaseTotal,
     includedQuantity: null,
     sourceId: plan.sourceId,
+    packSize: 1,
+    purchasedUnits: 0,
   });
   pushStep(
     "RULE-BASE-PRICE",
@@ -488,6 +490,8 @@ export function evaluateCandidate(
         lineTotal: item.cost,
         includedQuantity: included,
         sourceId: item.pack.sourceId,
+        packSize: item.pack.packSize,
+        purchasedUnits: item.unitsDelivered,
       });
       pushStep(
         "RULE-ADDON-PACK",

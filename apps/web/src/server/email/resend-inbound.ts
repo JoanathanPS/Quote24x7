@@ -63,6 +63,13 @@ export function verifyWebhookSignature(
   }
 }
 
+export interface RetrievedAttachment {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  buffer: Buffer;
+}
+
 export interface RetrievedInboundEmail {
   id: string;
   messageId?: string | null;
@@ -74,11 +81,12 @@ export interface RetrievedInboundEmail {
   html?: string;
   headers?: Record<string, string> | null;
   receivedAt?: string;
+  attachments?: RetrievedAttachment[];
 }
 
 /**
- * Retrieves the complete content (text, HTML, headers) for a Resend inbound email ID.
- * Resend inbound webhooks send metadata only; this call fetches the full body.
+ * Retrieves the complete content (text, HTML, headers, and attachments) for a Resend inbound email ID.
+ * Resend inbound webhooks send metadata only; this call fetches the full body and downloads any attachments.
  */
 export async function fetchInboundEmailContent(
   emailId: string
@@ -122,6 +130,39 @@ export async function fetchInboundEmailContent(
       data.headers?.["message-id"] ||
       `<${data.id}@resend.dev>`;
 
+    // Fetch and download any email attachments from signed download URLs
+    const fetchedAttachments: RetrievedAttachment[] = [];
+    try {
+      const attListRes = await resend.emails.receiving.attachments.list({ emailId });
+      const rawData = attListRes.data;
+      const attItems: Array<{ id?: string; filename?: string; content_type?: string; size?: number; download_url?: string }> =
+        Array.isArray(rawData)
+          ? rawData
+          : rawData && typeof rawData === "object" && "data" in rawData && Array.isArray((rawData as { data: unknown }).data)
+            ? ((rawData as { data: unknown[] }).data as Array<{ id?: string; filename?: string; content_type?: string; size?: number; download_url?: string }>)
+            : [];
+      for (const item of attItems) {
+        if (item.download_url) {
+          try {
+            const fileRes = await fetch(item.download_url, { signal: AbortSignal.timeout(10_000) });
+            if (fileRes.ok) {
+              const arrayBuf = await fileRes.arrayBuffer();
+              fetchedAttachments.push({
+                filename: item.filename || `attachment_${item.id}`,
+                contentType: item.content_type || "application/octet-stream",
+                sizeBytes: item.size || arrayBuf.byteLength,
+                buffer: Buffer.from(arrayBuf),
+              });
+            }
+          } catch (fileErr) {
+            console.error(`Failed to download attachment ${item.id} (${item.filename}):`, fileErr);
+          }
+        }
+      }
+    } catch (attErr) {
+      console.warn(`Could not list attachments for inbound email ${emailId}:`, attErr);
+    }
+
     return {
       id: data.id,
       messageId: rfcMessageId,
@@ -133,9 +174,11 @@ export async function fetchInboundEmailContent(
       html: data.html || undefined,
       headers: data.headers || null,
       receivedAt: data.created_at || new Date().toISOString(),
+      attachments: fetchedAttachments,
     };
   } catch (err) {
     console.error(`Exception while fetching inbound email ${emailId}:`, err);
     return null;
   }
 }
+

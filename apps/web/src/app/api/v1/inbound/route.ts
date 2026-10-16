@@ -98,6 +98,13 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const attachments: Array<{
+      filename: string;
+      contentType?: string;
+      content?: Buffer | Uint8Array | string;
+      sizeBytes?: number;
+    }> = [];
+
     // If metadata-only email.received event (typical for Resend Inbound), fetch full email content
     if (body.type === "email.received" && typeof eventData.email_id === "string" && !eventData.text) {
       const fetched = await fetchInboundEmailContent(eventData.email_id);
@@ -110,6 +117,23 @@ export async function POST(request: NextRequest) {
         providerMessageId = fetched.id;
         rfcMessageId = fetched.messageId || null;
         headers = fetched.headers || null;
+        if (fetched.attachments && fetched.attachments.length > 0) {
+          attachments.push(...fetched.attachments);
+        }
+      }
+    }
+
+    // Also support attachments provided directly in JSON payload (simulators, webhooks)
+    if (Array.isArray(eventData.attachments)) {
+      for (const item of eventData.attachments as Array<Record<string, unknown>>) {
+        if (typeof item.filename === "string") {
+          attachments.push({
+            filename: item.filename,
+            contentType: typeof item.contentType === "string" ? item.contentType : undefined,
+            content: (item.content as Buffer | Uint8Array | string) || undefined,
+            sizeBytes: typeof item.sizeBytes === "number" ? item.sizeBytes : undefined,
+          });
+        }
       }
     }
 
@@ -149,6 +173,12 @@ export async function POST(request: NextRequest) {
     }
     const html = typeof eventData.html === "string" ? eventData.html : undefined;
 
+    // If text is empty but attachments exist, supply descriptive placeholder
+    if (!text && attachments.length > 0) {
+      const names = attachments.map((a) => a.filename).join(", ");
+      text = `Please find our infrastructure requirements and monitoring specifications in the attached files: ${names}`;
+    }
+
     // If text is empty but html is provided, strip html tags for text
     if (!text && html) {
       text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -181,7 +211,7 @@ export async function POST(request: NextRequest) {
 
     if (!text && !subject) {
       return NextResponse.json(
-        { error: "Email body text or subject must be provided." },
+        { error: "Email body text, subject, or attached documents must be provided." },
         { status: 400 }
       );
     }
@@ -202,6 +232,7 @@ export async function POST(request: NextRequest) {
           : typeof eventData.created_at === "string"
           ? eventData.created_at
           : new Date().toISOString(),
+      attachments,
     };
 
     const result = await processInboundEmail(payload);
