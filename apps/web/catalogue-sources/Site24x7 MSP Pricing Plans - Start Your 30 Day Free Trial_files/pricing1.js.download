@@ -1,0 +1,2126 @@
+//ignorei18n_start
+var INR_BASE_RATE = 95;
+
+var site24x7_pricing = [
+    {
+        "currency": "usd",
+        "symbol": "$",
+        "starter": {
+            "annual": "10",
+            "monthly": "9"
+        },
+        "pro": {
+            "annual": "39",
+            "monthly": "35"
+        },
+        "classic": {
+            "annual": "99",
+            "monthly": "89"
+        },
+        "elite": {
+            "annual": "249",
+            "monthly": "225"
+        },
+        "enterprise": {
+            "annual": "499",
+            "monthly": "449"
+        },
+        "enterpriseweb": {
+            "annual": "999",
+            "monthly": "899"
+        },
+        "msp": {
+            "annual": "49",
+            "monthly": "45"
+        },
+
+        "web": {
+            "annual": "9",
+            "monthly": "10"
+        },
+        "digiperf": {
+            "annual": "36",
+            "monthly": "39"
+        },
+        "enterpriseplus": {
+            "annual": "899",
+            "monthly": "999"
+        },
+        "professional": {
+            "annual": "42",
+            "monthly": "49"
+        },
+        "mspnew": {
+            "annual": "54",
+            "monthly": "59"
+        },
+         "mspent": {
+            "annual": "225",
+            "monthly": "249"
+        },
+        "enterprisenew": {
+            "annual": "625",
+            "monthly": "749"
+        },
+        "lite": {
+            "annual": "9",
+            "monthly": "10"
+        },
+
+        "professionalMonitor": {
+            "onemonitor": {
+                "onecloud": "1",
+                "oneserver": "2.50",
+                "oneapplication": "8",
+                "onekubernetes": "0.25",
+                "onenetwork": "3",
+                "onewebsite": "0.36",
+                "onerum": "5",
+                "onesynthetic": "8",
+                "onesyntheticrun": "10",
+                "onelog7days": "0.30",
+                "onelog15days": "0.60",
+                "onelog30days": "1.2",
+                "onecloudspend": "3,000"
+            }
+        },
+
+        "enterpriseMonitor": {
+            "onemonitor": {
+                "onecloud": "1.20",
+                "oneserver": "4",
+                "oneapplication": "10",
+                "onekubernetes": "0.30",
+                "onenetwork": "4",
+                "onewebsite": "0.55",
+                "onerum": "7",
+                "onesynthetic": "10",
+                "onesyntheticrun": "15",
+                "onelog7days": "0.4",
+                "onelog15days": "0.8",
+                "onelog30days": "1.6",
+                "onecloudspend": "3,000"
+            }
+        },
+
+        "addons": {
+            "basic": {
+                "ten": "10",
+                "twenty": "30",
+                "fifty": "48",
+                "hundred": "100",
+                "twohundredfifty": "250",
+                "fivehundred": "450"
+            },
+            "advanced": {
+                "two": "15",
+                "five": "35",
+                "twentyfive": "160",
+                "hundred": "600"
+            },
+            "network": {
+                "ten": "33",
+                "fifty": "180",
+                "fivehundred": "985"
+            },
+            "netflow": {
+                "fifty": "125",
+                "thousand": "2,000"
+            },
+            "ncm": {
+                "twentyfive": "50",
+                "twohundredfifty": "450",
+                "thousand": "1,500"
+            },
+            "log": {
+                "tenGB": "3",
+                "hundredGB": "25",
+                "oneTB": "195"
+            },
+            "rum": {
+                "fivehundredK": "25",
+                "FiveM": "150",
+                "tenM": "300"
+            },
+            "synthetic": {
+                "tenthousand": "8",
+                "onehundredthousand": "72",
+                "oneM": "680"
+
+            },
+            "mobileAPM": {
+                "one": "99"
+            },
+            "customer": {
+                "one": "10"
+            },
+            "webuptime": {
+                "fifty": "18",
+                "fivehundred": "140",
+                "fivethousand": "900",
+                "tenthousand": "1,500"
+            },
+            "host": {
+                "ten": "25",
+                "fifty": "110",
+                "fivehundred": "1,100"
+
+            },
+            "logdays": {
+                "tenGB7days": "3",
+                "tenGB15days": "6",
+                "tenGB30days": "12",
+                "tenGB60days": "24",
+                "tenGB90days": "36",
+                "oneTB7days": "195",
+                "oneTB15days": "390",
+                "oneTB30days": "780",
+                "oneTB60days": "1560",
+                "oneTB90days": "2340",
+            },
+            "hourly": {
+                "basic": "0.006",
+                "advanced": "0.028"
+            },
+            "networkComponent": {
+                "ten": "11",
+                "fivehundred": "468"
+
+            },
+        },
+
+        "liteaddon": {
+           "basic": {
+                "ten": "10"
+            },
+            "advanced": {
+                "two": "15"
+            },
+            "host": {
+                "ten": "25",
+
+            },
+            "logdays": {
+                "tenGB7days": "3",
+                "tenGB15days": "6",
+                "tenGB30days": "12",
+            },
+            
+            "networkComponent": {
+                "ten": "11"
+
+            },
+            "rum": {
+                "fivehundredK": "25"
+            },
+            "synthetic": {
+                "tenthousand": "8"
+
+            },
+        },
+
+        "enterpriseaddons": {
+            "basic": {
+                "ten": "16",
+                "fifty": "57",
+                "fivehundred": "720"
+            },
+            "advanced": {
+                "two": "20",
+                "five": "45",
+                "twentyfive": "315",
+                "hundred": "1,190"
+            },
+
+            "host": {
+                "ten": "40",
+                "fifty": "150",
+                "fivehundred": "1,800"
+
+            },
+            "network": {
+                "ten": "44",
+                "fifty": "240",
+                "fivehundred": "1,540"
+
+            },
+            "rum": {
+                "fivehundred": "30",
+                "fiveM": "180",
+                "tenM": "360"
+
+            },
+            "logs": {
+                "tenGB": "4",
+                "hundredGB": "30",
+                "oneTB": "240"
+
+            },
+            "synthetic": {
+                "tenthousand": "10",
+                "onehundredthousand": "90",
+                "oneM": "1,105"
+
+            },
+            "logdays": {
+                "tenGB7days": "4",
+                "tenGB15days": "8",
+                "tenGB30days": "16",
+                "tenGB60days": "32",
+                "tenGB90days": "48",
+                "oneTB7days": "240",
+                "oneTB15days": "480",
+                "oneTB30days": "960",
+                "oneTB60days": "1,920",
+                "oneTB90days": "2,880",
+            },
+            "hourly": {
+                "basic": "0.008",
+                "advanced": "0.037"
+            },
+            "networkComponent": {
+                "ten": "15",
+                "fivehundred": "491"
+
+            },
+
+        },
+        
+        "webperfaddons": {
+            "rum": {
+                "fivehundred": "25",
+                "fiveM": "150",
+                "tenM": "300"
+
+
+            },
+            "syntheticcombo": {
+                "fifty": "50",
+                "fivehundred": "500",
+                "thousand": "1,050"
+
+            }
+        },
+        "enterpriseplusaddons": {
+            "basic": {
+                "fivehundred": "275"
+            },
+            "advanced": {
+                "two": "15",
+                "five": "50",
+                "twentyfive": "200",
+                "hundred": "600"
+            },
+
+            "rum": {
+                "fivehundred": "24",
+                "fiveM": "124",
+
+            }
+        },
+        "newmspaddons": {
+            "customer": {
+                "one": "9"
+            }
+        },
+        "unitprice": "2"
+    },
+    {
+        "currency": "gbp",
+        "symbol": "£",
+        "starter": {
+            "annual": "8",
+            "monthly": "7"
+        },
+        "pro": {
+            "annual": "30",
+            "monthly": "28"
+        },
+        "classic": {
+            "annual": "79",
+            "monthly": "71"
+        },
+        "elite": {
+            "annual": "199",
+            "monthly": "180"
+        },
+        "enterprise": {
+            "annual": "399",
+            "monthly": "359"
+        },
+        "enterpriseweb": {
+            "annual": "799",
+            "monthly": "719"
+        },
+        "msp": {
+            "annual": "39",
+            "monthly": "36"
+        },
+
+        "web": {
+            "annual": "7.2",
+            "monthly": "8"
+        },
+        "digiperf": {
+            "annual": "29",
+            "monthly": "32"
+        },
+        "enterpriseplus": {
+            "annual": "720",
+            "monthly": "799"
+        },
+        "professional": {
+            "annual": "34",
+            "monthly": "40"
+        },
+        "mspnew": {
+            "annual": "44",
+            "monthly": "48"
+        },
+        "mspent": {
+            "annual": "180",
+            "monthly": "200"
+        },
+        "enterprisenew": {
+            "annual": "500",
+            "monthly": "600"
+        },
+        "lite": {
+            "annual": "7",
+            "monthly": "8"
+        },
+
+
+        "professionalMonitor": {
+            "onemonitor": {
+                "onecloud": "0.80",
+                "oneserver": "2",
+                "oneapplication": "6.40",
+                "onekubernetes": "0.20",
+                "onenetwork": "2.40",
+                "onewebsite": "0.29",
+                "onerum": "4",
+                "onesynthetic": "6.50",
+                "onesyntheticrun": "8",
+                "onelog7days": "0.24",
+                "onelog15days": "0.48",
+                "onelog30days": "0.96",
+                "onecloudspend": "2,400"
+            }
+        },
+
+        "enterpriseMonitor": {
+            "onemonitor": {
+                "onecloud": "0.96",
+                "oneserver": "3.20",
+                "oneapplication": "8",
+                "onekubernetes": "0.24",
+                "onenetwork": "3.20",
+                "onewebsite": "0.44",
+                "onerum": "5.60",
+                "onesynthetic": "8",
+                "onesyntheticrun": "12",
+                "onelog7days": "0.32",
+                "onelog15days": "0.64",
+                "onelog30days": "1.28",
+                "onecloudspend": "2,400"
+            }
+        },
+
+        "addons": {
+            "basic": {
+                "ten": "8",
+                "twenty": "24",
+                "fifty": "39",
+                "hundred": "80",
+                "twohundredfifty": "200",
+                "fivehundred": "360"
+            },
+            "advanced": {
+                "two": "12",
+                "five": "28",
+                "twentyfive": "128",
+                "hundred": "480"
+            },
+            "network": {
+                "ten": "26.40",
+                "fifty": "144",
+                "fivehundred": "788"
+            },
+            "netflow": {
+                "fifty": "100",
+                "thousand": "1,600"
+            },
+            "ncm": {
+                "twentyfive": "40",
+                "twohundredfifty": "360",
+                "thousand": "1,200"
+            },
+            "log": {
+                "tenGB": "33",
+                "hundredGB": "270",
+                "oneTB": "2,430"
+            },
+            "rum": {
+                "fivehundredK": "20",
+                "FiveM": "120",
+                "tenM": "240"
+            },
+            "synthetic": {
+                "tenthousand": "7",
+                "onehundredthousand": "58",
+                "oneM": "544"
+
+            },
+            "mobileAPM": {
+                "one": "80"
+            },
+            "customer": {
+                "one": "8"
+            },
+            "webuptime": {
+                "fifty": "14",
+                "fivehundred": "112",
+                "fivethousand": "720",
+                "tenthousand": "1,200"
+            },
+            "host": {
+                "ten": "20",
+                "fifty": "88",
+                "fivehundred": "880"
+
+            },
+            "logdays": {
+                "tenGB7days": "2.40",
+                "tenGB15days": "4.80",
+                "tenGB30days": "9.60",
+                "tenGB60days": "19.2",
+                "tenGB90days": "28.8",
+                "oneTB7days": "156",
+                "oneTB15days": "312",
+                "oneTB30days": "624",
+                "oneTB60days": "1,248",
+                "oneTB90days": "1,872",
+            },
+            "hourly": {
+                "basic": "0.0040",
+                "advanced": "0.0220"
+            },
+            "networkComponent": {
+                "ten": "8.80",
+                "fivehundred": "374"
+
+            },
+        },
+
+        "liteaddon": {
+           "basic": {
+                "ten": "8"
+            },
+            "advanced": {
+                "two": "12",
+            },
+            "host": {
+                "ten": "20",
+
+            },
+            "logdays": {
+                 "tenGB7days": "2.40",
+                "tenGB15days": "4.80",
+                "tenGB30days": "9.60",
+            },
+            
+            "networkComponent": {
+                "ten": "8.80"
+
+            },
+            "rum": {
+                "fivehundredK": "20"
+            },
+            "synthetic": {
+                "tenthousand": "7"
+
+            },
+        },
+
+        "enterpriseaddons": {
+            "basic": {
+                "ten": "12.80",
+                "fifty": "46",
+                "fivehundred": "576"
+            },
+            "advanced": {
+                "two": "16",
+                "five": "36",
+                "twentyfive": "252",
+                "hundred": "952"
+            },
+
+            "host": {
+                "ten": "32",
+                "fifty": "120",
+                "fivehundred": "1,440"
+
+            },
+            "network": {
+                "ten": "35.20",
+                "fifty": "192",
+                "fivehundred": "1,232"
+
+            },
+            "rum": {
+                "fivehundred": "24",
+                "fiveM": "144",
+                "tenM": "288"
+
+            },
+            "logs": {
+                "tenGB": "4",
+                "hundredGB": "24",
+                "oneTB": "216"
+
+            },
+            "synthetic": {
+                "tenthousand": "8",
+                "onehundredthousand": "72",
+                "oneM": "884"
+
+            },
+            "logdays": {
+                "tenGB7days": "4",
+                "tenGB15days": "7",
+                "tenGB30days": "13",
+                "tenGB60days": "26",
+                "tenGB90days": "39",
+                "oneTB7days": "192",
+                "oneTB15days": "384",
+                "oneTB30days": "768",
+                "oneTB60days": "1,536",
+                "oneTB90days": "2,304",
+            },
+            "hourly": {
+                "basic": "0.0052",
+                "advanced": "0.029"
+            },
+            "networkComponent": {
+                "ten": "12",
+                "fivehundred": "392.80"
+
+            },
+        },
+        "webperfaddons": {
+            "rum": {
+                "fivehundred": "216",
+                "fiveM": "1,296",
+                "tenM": "240"
+
+
+            },
+            "syntheticcombo": {
+                "fifty": "40",
+                "fivehundred": "4,320",
+                "thousand": "840"
+
+            }
+        },
+        "enterpriseplusaddons": {
+            "basic": {
+                "fivehundred": "220"
+            },
+            "advanced": {
+                "two": "12",
+                "five": "40",
+                "twentyfive": "160",
+                "hundred": "480"
+            },
+
+            "rum": {
+                "fivehundred": "20",
+                "fiveM": "100",
+
+            }
+        },
+        "newmspaddons": {
+            "customer": {
+                "one": "8"
+            }
+        },
+        "unitprice": "1.4"
+    },
+    {
+        "currency": "eur",
+        "symbol": "€",
+        "starter": {
+            "annual": "10",
+            "monthly": "9"
+        },
+        "pro": {
+            "annual": "39",
+            "monthly": "35"
+        },
+        "classic": {
+            "annual": "99",
+            "monthly": "89"
+        },
+        "elite": {
+            "annual": "249",
+            "monthly": "225"
+        },
+        "enterprise": {
+            "annual": "499",
+            "monthly": "449"
+        },
+        "enterpriseweb": {
+            "annual": "999",
+            "monthly": "899"
+        },
+        "msp": {
+            "annual": "49",
+            "monthly": "45"
+        },
+
+        "web": {
+            "annual": "9",
+            "monthly": "10"
+        },
+        "digiperf": {
+            "annual": "36",
+            "monthly": "39"
+        },
+        "enterpriseplus": {
+            "annual": "899",
+            "monthly": "999"
+        },
+        "professional": {
+            "annual": "42",
+            "monthly": "49"
+        },
+        "mspnew": {
+            "annual": "54",
+            "monthly": "59"
+        },
+        "mspent": {
+            "annual": "225",
+            "monthly": "249"
+        },
+        "enterprisenew": {
+            "annual": "625",
+            "monthly": "749"
+        },
+        "lite": {
+            "annual": "9",
+            "monthly": "10"
+        },
+
+
+
+        "professionalMonitor": {
+            "onemonitor": {
+                "onecloud": "1",
+                "oneserver": "2.50",
+                "oneapplication": "8",
+                "onekubernetes": "0.25",
+                "onenetwork": "3",
+                "onewebsite": "0.36",
+                "onerum": "5",
+                "onesynthetic": "8",
+                "onesyntheticrun": "10",
+                "onelog7days": "0.30",
+                "onelog15days": "0.60",
+                "onelog30days": "1.2",
+                "onecloudspend": "3,000"
+            },
+        },
+
+        "enterpriseMonitor": {
+            "onemonitor": {
+                "onecloud": "1.20",
+                "oneserver": "4",
+                "oneapplication": "10",
+                "onekubernetes": "0.30",
+                "onenetwork": "4",
+                "onewebsite": "0.55",
+                "onerum": "7",
+                "onesynthetic": "10",
+                "onesyntheticrun": "15",
+                "onelog7days": "0.4",
+                "onelog15days": "0.8",
+                "onelog30days": "1.6",
+                "onecloudspend": "3,000"
+            }
+        },
+
+        "addons": {
+            "basic": {
+                "ten": "10",
+                "twenty": "30",
+                "fifty": "48",
+                "hundred": "100",
+                "twohundredfifty": "250",
+                "fivehundred": "450"
+            },
+            "advanced": {
+                "two": "15",
+                "five": "35",
+                "twentyfive": "160",
+                "hundred": "600"
+            },
+            "network": {
+                "ten": "33",
+                "fifty": "180",
+                "fivehundred": "985"
+            },
+            "netflow": {
+                "fifty": "125",
+                "thousand": "2,000"
+            },
+            "ncm": {
+                "twentyfive": "50",
+                "twohundredfifty": "450",
+                "thousand": "1,500"
+            },
+            "log": {
+                "tenGB": "3",
+                "hundredGB": "25",
+                "oneTB": "195"
+            },
+            "rum": {
+                "fivehundredK": "25",
+                "FiveM": "150",
+                "tenM": "300"
+            },
+            "synthetic": {
+                "tenthousand": "8",
+                "onehundredthousand": "72",
+                "oneM": "680"
+
+            },
+            "mobileAPM": {
+                "one": "99"
+            },
+            "customer": {
+                "one": "10"
+            },
+            "webuptime": {
+                "fifty": "18",
+                "fivehundred": "140",
+                "fivethousand": "900",
+                "tenthousand": "1,500"
+            },
+            "host": {
+                "ten": "25",
+                "fifty": "110",
+                "fivehundred": "1,110"
+
+            },
+            "logdays": {
+                "tenGB7days": "3",
+                "tenGB15days": "6",
+                "tenGB30days": "12",
+                "tenGB60days": "24",
+                "tenGB90days": "36",
+                "oneTB7days": "195",
+                "oneTB15days": "390",
+                "oneTB30days": "780",
+                "oneTB60days": "1,560",
+                "oneTB90days": "2,340",
+            },
+            "hourly": {
+                "basic": "0.006",
+                "advanced": "0.028"
+            },
+            "networkComponent": {
+                "ten": "11",
+                "fivehundred": "468"
+
+            },
+        },
+
+         "liteaddon": {
+           "basic": {
+                "ten": "10"
+            },
+            "advanced": {
+                "two": "15"
+            },
+            "host": {
+                "ten": "25",
+
+            },
+            "logdays": {
+                "tenGB7days": "3",
+                "tenGB15days": "6",
+                "tenGB30days": "12",
+            },
+            
+            "networkComponent": {
+                "ten": "11"
+
+            },
+            "rum": {
+                "fivehundredK": "25"
+            },
+            "synthetic": {
+                "tenthousand": "8"
+
+            },
+        },
+
+        "enterpriseaddons": {
+            "basic": {
+                "ten": "16",
+                "fifty": "57",
+                "fivehundred": "720"
+            },
+            "advanced": {
+                "two": "20",
+                "five": "45",
+                "twentyfive": "315",
+                "hundred": "1,190"
+            },
+
+            "host": {
+                "ten": "40",
+                "fifty": "150",
+                "fivehundred": "1,800"
+
+            },
+            "network": {
+                "ten": "44",
+                "fifty": "240",
+                "fivehundred": "1,540"
+
+            },
+            "rum": {
+                "fivehundred": "30",
+                "fiveM": "180",
+                "tenM": "360"
+
+            },
+            "logs": {
+                "tenGB": "4",
+                "hundredGB": "30",
+                "oneTB": "270"
+
+            },
+            "synthetic": {
+                "tenthousand": "10",
+                "onehundredthousand": "90",
+                "oneM": "1,105"
+
+            },
+            "logdays": {
+                "tenGB7days": "4",
+                "tenGB15days": "8",
+                "tenGB30days": "16",
+                "tenGB60days": "32",
+                "tenGB90days": "48",
+                "oneTB7days": "240",
+                "oneTB15days": "480",
+                "oneTB30days": "960",
+                "oneTB60days": "1,920",
+                "oneTB90days": "2,880",
+            },
+            "hourly": {
+                "basic": "0.008",
+                "advanced": "0.037"
+            },
+            "networkComponent": {
+                "ten": "15",
+                "fivehundred": "491"
+
+            },
+        },
+        "webperfaddons": {
+            "rum": {
+                "fivehundred": "25",
+                "fiveM": "150",
+                "tenM": "300"
+
+
+            },
+            "syntheticcombo": {
+                "fifty": "50",
+                "fivehundred": "500",
+                "thousand": "1,050"
+
+            }
+
+        },
+        "enterpriseplusaddons": {
+            "basic": {
+                "fivehundred": "275"
+            },
+            "advanced": {
+                "two": "15",
+                "five": "50",
+                "twentyfive": "200",
+                "hundred": "600"
+            },
+
+            "rum": {
+                "fivehundred": "24",
+                "fiveM": "124",
+
+            }
+        },
+        "newmspaddons": {
+            "customer": {
+                "one": "9"
+            }
+        },
+        "unitprice": "2"
+    },
+    {
+        "currency": "aud",
+        "symbol": "A$",
+        "starter": {
+            "annual": "14",
+            "monthly": "12"
+        },
+        "pro": {
+            "annual": "55",
+            "monthly": "50"
+        },
+        "classic": {
+            "annual": "140",
+            "monthly": "125"
+        },
+        "elite": {
+            "annual": "350",
+            "monthly": "316"
+        },
+        "enterprise": {
+            "annual": "700",
+            "monthly": "625"
+        },
+        "enterpriseweb": {
+            "annual": "1399",
+            "monthly": "1249"
+        },
+        "msp": {
+            "annual": "70",
+            "monthly": "62"
+        },
+
+        "web": {
+            "annual": "12.69",
+            "monthly": "14.10"
+        },
+        "digiperf": {
+            "annual": "51",
+            "monthly": "55"
+        },
+        "enterpriseplus": {
+            "annual": "1,270",
+            "monthly": "1,399"
+        },
+        "professional": {
+            "annual": "59",
+            "monthly": "70"
+        },
+        "mspnew": {
+            "annual": "77",
+            "monthly": "84"
+        },
+        "mspent": {
+            "annual": "318",
+            "monthly": "352"
+        },
+        "enterprisenew": {
+            "annual": "885",
+            "monthly": "1,057"
+        },
+        "lite": {
+            "annual": "12",
+            "monthly": "14"
+        },
+
+
+        "professionalMonitor": {
+            "onemonitor": {
+                "onecloud": "1.41",
+                "oneserver": "3.53",
+                "oneapplication": "11.28",
+                "onekubernetes": "0.35",
+                "onenetwork": "4.23",
+                "onewebsite": "0.51",
+                "onerum": "7.05",
+                "onesynthetic": "11.50",
+                "onesyntheticrun": "14.10",
+                "onelog7days": "0.42",
+                "onelog15days": "0.84",
+                "onelog30days": "1.69",
+                "onecloudspend": "4,230"
+            }
+        },
+
+        "enterpriseMonitor": {
+            "onemonitor": {
+                "onecloud": "1.69",
+                "oneserver": "5.64",
+                "oneapplication": "14.10",
+                "onekubernetes": "0.42",
+                "onenetwork": "5.64",
+                "onewebsite": "0.78",
+                "onerum": "9.87",
+                "onesynthetic": "14.10",
+                "onesyntheticrun": "21.15",
+                "onelog7days": "0.56",
+                "onelog15days": "1.13",
+                "onelog30days": "2.26",
+                "onecloudspend": "4,230"
+            }
+        },
+
+        "addons": {
+            "basic": {
+                "ten": "15",
+                "twenty": "43",
+                "fifty": "68",
+                "hundred": "140",
+                "twohundredfifty": "350",
+                "fivehundred": "635"
+            },
+            "advanced": {
+                "two": "22",
+                "five": "40",
+                "twentyfive": "226",
+                "hundred": "846"
+            },
+            "network": {
+                "ten": "46.53",
+                "fifty": "254",
+                "fivehundred": "1,388.85"
+            },
+            "netflow": {
+                "fifty": "185",
+                "thousand": "3,000"
+            },
+            "ncm": {
+                "twentyfive": "70.50",
+                "twohundredfifty": "634.50",
+                "thousand": "2,115"
+            },
+            "log": {
+                "tenGB": "5",
+                "hundredGB": "36",
+                "oneTB": "318"
+            },
+            "rum": {
+                "fivehundredK": "36",
+                "fiveM": "212",
+                "tenM": "423"
+            },
+            "synthetic": {
+                "tenthousand": "12",
+                "onehundredthousand": "102",
+                "oneM": "959"
+
+            },
+            "mobileAPM": {
+                "one": "140"
+            },
+            "customer": {
+                "one": "15"
+            },
+            "webuptime": {
+                "fifty": "25",
+                "fivehundred": "197",
+                "fivethousand": "1,269",
+                "tenthousand": "2,115"
+            },
+            "host": {
+                "ten": "36",
+                "fifty": "156",
+                "fivehundred": "1,551"
+
+            },
+            "logdays": {
+                "tenGB7days": "4.23",
+                "tenGB15days": "8.46",
+                "tenGB30days": "16.92",
+                "tenGB60days": "33.84",
+                "tenGB90days": "50.76",
+                "oneTB7days": "275",
+                "oneTB15days": "550",
+                "oneTB30days": "1,100",
+                "oneTB60days": "2,200",
+                "oneTB90days": "3,300",
+            },
+            "hourly": {
+                "basic": "0.0080",
+                "advanced": "0.0390"
+            },
+            "networkComponent": {
+                "ten": "15.51",
+                "fivehundred": "659.88"
+
+            },
+        },
+         "liteaddon": {
+           "basic": {
+                "ten": "15"
+            },
+            "advanced": {
+                "two": "22"
+            },
+            "host": {
+                "ten": "36",
+
+            },
+            "logdays": {
+                "tenGB7days": "4.23",
+                "tenGB15days": "8.46",
+                "tenGB30days": "16.92",
+            },
+            
+            "networkComponent": {
+                "ten": "15.51"
+
+            },
+            "rum": {
+                "fivehundredK": "36"
+            },
+            "synthetic": {
+                "tenthousand": "12"
+
+            },
+        },
+
+        "enterpriseaddons": {
+            "basic": {
+                "ten": "22.40",
+                "fifty": "81",
+                "fivehundred": "1,016"
+            },
+            "advanced": {
+                "two": "29",
+                "five": "64",
+                "twentyfive": "444",
+                "hundred": "1,678"
+            },
+
+            "host": {
+                "ten": "56.40",
+                "fifty": "212",
+                "fivehundred": "2,538"
+
+            },
+            "network": {
+                "ten": "62.04",
+                "fifty": "339",
+                "fivehundred": "2,171.40"
+
+            },
+            "rum": {
+                "fivehundred": "43",
+                "fiveM": "254",
+                "tenM": "508"
+
+            },
+            "logs": {
+                "tenGB": "6",
+                "hundredGB": "43",
+                "oneTB": "381"
+
+            },
+            "synthetic": {
+                "tenthousand": "15",
+                "onehundredthousand": "127",
+                "oneM": "1,558.05"
+
+            },
+            "logdays": {
+                "tenGB7days": "6",
+                "tenGB15days": "12",
+                "tenGB30days": "23",
+                "tenGB60days": "46",
+                "tenGB90days": "68",
+                "oneTB7days": "339",
+                "oneTB15days": "677",
+                "oneTB30days": "1,354",
+                "oneTB60days": "2,708",
+                "oneTB90days": "4,061",
+            },
+            "hourly": {
+                "basic": "0.0011",
+                "advanced": "0.051"
+            },
+            "networkComponent": {
+                "ten": "21.15",
+                "fivehundred": "692.31"
+
+            },
+        },
+        "webperfaddons": {
+            "rum": {
+                "fivehundred": "36",
+                "fiveM": "212",
+                "tenM": "423"
+
+
+            },
+            "syntheticcombo": {
+                "fifty": "71",
+                "fivehundred": "4,320",
+                "thousand": "1,481"
+
+            }
+
+        },
+        "enterpriseplusaddons": {
+            "basic": {
+                "fivehundred": "400"
+            },
+            "advanced": {
+                "two": "22",
+                "five": "70",
+                "twentyfive": "290",
+                "hundred": "846"
+            },
+
+            "rum": {
+                "fivehundred": "35",
+                "fiveM": "175",
+
+            }
+        },
+        "newmspaddons": {
+            "customer": {
+                "one": "13"
+            }
+        },
+        "unitprice": "2.6"
+    },
+    {
+        "currency": "inr",
+        "symbol": "₹",
+        "starter": {
+            "annual": "800",
+            "monthly": "720"
+        },
+        "pro": {
+            "annual": "3,120",
+            "monthly": "2,800"
+        },
+        "classic": {
+            "annual": "7,920",
+            "monthly": "7,120"
+        },
+        "elite": {
+            "annual": "19,920",
+            "monthly": "18,000"
+        },
+        "enterprise": {
+            "annual": "39,920",
+            "monthly": "35,920"
+        },
+        "enterpriseweb": {
+            "annual": "89,910",
+            "monthly": "80,910"
+        },
+        "msp": {
+            "annual": "3,920",
+            "monthly": "3,600"
+        },
+
+        "web": {
+            "annual": "810",
+            "monthly": "900"
+        },
+        "digiperf": {
+            "annual": "3,240",
+            "monthly": "3,510"
+        },
+        "enterpriseplus": {
+            "annual": "80,910",
+            "monthly": "89,910"
+        },
+        "professional": {
+            "annual": "3,780",
+            "monthly": "4,410"
+        },
+        "mspnew": {
+            "annual": "4,860",
+            "monthly": "5,310"
+        },
+        "mspent": {
+            "annual": "21,375",
+            "monthly": "23,655"
+        },
+        "enterprisenew": {
+            "annual": "56,250",
+            "monthly": "67,500"
+        },
+        "lite": {
+            "annual": "810",
+            "monthly": "900"
+        },
+
+        "professionalMonitor": {
+            "onemonitor": {
+                "onecloud": "80",
+                "oneserver": "200",
+                "oneapplication": "640",
+                "onekubernetes": "20",
+                "onenetwork": "240",
+                "onewebsite": "28.80",
+                "onerum": "400",
+                "onesynthetic": "640",
+                "onesyntheticrun": "80",
+                "onelog7days": "24",
+                "onelog15days": "48",
+                "onelog30days": "96",
+                "onecloudspend": "2,40,000"
+            }
+        },
+
+        "enterpriseMonitor": {
+            "onemonitor": {
+                "onecloud": "96",
+                "oneserver": "240",
+                "oneapplication": "800",
+                "onekubernetes": "24",
+                "onenetwork": "320",
+                "onewebsite": "44",
+                "onerum": "560",
+                "onesynthetic": "800",
+                "onesyntheticrun": "1,200",
+                "onelog7days": "32",
+                "onelog15days": "64",
+                "onelog30days": "128",
+                "onecloudspend": "2,40,000"
+            }
+        },
+        "addons": {
+            "basic": {
+                "ten": "900",
+                "twenty": "2,400",
+                "fifty": "3,840",
+                "hundred": "8,000",
+                "twohundredfifty": "20,000",
+                "fivehundred": "40,500"
+            },
+            "advanced": {
+                "two": "1,200",
+                "five": "2,800",
+                "twentyfive": "14,400",
+                "hundred": "54,000"
+            },
+            "network": {
+                "ten": "2,970",
+                "fifty": "14,400",
+                "fivehundred": "88,650"
+            },
+            "netflow": {
+                "fifty": "10,000",
+                "thousand": "1,60,000"
+            },
+            "ncm": {
+                "twentyfive": "4,000",
+                "twohundredfifty": "36,000",
+                "thousand": "1,20,000"
+            },
+            "log": {
+                "tenGB": "270",
+                "hundredGB": "2,000",
+                "oneTB": "17,550"
+            },
+            "rum": {
+                "fivehundredK": "2,250",
+                "fiveM": "13,500",
+                "tenM": "27,000"
+            },
+            "synthetic": {
+                "tenthousand": "720",
+                "onehundredthousand": "5,760",
+                "oneM": "61,200"
+
+            },
+            "mobileAPM": {
+                "one": "7,920"
+            },
+            "customer": {
+                "one": "800"
+            },
+            "webuptime": {
+                "fifty": "1,620",
+                "fivehundred": "12,600",
+                "fivethousand": "72,000",
+                "tenthousand": "1,20,000"
+            },
+            "host": {
+                "ten": "2,250",
+                "fifty": "8,800",
+                "fivehundred": "99,000"
+
+            },
+            "logdays": {
+                "tenGB7day": "240",
+                "hundredGB": "2,000",
+                "oneTB": "18,000"
+            },
+            "logdays": {
+                "tenGB7days": "270",
+                "tenGB15days": "540",
+                "tenGB30days": "1,080",
+                "tenGB60days": "1,920",
+                "tenGB90days": "2,880",
+                "oneTB7days": "17,550",
+                "oneTB15days": "35,100",
+                "oneTB30days": "70,200",
+                "oneTB60days": "1,24,800",
+                "oneTB90days": "1,87,200",
+            },
+            "hourly": {
+                "basic": "0.54",
+                "advanced": "2.52"
+            },
+            "networkComponent": {
+                "ten": "990",
+                "fivehundred": "42,120"
+
+            },
+        },
+
+         "liteaddon": {
+           "basic": {
+                "ten": "900"
+            },
+            "advanced": {
+                "two": "1,200",
+            },
+            "host": {
+                "ten": "2,250",
+
+            },
+            "logdays": {
+                "tenGB7days": "270",
+                "tenGB15days": "540",
+                "tenGB30days": "1,080",
+            },
+            
+            "networkComponent": {
+                "ten": "990"
+
+            },
+            "rum": {
+                "fivehundredK": "2,250"
+            },
+            "synthetic": {
+                "tenthousand": "720"
+
+            },
+        },
+
+        "enterpriseaddons": {
+            "basic": {
+                "ten": "1,440",
+                "fifty": "4,560",
+                "fivehundred": "64,800"
+            },
+            "advanced": {
+                "two": "1,600",
+                "five": "3,600",
+                "twentyfive": "28,350",
+                "hundred": "1,07,100"
+            },
+
+            "host": {
+                "ten": "3,600",
+                "fifty": "12,000",
+                "fivehundred": "1,62,000"
+
+            },
+            "network": {
+                "ten": "3,960",
+                "fifty": "19,200",
+                "fivehundred": "1,38,600"
+
+            },
+            "rum": {
+                "fivehundred": "2,700",
+                "fiveM": "16,200",
+                "tenM": "32,400"
+
+            },
+            "logs": {
+                "tenGB": "320",
+                "hundredGB": "2,400",
+                "oneTB": "21,600"
+
+            },
+            "synthetic": {
+                "tenthousand": "900",
+                "onehundredthousand": "7,200",
+                "oneM": "99,450"
+
+            },
+            "logdays": {
+                "tenGB7days": "360",
+                "tenGB15days": "720",
+                "tenGB30days": "1,440",
+                "tenGB60days": "2,560",
+                "tenGB90days": "3,840",
+                "oneTB7days": "21,600",
+                "oneTB15days": "43,200",
+                "oneTB30days": "86,400",
+                "oneTB60days": "1,53,600",
+                "oneTB90days": "2,30,400",
+            },
+            "hourly": {
+                "basic": "0.72",
+                "advanced": "3.33"
+            },
+            "networkComponent": {
+                "ten": "1,350",
+                "fivehundred": "44,190"
+
+            },
+        },
+        "webperfaddons": {
+            "rum": {
+                "fivehundred": "2,250",
+                "fiveM": "13,500",
+                "tenM": "24,000"
+
+
+            },
+            "syntheticcombo": {
+                "fifty": "4,500",
+                "fivehundred": "40,000",
+                "thousand": "94,500"
+
+            }
+
+        },
+        "enterpriseplusaddons": {
+            "basic": {
+                "fivehundred": "24,750"
+            },
+            "advanced": {
+                "two": "1,200",
+                "five": "4,000",
+                "twentyfive": "18,000",
+                "hundred": "54,000"
+            },
+
+            "rum": {
+                "fivehundred": "2,160",
+                "fiveM": "11,160",
+
+            }
+        },
+        "newmspaddons": {
+            "customer": {
+                "one": "810"
+            }
+        },
+        "unitprice": "108"
+    }
+]
+
+function parsePriceValue(value) {
+    if (typeof value !== 'string' && typeof value !== 'number') {
+        return null;
+    }
+
+    var normalizedValue = String(value).replace(/,/g, '').trim();
+    if (!normalizedValue || isNaN(normalizedValue)) {
+        return null;
+    }
+
+    return Number(normalizedValue);
+}
+
+function getPriceFractionDigits(value) {
+    var normalizedValue = String(value).replace(/,/g, '');
+    var decimalIndex = normalizedValue.indexOf('.');
+
+    if (decimalIndex === -1) {
+        return 0;
+    }
+
+    return Math.min(3, normalizedValue.length - decimalIndex - 1);
+}
+
+function formatInrPriceValue(value, fractionDigits) {
+    return value.toLocaleString('en-IN', {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits
+    });
+}
+
+function convertPricingNodeToInr(node) {
+    if (Array.isArray(node)) {
+        return node.map(convertPricingNodeToInr);
+    }
+
+    if (node && typeof node === 'object') {
+        var convertedObject = {};
+
+        Object.keys(node).forEach(function (key) {
+            convertedObject[key] = convertPricingNodeToInr(node[key]);
+        });
+
+        return convertedObject;
+    }
+
+    var parsedPrice = parsePriceValue(node);
+    if (parsedPrice === null) {
+        return node;
+    }
+
+    var fractionDigits = getPriceFractionDigits(node);
+    var convertedValue = parsedPrice * INR_BASE_RATE;
+    return formatInrPriceValue(convertedValue, fractionDigits);
+}
+
+function applyInrPricingFromBaseRate() {
+    var usdPricingIndex = -1;
+    var inrPricingIndex = -1;
+
+    site24x7_pricing.forEach(function (pricing, index) {
+        if (pricing.currency === 'usd') {
+            usdPricingIndex = index;
+        }
+
+        if (pricing.currency === 'inr') {
+            inrPricingIndex = index;
+        }
+    });
+
+    if (usdPricingIndex === -1 || inrPricingIndex === -1) {
+        return;
+    }
+
+    var inrPricing = convertPricingNodeToInr(site24x7_pricing[usdPricingIndex]);
+    inrPricing.currency = 'inr';
+    inrPricing.symbol = '₹';
+
+    site24x7_pricing[inrPricingIndex] = inrPricing;
+}
+
+applyInrPricingFromBaseRate();
+
+$(document).ready(function () {
+    
+    // Only call showSecondTab if not on MSP pricing page
+    if (window.location.pathname !== '/msp/pricing.html') {
+        showSecondTab();
+    }
+    initializeCurrency();
+    
+    $('.price-cursor').on('click', function (e) {
+        e.stopPropagation();
+        var popClassName = null;
+        var tooltipelement = null;
+        var classList = $(this).attr("class").split(' ');
+        for (var index in classList) {
+            if (classList[index].indexOf('pop') != -1) {
+                popClassName = '.' + classList[index] + '-text';
+                break;
+            }
+        }
+
+        $("#activetooltip").remove();
+        ($(this)).append($(popClassName).clone());
+        tooltipelement = $(this).children(".hoverct").attr("id", "activetooltip").show();
+        var scroll = $(window).scrollTop();
+        var tooltip_rect = $(tooltipelement)[0].getBoundingClientRect();
+        var tooltip_pos_y = tooltip_rect.top;
+        if (tooltip_pos_y < 90) {
+            $('html, body').animate({
+                scrollTop: scroll + tooltip_pos_y - 90
+            }, 600);
+
+        }
+        var tooltip_pos_x = tooltip_rect.left;
+        var tipx = -90;
+        if (tooltip_pos_x < 0) {
+            $(tooltipelement).css("left", tipx - tooltip_pos_x)
+
+        }
+
+        hideOnClickOutside(tooltipelement);
+
+    });
+});
+
+function hideOnClickOutside(selector) {
+    document.addEventListener('click', outsideClickListener);
+
+    function outsideClickListener(event) {
+        var target = $(event.target);
+        if (!$(target).closest(selector).length && $(selector).is(':visible')) {
+            $(selector).remove();
+        }
+    };
+}
+
+var openPanel = document.querySelector('.panel-open');
+var closePanel = document.querySelector('.panel-close');
+var basicPanel = document.querySelector('.basic-panel');
+var enterprisePanel = document.querySelector('.enterprise-panel');
+
+openPanel?.addEventListener('click', viewChange);
+closePanel?.addEventListener('click', viewChange);
+
+function viewChange(evt) {
+    basicPanel.classList.toggle('d-none');
+    enterprisePanel.classList.toggle('is-visible');
+}
+
+$("#pricing-tab-select").on('change', function () {
+    var selectedValue = $(this).val();
+    $('#' + selectedValue + "-tab").trigger('click');
+});
+
+function showSecondTab() {
+    var activetab = location.search;
+    var tabname = activetab.split("?")[1];
+    if (tabname !== undefined) {
+        if (tabname.match('website|server|apm|allinone|msp')) {
+            $('#' + "pills-" + tabname + "-tab").trigger('click');
+        } else {
+            return
+        }
+    } else {
+        return
+    }
+}
+
+// Initialize currency detection on page load
+function initializeCurrency() {
+    // Set default to USD immediately
+    setDefaultCurrency();
+    
+    // Try to get cached geo data first
+    let cachedGeoData = getCachedGeoData();
+    
+    if (cachedGeoData) {
+        handleGeoData(cachedGeoData);
+    } else {
+        // Fetch new geo data
+        fetchGeoData();
+    }
+}
+
+function getCachedGeoData() {
+    try {
+        const cached = localStorage.getItem("geoData");
+        if (cached) {
+            const data = JSON.parse(cached);
+            return data;
+        }
+    } catch (e) {
+        console.warn('Failed to parse cached geo data:', e);
+    }
+    return null;
+}
+
+function fetchGeoData() {
+    // Try to fetch geo location with timeout
+    $.ajax({
+        url: '/tools/api/iplocation',
+        timeout: 3000, // 3 second timeout
+        success: function(data) {
+            try {
+                localStorage.setItem("geoData", JSON.stringify(data));
+                handleGeoData(data);
+            } catch (e) {
+                console.warn('Failed to cache geo data:', e);
+                handleGeoData(data);
+            }
+        },
+        error: function(xhr, status, error) {
+            console.warn('Geo-location fetch failed:', error);
+            // Keep USD as default - no action needed
+        }
+    });
+}
+
+function handleGeoData(data) {
+    if (!data || !data.COUNTRY_CODE) {
+        setDefaultCurrency();
+        return;
+    }
+
+    const countryCode = data.COUNTRY_CODE;
+    let selectedCurrency = 'usd'; // default
+    let phoneNumber = 'US: <a href="tel:+1844365247">+1 844 365 247</a>'; // default
+
+    // Define EU countries array
+    const countryEu = ['AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE'];
+
+    // Determine currency and phone based on country
+    switch (countryCode) {
+        case 'GB':
+            selectedCurrency = 'gbp';
+            phoneNumber = 'UK: <a href="tel:+442035647893">+44 203 564 7893</a>';
+            break;
+        case 'IN':
+            selectedCurrency = 'inr';
+            phoneNumber = 'IN: <a href="tel:18003090936">1800 3090936</a>';
+            break;
+        case 'AU':
+            selectedCurrency = 'aud';
+            phoneNumber = 'Aus: <a href="tel:+61280662895">+61 280 662 895</a>';
+            break;
+        default:
+            if (countryEu.includes(countryCode)) {
+                selectedCurrency = 'eur';
+                phoneNumber = 'EU: <a href="tel:+31207219030">+31 20 7219030</a>';
+            }
+            break;
+    }
+
+    // Update currency and phone
+    updateCurrency(selectedCurrency);
+    updatePhoneNumber(phoneNumber);
+    
+    // Trigger custom event
+    $(document).trigger('geo-located', [data]);
+}
+
+function setDefaultCurrency() {
+    updateCurrency('usd');
+    updatePhoneNumber('US: <a href="tel:+1844365247">+1 844 365 247</a>');
+}
+
+function updateCurrency(selectedCurrency) {
+    // Update dropdown selection
+    $('#currency-dropdown').val(selectedCurrency);
+    
+    // Update all pricing elements
+    currencyChange(selectedCurrency);
+}
+
+function updatePhoneNumber(phoneNumber) {
+    $('.phone-number').html(phoneNumber);
+}
+
+$("#currency-dropdown").on('click', '.option', function () {
+    var selectedCurrency = $(this).attr('data-value');
+    currencyChange(selectedCurrency);
+});
+
+function selectChange(selectedCurrency) {
+    $('#currency-dropdown>option[value="' + selectedCurrency + '"]').prop('selected', true);
+    currencyChange(selectedCurrency)
+}
+
+$("#currency-dropdown").on('change', function () {
+    var selectedCurrency = $(this).children("option:selected").val();
+    currencyChange(selectedCurrency)
+});
+
+
+
+function currencyChange(selectedCurrency) {
+    console.log(selectedCurrency)
+    $(site24x7_pricing).each(function (i, item) {
+        console.log(item.currency)
+        if (selectedCurrency == item.currency) {
+            $(".currency-symbol").html(item.symbol);
+            $(".web-annual-price").html(item.web.annual);
+            $(".web-monthly-price").html(item.web.monthly);
+            $(".digiperf-annual-price").html(item.digiperf.annual);
+            $(".digiperf-monthly-price").html(item.digiperf.monthly);
+            $(".enterpriseplus-annual-price").html(item.enterpriseplus.annual);
+            $(".enterpriseplus-monthly-price").html(item.enterpriseplus.monthly);
+            $(".professional-annual-price").html(item.professional.annual);
+            $(".professional-monthly-price").html(item.professional.monthly);
+            $(".mspnew-annual-price").html(item.mspnew.annual);
+            $(".mspnew-monthly-price").html(item.mspnew.monthly);
+            $(".mspent-annual-price").html(item.mspent.annual);
+            $(".mspent-monthly-price").html(item.mspent.monthly);
+            $(".enterprisenew-annual-price").html(item.enterprisenew.annual);
+            $(".enterprisenew-monthly-price").html(item.enterprisenew.monthly);
+            $(".lite-annual-price").html(item.lite.annual);
+            $(".lite-monthly-price").html(item.lite.monthly);
+
+
+            $(".starter-annual-price").html(item.starter.annual);
+            $(".starter-monthly-price").html(item.starter.monthly);
+            $(".pro-annual-price").html(item.pro.annual);
+            $(".pro-monthly-price").html(item.pro.monthly);
+            $(".classic-annual-price").html(item.classic.annual);
+            $(".classic-monthly-price").html(item.classic.monthly);
+            $(".elite-annual-price").html(item.elite.annual);
+            $(".elite-monthly-price").html(item.elite.monthly);
+            $(".enterprise-annual-price").html(item.enterprise.annual);
+            $(".enterprise-monthly-price").html(item.enterprise.monthly)
+            $(".enterpriseweb-annual-price").html(item.enterpriseweb.annual);
+            $(".enterpriseweb-monthly-price").html(item.enterpriseweb.monthly);
+            $(".msp-annual-price").html(item.msp.annual);
+            $(".msp-monthly-price").html(item.msp.monthly);
+            $(".addon-basic-10").html(item.addons.basic.ten);
+            $(".addon-basic-20").html(item.addons.basic.twenty);
+            $(".addon-basic-50").html(item.addons.basic.fifty);
+            $(".addon-basic-500").html(item.addons.basic.fivehundred);
+            $(".addon-advanced-2").html(item.addons.advanced.two);
+            $(".addon-advanced-5").html(item.addons.advanced.five);
+            $(".addon-advanced-25").html(item.addons.advanced.twentyfive);
+            $(".addon-advanced-100").html(item.addons.advanced.hundred);
+            $(".addon-network-100").html(item.addons.network.hundred);
+            $(".addon-network-250").html(item.addons.network.twofifty);
+            $(".addon-network-1000").html(item.addons.network.thousand);
+            $(".addon-network-10").html(item.addons.network.ten);
+            $(".addon-network-50").html(item.addons.network.fifty);
+            $(".addon-network-500").html(item.addons.network.fivehundred);
+            $(".addon-netflow-50").html(item.addons.netflow.fifty);
+            $(".addon-netflow-1000").html(item.addons.netflow.thousand);
+            $(".addon-ncm-25").html(item.addons.ncm.twentyfive);
+            $(".addon-ncm-250").html(item.addons.ncm.twohundredfifty);
+            $(".addon-ncm-1000").html(item.addons.ncm.thousand);
+            $(".addon-logs-10").html(item.addons.log.tenGB);
+            $(".addon-logs-100").html(item.addons.log.hundredGB);
+            $(".addon-logs-1TB").html(item.addons.log.oneTB);
+            $(".addon-logs-1").html(item.addons.log.oneTB);
+            $(".addon-rum-5").html(item.addons.rum.fivehundredK);
+            $(".addon-rum-50").html(item.addons.rum.FiveM);
+            $(".addon-rum-10M").html(item.addons.rum.tenM);
+            $(".addon-synthetic-10000").html(item.addons.synthetic.tenthousand);
+            $(".addon-synthetic-100000").html(item.addons.synthetic.onehundredthousand);
+            $(".addon-synthetic-1M").html(item.addons.synthetic.oneM);
+            $(".addon-network-components-10").html(item.addons.networkComponent.ten);
+            $(".addon-network-components-500").html(item.addons.networkComponent.fivehundred);
+
+            $(".addon-7days-10GB").html(item.addons.logdays.tenGB7days);
+            $(".addon-15days-10GB").html(item.addons.logdays.tenGB15days);
+            $(".addon-30days-10GB").html(item.addons.logdays.tenGB30days);
+            $(".addon-60days-10GB").html(item.addons.logdays.tenGB60days);
+            $(".addon-90days-10GB").html(item.addons.logdays.tenGB90days);
+
+            $(".addon-7days-1TB").html(item.addons.logdays.oneTB7days);
+            $(".addon-15days-1TB").html(item.addons.logdays.oneTB15days);
+            $(".addon-30days-1TB").html(item.addons.logdays.oneTB30days);
+            $(".addon-60days-1TB").html(item.addons.logdays.oneTB60days);
+            $(".addon-90days-1TB").html(item.addons.logdays.oneTB90days);
+
+
+            $(".enterpriseaddon-7days-10GB").html(item.enterpriseaddons.logdays.tenGB7days);
+            $(".enterpriseaddon-15days-10GB").html(item.enterpriseaddons.logdays.tenGB15days);
+            $(".enterpriseaddon-30days-10GB").html(item.enterpriseaddons.logdays.tenGB30days);
+            $(".enterpriseaddon-60days-10GB").html(item.enterpriseaddons.logdays.tenGB60days);
+            $(".enterpriseaddon-90days-10GB").html(item.enterpriseaddons.logdays.tenGB90days);
+
+            $(".enterpriseaddon-7days-1TB").html(item.enterpriseaddons.logdays.oneTB7days);
+            $(".enterpriseaddon-15days-1TB").html(item.enterpriseaddons.logdays.oneTB15days);
+            $(".enterpriseaddon-30days-1TB").html(item.enterpriseaddons.logdays.oneTB30days);
+            $(".enterpriseaddon-60days-1TB").html(item.enterpriseaddons.logdays.oneTB60days);
+            $(".enterpriseaddon-90days-1TB").html(item.enterpriseaddons.logdays.oneTB90days);
+
+            $(".addon-mobileapm-1").html(item.addons.mobileAPM.one);
+            $(".unit-price").html(item.unitprice);
+            $(".addon-customer-1").html(item.addons.customer.one);
+
+            $(".hourly-based").html(item.addons.hourly.basic);
+            $(".hourly-advanced").html(item.addons.hourly.advanced);
+            $(".enterprise-hourly-based").html(item.enterpriseaddons.hourly.basic);
+            $(".enterprise-hourly-advanced").html(item.enterpriseaddons.hourly.advanced);
+
+            $(".addon-webuptime-50").html(item.addons.webuptime.fifty);
+            $(".addon-webuptime-500").html(item.addons.webuptime.fivehundred);
+            $(".addon-webuptime-5000").html(item.addons.webuptime.fivethousand);
+            $(".addon-webuptime-10000").html(item.addons.webuptime.tenthousand);
+            $(".addon-host-10").html(item.addons.host.ten);
+            $(".addon-host-50").html(item.addons.host.fifty);
+            $(".addon-host-500").html(item.addons.host.fivehundred);
+
+            $(".enterpriseaddon-basic-10").html(item.enterpriseaddons.basic.ten);
+            $(".enterpriseaddon-basic-50").html(item.enterpriseaddons.basic.fifty);
+            $(".enterpriseaddon-basic-500").html(item.enterpriseaddons.basic.fivehundred);
+            $(".enterpriseaddon-advanced-2").html(item.enterpriseaddons.advanced.two);
+            $(".enterpriseaddon-advanced-5").html(item.enterpriseaddons.advanced.five);
+            $(".enterpriseaddon-advanced-25").html(item.enterpriseaddons.advanced.twentyfive);
+            $(".enterpriseaddon-advanced-100").html(item.enterpriseaddons.advanced.hundred);
+            $(".enterpriseaddon-host-10").html(item.enterpriseaddons.host.ten);
+            $(".enterpriseaddon-host-50").html(item.enterpriseaddons.host.fifty);
+            $(".enterpriseaddon-host-500").html(item.enterpriseaddons.host.fivehundred);
+            $(".enterpriseaddon-network-10").html(item.enterpriseaddons.network.ten);
+            $(".enterpriseaddon-network-50").html(item.enterpriseaddons.network.fifty);
+            $(".enterpriseaddon-network-500").html(item.enterpriseaddons.network.fivehundred);
+
+            $(".enterpriseaddon-rum-500").html(item.enterpriseaddons.rum.fivehundred);
+            $(".enterpriseaddon-rum-5M").html(item.enterpriseaddons.rum.fiveM);
+            $(".enterpriseaddon-rum-10M").html(item.enterpriseaddons.rum.tenM);
+
+            $(".enterpriseaddon-logs-10").html(item.enterpriseaddons.logs.tenGB);
+            $(".enterpriseaddon-logs-100").html(item.enterpriseaddons.logs.hundredGB);
+            $(".enterpriseaddon-logs-1TB").html(item.enterpriseaddons.logs.oneTB);
+            $(".enterpriseaddon-synthetic-10000").html(item.enterpriseaddons.synthetic.tenthousand);
+            $(".enterpriseaddon-synthetic-100000").html(item.enterpriseaddons.synthetic.onehundredthousand);
+            $(".enterpriseaddon-synthetic-1M").html(item.enterpriseaddons.synthetic.oneM);
+            $(".enterpriseaddon-network-components-10").html(item.enterpriseaddons.networkComponent.ten);
+            $(".enterpriseaddon-network-components-500").html(item.enterpriseaddons.networkComponent.fivehundred);
+
+            $(".liteaddon-basic-10").html(item.liteaddon.basic.ten);
+            $(".liteaddon-advanced-2").html(item.liteaddon.advanced.two);
+            $(".liteaddon-host-10").html(item.liteaddon.host.ten);
+            $(".liteaddon-network-components-10").html(item.liteaddon.networkComponent.ten);
+            $(".liteaddon-rum-500").html(item.liteaddon.rum.fivehundredK);
+            $(".liteaddon-7days-10GB").html(item.liteaddon.logdays.tenGB7days);
+            $(".liteaddon-15days-10GB").html(item.liteaddon.logdays.tenGB15days);
+            $(".liteaddon-30days-10GB").html(item.liteaddon.logdays.tenGB30days);
+            $(".liteaddon-synthetic-10000").html(item.liteaddon.synthetic.tenthousand);
+
+
+            $(".webperfaddon-syntheticcombo-50").html(item.webperfaddons.syntheticcombo.fifty);
+            $(".webperfaddon-syntheticcombo-500").html(item.webperfaddons.syntheticcombo.fivehundred);
+            $(".webperfaddon-syntheticcombo-1000").html(item.webperfaddons.syntheticcombo.thousand);
+            $(".webperfaddon-rum-500").html(item.webperfaddons.rum.fivehundred);
+            $(".webperfaddon-rum-5M").html(item.webperfaddons.rum.fiveM);
+            $(".webperfaddon-rum-10M").html(item.webperfaddons.rum.tenM);
+
+
+            $(".enterpriseplusaddon-basic-500").html(item.enterpriseplusaddons.basic.fivehundred);
+            $(".enterpriseplusaddon-advanced-2").html(item.enterpriseplusaddons.advanced.two);
+            $(".enterpriseplusaddon-advanced-5").html(item.enterpriseplusaddons.advanced.five);
+            $(".enterpriseplusaddon-advanced-25").html(item.enterpriseplusaddons.advanced.twentyfive);
+            $(".enterpriseplusaddon-advanced-100").html(item.enterpriseplusaddons.advanced.hundred);
+            $(".enterpriseplusaddon-rum-500").html(item.enterpriseplusaddons.rum.fivehundred);
+            $(".enterpriseplusaddon-rum-5M").html(item.enterpriseplusaddons.rum.fiveM);
+            $(".enterpriseplusaddon-rum-10M").html(item.enterpriseplusaddons.rum.tenM);
+
+
+
+            $(".newmspaddon-customer-1").html(item.newmspaddons.customer.one);
+
+            $(".one-application-1").html(item.professionalMonitor.onemonitor.oneapplication);
+            $(".one-server-1").html(item.professionalMonitor.onemonitor.oneserver);
+            $(".one-network-1").html(item.professionalMonitor.onemonitor.onenetwork);
+            $(".one-website-1").html(item.professionalMonitor.onemonitor.onewebsite);
+            $(".one-rum-1").html(item.professionalMonitor.onemonitor.onerum);
+            $(".one-log-7").html(item.professionalMonitor.onemonitor.onelog7days);
+            $(".one-log-15").html(item.professionalMonitor.onemonitor.onelog15days);
+            $(".one-log-30").html(item.professionalMonitor.onemonitor.onelog30days);
+            $(".one-cloud-1").html(item.professionalMonitor.onemonitor.onecloud);
+            $(".one-kubernetes-1").html(item.professionalMonitor.onemonitor.onekubernetes);
+            $(".one-synthetic-1").html(item.professionalMonitor.onemonitor.onesynthetic);
+            $(".one-synthetic-run-1").html(item.professionalMonitor.onemonitor.onesyntheticrun);
+            $(".one-cloudspend-1").html(item.professionalMonitor.onemonitor.onecloudspend);
+
+
+            $(".one-application-1-ent").html(item.enterpriseMonitor.onemonitor.oneapplication);
+            $(".one-server-1-ent").html(item.enterpriseMonitor.onemonitor.oneserver);
+            $(".one-network-1-ent").html(item.enterpriseMonitor.onemonitor.onenetwork);
+            $(".one-website-1-ent").html(item.enterpriseMonitor.onemonitor.onewebsite);
+            $(".one-rum-1-ent").html(item.enterpriseMonitor.onemonitor.onerum);
+            $(".one-log-7-ent").html(item.enterpriseMonitor.onemonitor.onelog7days);
+            $(".one-log-15-ent").html(item.enterpriseMonitor.onemonitor.onelog15days);
+            $(".one-log-30-ent").html(item.enterpriseMonitor.onemonitor.onelog30days);
+            $(".one-cloud-1-ent").html(item.enterpriseMonitor.onemonitor.onecloud);
+            $(".one-kubernetes-1-ent").html(item.enterpriseMonitor.onemonitor.onekubernetes);
+            $(".one-synthetic-1-ent").html(item.enterpriseMonitor.onemonitor.onesynthetic);
+            $(".one-synthetic-run-1-ent").html(item.enterpriseMonitor.onemonitor.onesyntheticrun);
+            $(".one-cloudspend-1-ent").html(item.enterpriseMonitor.onemonitor.onecloudspend);
+
+
+
+        }
+    });
+}
+//ignorei18n_end

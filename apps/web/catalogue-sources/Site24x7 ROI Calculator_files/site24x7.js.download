@@ -1,0 +1,1345 @@
+//ignorei18n_start
+if (typeof String.prototype.trim !== 'function') {
+    String.prototype.trim = function () {
+        return this.replace(/^\s+|\s+$/g, '');
+    }
+}
+function isNotEmpty(varName) {
+    var response = true;
+    if (varName == "" || varName == undefined) {
+        response = false;
+    }
+    return response;
+}
+
+function readCookie(name) {
+    var nameEQ = name + "=";
+    var ca = document.cookie.split(';');
+    for (var i = 0; i < ca.length; i++) {
+        var c = ca[i];
+        while (c.charAt(0) == ' ') { c = c.substring(1, c.length) };
+        if (c.indexOf(nameEQ) == 0) { return decodeURIComponent(c.substring(nameEQ.length, c.length)) };
+    }
+    return null;
+}
+
+var countryEu = ['RS', 'VA', 'GB', 'UA', 'CH', 'SE', 'ES', 'SI', 'SK', 'SM', 'RU', 'RO', 'PT', 'PL', 'NO', 'NL', 'ME', 'MC', 'MD', 'MT', 'MK', //No i18N
+    'LU', 'LT', 'LI', 'LV', 'IT', 'IM', 'IE', 'IS', 'HU', 'GR', 'GI', 'DE', 'FR', 'FI', 'FO', 'EE', 'DK', 'CZ', 'CY', 'HR', 'BG', 'BA', 'BE', //No i18N
+    'BY', 'AT', 'AD', 'AL', 'AX', 'GG', 'JE', 'XK', 'SJ', 'CS']; //No i18N
+
+var headerHeight = $('.header.uheader').height() + $('#mini-panel-product_menu').height();
+
+function triggerGeoData(data) {
+    const urlParams = new URLSearchParams(window.location.search);
+    let autoCC = urlParams.get('autoCC');
+    if (autoCC && autoCC.length === 2) {
+        data = {
+            'COUNTRY_CODE': autoCC,
+            'COUNTRY_NAME': autoCC
+        };
+    }
+    $(document).trigger("geo-located", data);
+}
+
+function fetchGeoData() {
+    let geoData = null;
+    try {
+        geoData = JSON.parse(localStorage.getItem("geoData"));
+    } catch (e) { }
+    if (geoData == null) {
+        $.ajax({
+            url: '/tools/api/iplocation', //No i18N
+            success: function (data) {
+                localStorage.setItem("geoData", JSON.stringify(data));
+                triggerGeoData(data);
+            }
+        });
+    } else {
+        triggerGeoData(geoData);
+    }
+}
+
+$(function () {
+    const homeRegex = /^\/$/;
+    const toolsPagesRegex = /\/tools(\/|\.html)|^\/check-website-availability.html|^\/link-explorer.html|^\/web-speed-report.html|^\/lynx-view.html|^\/text-ratio.html|^\/server-header.html|^\/html-validator.html|^\/link-checker.html|^\/code-cleaner.html|^\/dns-lookup.html|^\/port-test.html|^\/check-heartbleed-vulnerability.html|^\/web-page-analyzer.html|^\/find-ip-address-of-web-site.html|^\/trace-route.html|^\/ping-test.html|^\/find-website-location.html|^\/ssl-certificate.html/;
+    const subProductRegex = /^\/(cloudspend)/;
+    const multilingualRegex = /^\/(id|it|ko|nl|pl|sv|th|vi|zh-Hant|ar)\//;
+    const communityRegex = /^\/(community|blog)\//;
+    const helpRegex = /^\/(help)\//;
+    const miscRegex = /\/(sysadminday|learn)\//;
+    const privacyRegex = /^\/privacypolicy\.html/;
+    const communityPluginsRegex = /^\/community\/filter\/plugins\//;
+    const beneluxPromotionRegex = /(^\/$)|(^\/application-performance-monitoring\.html)|(^\/azure\/)|(^\/gcp\/)|(^\/oci-monitoring\.html\/)|(^\/kubernetes-monitoring\.html\/)|(^\/log-management\.html\/)|(^\/aiops\.html\/)/
+    const beneluxCountries = ['BE', 'NL', 'LU'];
+    let displayBanner = false;
+    let bannerText = "";
+    let bannerLink = "";
+    let linkText = "";
+    let pathname = location.pathname;
+
+    // Top Banner - Carousel
+    //let webinarBanner = `<a target="_blank" href="/webinars/digital-experience-monitoring.html?src=s247-top-banner">Slow pages affecting revenue? Free webinar March 10. Turn digital friction into revenue! Register Now</a>`;
+
+    //let bannerTexts = [webinarBanner];
+
+
+
+    //const bannerPagesRegex = /^(\/|\/website-monitoring\.html|\/real-user-monitoring\.html|\/saas-monitoring\.html|\/synthetic-transaction-monitoring\.html|\/session-replay-tool\.html|\/mobile-apm\.html|\/digital-experience-monitoring\.html|\/end-user-experience-monitoring\.html|\/website-security\.html|\/pingdom-alternative\.html|\/synthetic-monitoring\.html|\/application-performance-monitoring\.html|\/rest-api-monitoring\.html|\/api-monitoring\.html|\/thousandeyes-alternative\.html|\/catchpoint-alternative\.html)$/;
+
+    //const bannerPagesRegex = /^(?:\/v2)?(?:\/|\/website-monitoring\.html|\/real-user-monitoring\.html|\/saas-monitoring\.html|\/synthetic-transaction-monitoring\.html|\/session-replay-tool\.html|\/mobile-apm\.html|\/digital-experience-monitoring\.html|\/end-user-experience-monitoring\.html|\/website-security\.html|\/pingdom-alternative\.html|\/synthetic-monitoring\.html|\/application-performance-monitoring\.html|\/rest-api-monitoring\.html|\/api-monitoring\.html|\/thousandeyes-alternative\.html|\/catchpoint-alternative\.html)$/;
+
+    // Top Banner
+    // if (bannerPagesRegex.test(pathname)) {
+    //     bannerText = `<a target="_blank" href="/webinars/digital-experience-monitoring.html?src=s247-top-banner">Slow pages affecting revenue? Free webinar March 10. Turn digital friction into revenue! Register Now</a>`;
+    //    showBanner(bannerText);
+    // }
+
+    let ilertBannerText = `<a target="_blank" href="/webinars/ilert-manageengine-integration-for-it-resilience.html?src=s247-top-banner">Connect detection to response and strengthen IT resilience with ManageEngine and ilert— Free Webinar with limited slots. Register now.</a>`;
+    bannerText = `<a target="_blank" href="https://www.manageengine.com/itom/observability-in-benelux-webinar.html?src=s247-top-banner">From fragmented monitoring to integrated observability: Strategies for modern IT teams. Free webinar May 19. Register Now</a>`;
+
+    // Don't show banner on webinar and ads pages
+    if (!/^\/(webinars|ads)\//.test(pathname)) {
+        // Show ilert banner for all locations immediately
+        // showBanner(ilertBannerText);
+
+        // For Benelux users on Benelux pages, upgrade to carousel with both banners
+        $(document).on('geo-located', function (event, data) {
+            let customerLocation = data.COUNTRY_CODE;
+            if (beneluxPromotionRegex.test(pathname) && beneluxCountries.includes(customerLocation)) {
+                $('.tmp-announcement').remove();
+                // showBanner([ilertBannerText, bannerText]);
+            }
+        });
+    }
+
+    fetchGeoData();
+
+    // Floating side banner
+    let floatingBannerRegex = /^\/aws-monitoring\.html$/;
+    if (floatingBannerRegex.test(pathname)) {
+        let cookieName = "banner_floating"; //No i18N
+        let bannerCookie = readCookie(cookieName);
+        if (bannerCookie !== "1") {
+            renderTopBanner(function (banner) {
+                banner.hide();
+                createCookie(cookieName, "1", 7);
+            });
+        }
+    }
+
+    // Floating request demo and price quote - not needed in following pages.
+    const floatingBtnRuleMatch = ![toolsPagesRegex, subProductRegex, multilingualRegex,
+        communityRegex, helpRegex, miscRegex, privacyRegex].some(rx => rx.test(pathname));
+    if (floatingBtnRuleMatch) {
+        renderFloatingButtons();
+    }
+
+
+    updateLanguageOnLoad()
+
+});
+
+function showBanner(bannerTexts, bannerLink, linkText, close) {
+    // Support both single string and array of strings
+    if (typeof bannerTexts === 'string') {
+        bannerTexts = [bannerTexts];
+    }
+
+    let $header = $('header');
+    let bannerStyle = `
+    <style>
+    
+    .tmp-announcement div {
+      position: relative;
+      line-height: 19px;
+    }
+
+    .tmp-announcement div span a {
+        height: 100%;
+        padding: 5px 10px;
+        border-radius: 3px;
+        font-family: 'ZohoPuviSemBd', sans-serif;
+        transition: .2s all ease-in-out;
+    }
+    
+    .tmp-announcement div span a:hover {
+        cursor: pointer;
+        text-decoration: underline;
+        text-decoration-style: dotted;
+    }
+    
+    .tmp-announcement button.close {
+      background: none;
+      outline: none;
+      border: none;
+      float: right;
+      opacity: .4;
+      position: relative;
+      bottom: 8px;
+      transition: 0.2s all ease-in-out;
+    }
+    
+    .tmp-announcement button.close:hover {
+      cursor: pointer;
+      opacity: .8;
+    }
+    
+    .tmp-announcement a.primary {
+        line-height: normal;
+        padding: 6px 15px;
+        margin: 0 30px 0 0;
+        text-decoration: none;
+        text-transform: uppercase;
+        display: inline-block;
+        font-size: 15px;
+        font-weight: 600;
+        border-radius: 5px;
+        box-shadow: 0 0 1px #1381b0;
+    }
+
+    /* Banner Carousel Styles */
+    .banner-carousel {
+        position: relative;
+        overflow: hidden;
+        display: inline;
+    }
+
+    .banner-carousel .banner-slide {
+        display: none;
+        opacity: 0;
+        transition: opacity 0.5s ease-in-out;
+    }
+
+    .banner-carousel .banner-slide.active {
+        display: inline;
+        opacity: 1;
+    }
+
+    .banner-dots {
+        display: flex;
+        justify-content: center;
+        gap: 6px;
+        margin-top: 4px;
+    }
+
+    .banner-dots .banner-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: rgba(0, 0, 0, 0.2);
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+        border: none;
+        padding: 0;
+        outline: none;
+    }
+
+    .banner-dots .banner-dot.active {
+        background-color: rgba(0, 0, 0, 0.6);
+    }
+
+    .banner-dots .banner-dot:hover {
+        background-color: rgba(0, 0, 0, 0.5);
+    }
+    
+    @media screen and (max-width: 768px) {
+        .tmp-announcement button.close {
+          position: absolute;
+          right: 15px;
+          bottom: 0;
+          float:none;
+        }
+    
+        .ab-body {
+            flex-direction: column;
+    }
+        
+        .register-btn {
+            align-self: center;
+     } 
+     }
+     
+     @media screen and (max-width: 780px) {
+        .tmp-announcement {
+            display: block;
+        }
+     }
+
+     @media screen and (max-width: 990px) {
+        .confetti-canvas {
+            top: 32px !important;
+            height: 36px !important;
+        }
+     }
+
+     @media screen and (max-width: 670px) {
+        .confetti-canvas {
+            display: none;
+            top: 32px !important;
+            height: 61px !important;
+        }
+
+        #confetti-canvas-1, #confetti-canvas-2 {
+            width: 50% !important;
+          }
+     }
+
+     #confetti-canvas-1, #confetti-canvas-2 {
+        position: absolute;
+        top: 0;
+        width: 30%;
+        z-index: 50;
+        pointer-events: none;
+      }
+
+      #confetti-canvas-1 {
+        left: 0;
+      }
+
+      #confetti-canvas-2 {
+        right: 0;
+      }
+  
+      #temp-body {
+        z-index: 100;
+      }
+  
+      .confetti-canvas {
+        position: absolute;
+        z-index: 50;
+        width: 100%;
+        height: 35px;
+        overflow: hidden;
+        top: 65px;
+        pointer-events: none;
+      }
+    </style>
+    `;
+
+    // Build carousel slides HTML
+    let slidesHtml = '';
+    let dotsHtml = '';
+    bannerTexts.forEach(function (text, index) {
+        let activeClass = index === 0 ? 'active' : '';
+        slidesHtml += `<span class="banner-slide ${activeClass}" data-slide="${index}">${text}</span>`;
+        dotsHtml += `<button class="banner-dot ${activeClass}" data-slide="${index}" aria-label="Banner ${index + 1}"></button>`;
+    });
+
+    let dotsSection = bannerTexts.length > 1 ? `<div class="banner-dots">${dotsHtml}</div>` : '';
+
+    let $banner = $(`
+        <div class="tmp-announcement p-2" style="background-color: #94ffc3; position: sticky; top: 65px; z-index: 99;">
+        <div class="mx-auto text-center">
+            <span class="mx-auto text-center" style="font-size: 14px;">
+            <span class="banner-carousel">${slidesHtml}</span>
+            <button class="d-inline-block close mx-auto ml-lg-3 mt-lg-1">&#215;</button>
+            </span>
+            ${dotsSection}
+        </div>
+        </div>
+        <div class='confetti-canvas'>
+        </div>
+    `);
+
+    const bannerDiv = document.querySelector('.tmp-announcement');
+    if (!bannerDiv) {
+        $(bannerStyle).appendTo('head');
+        $banner.insertAfter($header);
+    }
+
+    // Carousel auto-rotation
+    if (bannerTexts.length > 1) {
+        let currentSlide = 0;
+        let totalSlides = bannerTexts.length;
+
+        function goToSlide(index) {
+            currentSlide = index;
+            $('.banner-carousel .banner-slide').removeClass('active');
+            $('.banner-dots .banner-dot').removeClass('active');
+            $('.banner-carousel .banner-slide[data-slide="' + index + '"]').addClass('active');
+            $('.banner-dots .banner-dot[data-slide="' + index + '"]').addClass('active');
+        }
+
+        let bannerInterval = setInterval(function () {
+            currentSlide = (currentSlide + 1) % totalSlides;
+            goToSlide(currentSlide);
+        }, 5000);
+
+        // Click on dots to navigate
+        $(document).on('click', '.banner-dots .banner-dot', function () {
+            clearInterval(bannerInterval);
+            let slideIndex = parseInt($(this).attr('data-slide'));
+            goToSlide(slideIndex);
+            bannerInterval = setInterval(function () {
+                currentSlide = (currentSlide + 1) % totalSlides;
+                goToSlide(currentSlide);
+            }, 5000);
+        });
+    }
+
+    //startConfetti();
+    let $closeBth = $('.tmp-announcement .close');
+
+    $closeBth.on('click', function (e) {
+        // stopConfetti();
+        $('.tmp-announcement').remove();
+        createCookie('tmp-announce', "1", 7);
+    });
+}
+
+function renderTopBanner(close) {
+    let $header = $('.nav-sticky');
+    let bannerStyle = `
+        <style>
+
+.floating-promo-container {
+    width: 100%;
+    max-width: 200px;
+    right: 0px;
+    top: 45%;
+    z-index: 10;
+    will-change: transform;
+    transform: translateX(500px);
+    transition: transform 0.5s ease-in-out;
+    }
+
+    .floating-promo-container.show {
+      transform: translateX(0px);
+    }
+
+.promo-trigger {
+  right: 0px;
+  top: 0px;
+  width: 32px;
+  height: 32px;
+  z-index: 10;
+  cursor: pointer;
+}
+
+.trigger-open {
+  top: 45%;
+
+  background-color: #000;
+  will-change: transform;
+  transition: transform 0.5s ease-in-out;
+}
+
+.trigger-open.hide {
+  transform: translateX(500px);
+}
+
+.trigger::after, .trigger::before {
+  position: absolute;
+  content: '';
+  width: 12px;
+  height: 3px;
+  background: #fff;
+  right: 10px;
+}
+.trigger-open::before {
+  top: 10px;
+  transform: rotate(-45deg);
+}
+.trigger-open::after {
+  top: 17px;
+  transform: rotate(-135deg);
+}
+
+
+.trigger-close::before {
+  top: 12px;
+  transform: rotate(45deg);
+}
+
+.trigger-close::after {
+  top: 19px;
+  transform: rotate(135deg);
+}
+.bg-black {
+  background-color: #000;
+}
+        </style>
+    `;
+
+    let imgStaticDomain = $('link[rel="SHORTCUT ICON"]').attr('href').split('/images/')[0] + "/";
+    imgStaticDomain = imgStaticDomain.indexOf("static") > 0 ? imgStaticDomain : "/"
+
+    var $banner = $(`
+        <aside>
+        <div>
+            <span class="promo-trigger trigger trigger-open position-fixed"></span>
+            <div class="floating-promo-container position-fixed bg-black shadow px-3 py-2 text-center rounded-left">
+                <span class="promo-trigger trigger trigger-close position-absolute"></span>
+                <img class="mb-1" src="${imgStaticDomain}images/register-icon.svg" alt="" height="40" width="40">
+                <p class="mb-0 text-white">See what's new in CloudSpend.</p>
+                <a class="d-block mt-1" style="color: #83b633" href="https://blogs.manageengine.com/cloudspend/2024/12/19/reflecting-on-2024-a-year-of-growth-and-innovation-for-cloudspend.html" target="_blank" rel="noopener">Read more</a>
+        </div>
+      </div>
+        </aside>
+    `);
+
+    $(bannerStyle).appendTo('head');
+    $banner.insertBefore($header);
+    var new_script = document.createElement("script");
+    var inlineScript = document.createTextNode(`var triggerOpen = document.querySelector('.trigger-open')//No i18N
+            var triggerClose = document.querySelector('.trigger-close')//No i18N
+            var floatingPromo = document.querySelector('.floating-promo-container')//No i18N
+            triggerOpen.addEventListener('click', onViewChange);
+            triggerClose.addEventListener('click', onViewChange)
+            function onViewChange(evt) {
+              floatingPromo.classList.toggle('show');//No i18N
+              triggerOpen.classList.toggle('hide')//No i18N
+            }
+            onViewChange()
+            setTimeout(onViewChange,3000);`);
+    new_script.appendChild(inlineScript)
+    document.body.appendChild(new_script)
+    $('.premoclose').on('click', function () {
+        createCookie(cookieName, 0);
+        $banner.hide();
+    });
+}
+
+function renderFloatingButtons() {
+    let _i18n = typeof (i18n) !== "undefined" ? i18n : {};
+    const requestDemoText = _i18n.requestDemo ?? "Request Demo";
+    const getQuoteText = _i18n.getQuote ?? "Get Quote";
+    let imgStaticDomain = $('link[rel="SHORTCUT ICON"]').attr('href').split('/images/')[0] + "/";
+    imgStaticDomain = imgStaticDomain.indexOf("static") > 0 ? imgStaticDomain : "/";
+
+    const lang = $('html').attr('lang');
+    const langHome = lang === 'en' ? '/' : `/${lang}/`;
+    const btnSrc = location.pathname.indexOf('/statusiq/') >= 0 ? 'siqflbtn' : 'flbtn';
+    const isDigitalRiskAnalyzer = location.pathname.indexOf('/digital-risk-analyzer/') >= 0;
+    const demoBtnLink = isDigitalRiskAnalyzer ? '/digital-risk-analyzer/request-demo.html' : `${langHome}schedule-demo.html`;
+    const quoteBtnLink = isDigitalRiskAnalyzer ? '/digital-risk-analyzer/get-quote.html' : `${langHome}custom-pricing.html`;
+
+    let buttonHtml = `<div class="floating-buttons shadow d-none">
+                <div class="row mx-md-auto">
+                    <a href="${demoBtnLink}?src=${btnSrc}"
+                        class="text-center col-6 col-sm-12 mx-auto p-0 pt-2 m-0 request-demo d-none border-sm-0">
+                        <img src="${imgStaticDomain}images/request-demo-b1.svg" alt="Request Demo" width="40" height="26">
+                        <li class="pt-1 mb-2">${requestDemoText}</li>
+                    </a>
+                    <a href="${quoteBtnLink}?src=${btnSrc}"
+                        class="text-center col-6 col-sm-12 mx-auto p-0 pt-2 m-0 request-quote d-none">
+                        <img src="${imgStaticDomain}images/request-quote-b1.svg" alt="Get Quote" width="40" height="33">
+                        <li class="pt-1">${getQuoteText}</li>
+                    </a>
+                </div>
+            </div>`;
+
+    $('body').append(buttonHtml);
+    // Floating button handler
+    let floatingBtn = document.querySelector(".floating-buttons")
+    let requestDemoBtn = document.querySelector(".floating-buttons .request-demo");
+    let requestQuoteBtn = document.querySelector(".floating-buttons .request-quote");
+
+    window.addEventListener('scroll', function (e) {
+        if (window.pageYOffset >= 50) {
+            requestDemoBtn.classList.remove("d-none")
+            requestQuoteBtn.classList.remove("d-none")
+            floatingBtn.classList.remove("d-none")
+        } else {
+            requestDemoBtn.classList.add("d-none")
+            requestQuoteBtn.classList.add("d-none")
+            floatingBtn.classList.add("d-none")
+
+
+        }
+
+    })
+
+}
+
+$.QueryString = (function (paramsArray) {
+    var params = {};
+
+    for (var i = 0; i < paramsArray.length; ++i) {
+        var param = paramsArray[i].split('=', 2);
+
+        if (param.length !== 2) {
+            continue;
+        }
+
+        params[param[0]] = decodeURIComponent(param[1].replace(/\+/g, " "));
+    }
+
+    return params;
+})(window.location.search.substr(1).split('&'));
+
+(function ($) {
+    /*$('.mobile-menu-icon1').click(function () {
+        $(this).toggleClass('active');
+        $('.zhamburger').toggleClass('active');
+        $('.zmobile-menu-new').toggleClass('active');
+        $('.zmobile-menu-new').toggle();
+        $('.zmobile-menu-new-inner').toggle();
+        $('.zmobile-menu-new-inner').toggleClass('zshow');
+    });*/
+
+    // var toggleMyDropdown = function(){
+    //     $(this).find('.dropdown-toggle').dropdown('toggle');
+    // };
+    // $('#myDropdown, #myDropdown-2').hover(toggleMyDropdown, toggleMyDropdown);
+    // $('#myDropdown, #myDropdown-2').on('shown.bs.dropdown', function () {
+    //     $('.backdrop').show();
+    //     // $('body').css("overflow-y","hidden");
+    // });
+    // $('#myDropdown, #myDropdown-2').on('hide.bs.dropdown', function () {
+    //     $('.backdrop').hide();
+    //     // $('body').css("overflow-y","auto");
+    // });
+
+    // showBanner();
+
+    $('#footer a').on('click', function () {
+        var ea = $(this).attr('href');
+        ea = ea.replace(/\.\.\//g, '');
+        var el = $(this).closest("ul").attr('data-ft');
+        try { $zoho.salesiq.visitor.customaction("{'eventCategory':'Footer LinkClick','eventAction':'" + ea + "','eventLabel':'" + el + "','customID':'-'}"); } catch (exp) { }
+    });
+    $('.navbar a').on('click', function () {
+        var anchorLink = $(this).attr('href');
+        if ((anchorLink !== "#") && (typeof (anchorLink) !== "undefined")) {
+            anchorLink = anchorLink.replace(/\.\.\//g, '')
+            try { $zoho.salesiq.visitor.customaction("{'eventCategory':'Global Navigation','eventAction':'" + anchorLink + "','customID':'-'}"); } catch (exp) { }
+        }
+    });
+
+    // Log if ztm is blocked
+    setTimeout(function () {
+        let ztmBlocked = localStorage.getItem("ztmBlocked");
+        if (ztmBlocked === null && (typeof ZTMData === "undefined")) {
+            localStorage.setItem("ztmBlocked", "1");
+            $.get("/tools/marketing/_ln?method=ztmBlocked", function (data, status) {
+                // do nothing
+            });
+        }
+    }, 2000);
+
+})(jQuery);
+
+$(".search-btn").on('click', function () {
+    $(".search-wrap").addClass("search-visible");
+    $('#search-input').attr("tabindex", "0").focus();
+});
+
+$(".close-btn").on('click', function () {
+    $(".search-wrap").removeClass("search-visible");
+    $('#search-input').attr("tabindex", "-1")
+});
+
+$("#mobile-search").on('click', function (e) {
+    e.stopPropagation();
+    if ($("#navbarNavAltMarkup").hasClass("show")) {
+        $("#navbarNavAltMarkup").collapse('hide')
+    }
+    $(".s247-search-container").addClass("search-active");
+    $(".overlay").addClass("overlay-active");
+    $("#search-query").focus();
+
+});
+
+$(document).on('keydown', function (event) {
+    if (event.keyCode == 27) {
+        $('.s247-search-container').removeClass("search-active");
+    }
+});
+
+$(document).on('click', function (e) {
+    $target = $(e.target);
+    if ($target != null && !$target.closest('.global-search-icon').length && !$target.closest('.s247-search-container').length &&
+        $('.s247-search-container').is(":visible")) {
+        $('.s247-search-container').removeClass("search-active");
+        $(".overlay").removeClass("overlay-active");
+    }
+});
+
+$('#menuDropdown').on('shown.bs.dropdown', function () {
+    $screensize = $(window).width();
+    if ($screensize < 768) {
+        $('#navbarNavAltMarkup').addClass('max-height overflow-auto');
+    }
+})
+$('#menuDropdown').on('hidden.bs.dropdown', function () {
+    $screensize = $(window).width();
+    if ($screensize < 768) {
+        $('#navbarNavAltMarkup').removeClass('max-height overflow-auto');
+    }
+})
+$('#navbarNavAltMarkup').on('show.bs.collapse', function () {
+    $('.nav-toggler-menu').addClass('open');
+});
+$('#navbarNavAltMarkup').on('hide.bs.collapse', function () {
+    $('.nav-toggler-menu').removeClass('open');
+});
+
+
+function toggleDropdown(e) {
+    const _d = $(e.target).closest('.dropdown'),
+        _m = $('.dropdown-menu', _d);
+    setTimeout(function () {
+        const shouldOpen = e.type !== 'click' && _d.is(':hover');//No i18N
+        _m.toggleClass('show', shouldOpen);//No i18N
+        _d.toggleClass('show', shouldOpen);//No i18N
+        $('[data-toggle="dropdown"]', _d).attr('aria-expanded', shouldOpen);//No i18N
+    }, e.type === 'mouseleave' ? 100 : 0);
+}
+
+$('body').on('mouseenter mouseleave', '.dropdown', toggleDropdown)
+
+
+
+/*var footer_promo =
+{
+    "webbadge": "Webinar",//No i18N
+    "heading": "Site24x7  <span class='webinar-span'>Product Overview</span> ",//No i18N
+    "description": "",//No i18N
+    "date": "May 17",//No i18N
+    "zone1": {//No i18N
+        "time": "11:00 am IST",//No i18N
+        "url": "https://meet.zoho.com/yinVTBN6Z0?src=footerCta"//No i18N
+    },
+    "zone2": {//No i18N
+        "time": "11:00 am GMT",//No i18N
+        "url": "https://meet.zoho.com/JJMLy4GkXW?src=footerCta"//No i18N
+    },
+    "zone3": {//No i18N
+        "time": "11:00 am PT",//No i18N
+        "url": "https://meet.zoho.com/mGfYl7aeLA?src=footerCta"//No i18N
+    }
+
+}
+
+var promoCards = document.querySelectorAll(".footer-promo-card")//No i18N
+promoCards.forEach(function myFunction(item, index) {
+    item.classList.add('p-2', 'bg-white', 'rounded');//No i18N
+    item.querySelector(".webinar-badge").innerHTML = footer_promo.webbadge;//No i18N
+    item.querySelector(".webinar-title").innerHTML = footer_promo.heading;//No i18N
+    item.querySelector(".webinar-desc").innerHTML = footer_promo.description;//No i18N
+    item.querySelector(".webinar-date").innerHTML = footer_promo.date;//No i18N
+    item.querySelector(".webinar-reg-link-1").innerHTML = footer_promo.zone1.time;//No i18N
+    item.querySelector(".webinar-reg-link-1").href = footer_promo.zone1.url;//No i18N
+    item.querySelector(".webinar-reg-link-2").innerHTML = footer_promo.zone2.time;//No i18N
+    item.querySelector(".webinar-reg-link-2").href = footer_promo.zone2.url;//No i18N
+    item.querySelector(".webinar-reg-link-3").innerHTML = footer_promo.zone3.time;//No i18N
+    item.querySelector(".webinar-reg-link-3").href = footer_promo.zone3.url;//No i18N
+
+});*/
+
+if ($('.webinar-title').text() == "") {
+    $('.footer-promo-card').addClass('footer-promo-empty')
+}
+
+
+
+
+
+$(".footer-toggle").on('click', function () {
+    $screensize = $(window).width();
+    if ($screensize < 768) {
+        $(this).toggleClass("active");
+        $(this).parent().find("ul").slideToggle('medium');//No i18N
+    }
+});
+
+$(".scroll-animate").click(function (event) {
+    var href = event.currentTarget.getAttribute('data-href');
+    var targetEl = document.querySelector(href);
+    if (targetEl) {
+        $('html,body').animate({
+            scrollTop: $(targetEl).offset().top - 60
+        }, //Added "-60" to minus the height  of the fixed navbar
+            'slow'); //No i18N
+    }
+});
+
+function updateLanguageOnLoad() {
+    let languagesOptions = document.querySelectorAll('#select-language option')
+    let languages = [];
+
+    for (let i = 1; i < languagesOptions.length; i++) {
+        languages.push(languagesOptions[i].getAttribute('value'))
+    }
+
+    languages.some((lang, index) => {
+        if (window.location.href.includes(lang)) {
+            languagesOptions[index + 1].setAttribute('selected', '') // index + 1 because we are ignoring the default value
+            return true;
+        }
+    })
+}
+
+if (document.querySelector('.search-field')) {
+    document.querySelector('.search-field').addEventListener('keydown', function (e) {
+        if (e.isComposing || e.key === 'Enter') {
+            let query = document.querySelector('.search-field').value.trim()
+
+            if (query.length >= 3) {
+                window.location.replace("https://www.site24x7.com/search.html?q=" + query.toString().split(' ').join('+'));
+            }
+        }
+    })
+}
+
+if (document.querySelector('.s247-search-submit')) {
+    document.querySelector('.s247-search-submit').addEventListener('click', function (e) {
+        let query = document.querySelector('.s247-search-field').value.trim()
+
+        if (query.length >= 3) {
+            window.location.replace("https://www.site24x7.com/search.html?q=" + query.toString().split(' ').join('+'));
+        }
+    })
+}
+
+
+
+
+
+//ignorei18n_end
+
+
+
+//WCAG script start
+
+
+$(document).ready(function () {
+
+    $('img').each(function () {
+        const $img = $(this);
+
+        if ($img.attr('alt')) {
+            let cleanAlt = $img.attr('alt').replace(/[-_]/g, ' ');
+            $img.attr('alt', cleanAlt.trim());
+        }
+
+        // ✅ If no alt, find the nearest previous heading
+        if (!$img.attr('alt')) {
+            let headingText = '';
+
+            let $prevHeading = $img.prevAll('h1, h2, h3, h4, h5, h6').first();
+
+
+            if ($prevHeading.length === 0) {
+                $prevHeading = $img.parent().prevAll().find('h1, h2, h3, h4, h5, h6').last();
+            }
+
+            if ($prevHeading.length === 0) {
+                $prevHeading = $img.parent().prevAll('h1, h2, h3, h4, h5, h6').first();
+            }
+
+            headingText = $prevHeading.text().trim();
+
+            if (headingText) {
+                if (headingText.length > 80) {
+                    headingText = headingText.substring(0, 80).trim() + '...';
+                }
+                $img.attr('alt', headingText);
+            } else {
+                let fileName = $img.attr('src').split('/').pop().split('.').shift().replace(/[-_]/g, ' ');
+                $img.attr('alt', fileName || 'Image description unavailable');
+            }
+        }
+    });
+
+    // ✅ Add role to modals
+    $('.modal').attr({
+        'role': 'dialog',
+        'aria-hidden': 'true',
+        'tabindex': '-1'
+    });
+
+    $('.modal-dialog').attr('role', 'document');
+
+    // ✅ Ensure modal titles are labeled properly
+    $('.modal-title').each(function () {
+        if (!$(this).attr('id')) {
+            const uniqueId = 'modal-title-' + Math.random().toString(36).substr(2, 9);
+            $(this).attr('id', uniqueId);
+            $(this).closest('.modal').attr('aria-labelledby', uniqueId);
+        }
+    });
+
+    // ✅ Ensure close button is accessible
+    $('.modal .close').attr({
+        'role': 'button',
+        'tabindex': '0',
+        'aria-label': 'Close modal'
+    });
+
+    // ✅ Ensure iframe inside modal is focusable and has a title
+    $('.modal iframe').each(function () {
+        if (!$(this).attr('title')) {
+            $(this).attr('title', 'Video content');
+        }
+        if (!$(this).attr('tabindex')) {
+            $(this).attr('tabindex', '0');
+        }
+    });
+
+    // ✅ Add aria-live to alerts
+    $('.alert').attr({
+        'role': 'alert',
+        'aria-live': 'assertive'
+    });
+
+    // ✅ Enhance button accessibility
+    $('button').each(function () {
+        if (!$(this).attr('role')) $(this).attr('role', 'button');
+        if (!$(this).attr('tabindex')) $(this).attr('tabindex', '0');
+    });
+
+    // ✅ Improve forms accessibility (ensure placeholders map to aria-labels)
+    // $('input, select, textarea').each(function () {
+    //     if (!$(this).attr('aria-label') && $(this).attr('placeholder')) {
+    //         $(this).attr('aria-label', $(this).attr('placeholder'));
+    //     }
+    // });
+
+    $('input, select, textarea').each(function () {
+        const placeholder = $(this).attr('placeholder');
+        const id = $(this).attr('id') || `input-${Math.random().toString(36).substr(2, 9)}`;
+        $(this).attr('id', id);
+
+        if (!$(`label[for="${id}"]`).length) {
+            const labelText = placeholder || 'Input field';
+            $(this).before(`<label for="${id}" class="sr-only">${labelText}</label>`);
+        }
+
+        if (!$(this).attr('aria-label') && placeholder) {
+            $(this).attr('aria-label', placeholder);
+        }
+    });
+
+
+
+    function fixBrokenAria() {
+        // Handle aria-labelledby and aria-describedby on all elements (not just inputs)
+        $('[aria-labelledby], [aria-describedby]').each(function () {
+            const ariaLabelledby = $(this).attr('aria-labelledby');
+            const ariaDescribedby = $(this).attr('aria-describedby');
+
+            // Check and fix aria-labelledby
+            if (ariaLabelledby && !$(`#${ariaLabelledby}`).length) {
+                $(this).removeAttr('aria-labelledby');
+            }
+
+            // Check and fix aria-describedby
+            if (ariaDescribedby && !$(`#${ariaDescribedby}`).length) {
+                $(this).removeAttr('aria-describedby');
+            }
+        });
+    }
+
+    // ✅ Run on page load
+    fixBrokenAria();
+
+    // ✅ Re-run when a modal opens (Bootstrap 4 event)
+    $(document).on('shown.bs.modal', function () {
+        fixBrokenAria();
+    });
+
+    // ✅ Improve card accessibility (fix double ID issue)
+    $('.card').each(function () {
+        const $card = $(this);
+        const $link = $card.closest('a'); // Find the closest parent <a> tag
+        const $span = $card.find('span').text().trim(); // Grab span text properly
+        const $title = $card.find('.card-title').text().trim(); // Get the card title
+        const $paragraph = $card.find('p').text().trim(); // Get paragraph text
+
+        // Ensure the card is focusable
+        $card.attr('tabindex', '0');
+
+        // Build a more readable aria-label combining span, title, and paragraph content
+        const accessibleText = `${$span}: ${$title}. ${$paragraph}`;
+        $link.attr('aria-label', accessibleText.trim()); // Set aria-label on the <a>
+    });
+
+    setTimeout(function () {
+        $('a > .card').each(function () {
+            const $card = $(this);
+            const $link = $card.parent('a'); // Get the parent link
+            const $span = $card.find('span').text().trim();
+            const $title = $card.find('.card-title').text().trim();
+            const $paragraph = $card.find('p').text().trim();
+
+            // Combine content into aria-label
+            const accessibleText = `${$span}: ${$title}. ${$paragraph}`;
+            $link.attr('aria-label', accessibleText);
+        });
+    }, 100);
+
+
+
+
+    // ✅ Ensure navbar links are accessible
+    $('.navbar a').attr({
+        'role': 'link',
+        'tabindex': '0'
+    });
+
+    // ✅ Ensure tooltips and popovers have aria-describedby
+    $('[data-toggle="tooltip"]').each(function () {
+        const tooltipId = $(this).attr('id') + '-tooltip';
+        $(this).attr('aria-describedby', tooltipId);
+    });
+
+    // ✅ Add roles and tabindex to headings (skip if link inside to avoid double-tab)
+
+    $('h1, h2, h3, h4, h5, h6').each(function () {
+        const $heading = $(this);
+        const $link = $heading.find('a');
+
+        if ($link.length) {
+            if ($link.length === 1 && $link.text().trim() === $heading.text().trim()) {
+                // 🔹 CASE 1: Entire heading is a link — add tabindex to the <a> instead
+                $link.attr({
+                    'aria-label': $heading.text().trim(),
+                    'tabindex': '0' // Ensure link is focusable
+                });
+                $heading.removeAttr('tabindex').removeAttr('role'); // Remove redundant tabindex from heading
+            } else {
+                // 🔹 CASE 2: Partial link inside heading — keep both tab stops
+                $heading.attr({
+                    'role': 'heading',
+                    'aria-level': $heading.prop('tagName').substring(1),
+                    'tabindex': '0'
+                });
+
+                $link.attr('aria-label', $link.text().trim());
+            }
+        } else {
+            // 🔹 CASE 3: Normal heading without links
+            $heading.attr({
+                'role': 'heading',
+                'aria-level': $heading.prop('tagName').substring(1),
+                'tabindex': '0'
+            });
+        }
+    });
+
+    $('a').each(function () {
+        const $link = $(this);
+        const $heading = $link.find('h1, h2, h3, h4, h5, h6');
+        const $paragraph = $link.find('p');
+        const $card = $link.find('.card');
+
+        if ($heading.length) {
+            const linkText = `${$heading.text().trim()} ${$paragraph.text().trim()}`;
+            $link.attr('aria-label', linkText.trim());
+            $heading.attr('tabindex', '-1');
+            //console.log('🔧 Improved link accessibility:', linkText.trim());
+        }
+        if ($paragraph.length) {
+            $paragraph.attr('tabindex', '-1');
+        }
+        if ($card.length) {
+            $card.attr('tabindex', '-1');
+        }
+    });
+
+    // ✅ Add role and tabindex to paragraphs for keyboard focus
+
+    $('p').each(function () {
+        if (!$(this).attr('role')) $(this).attr('role', 'paragraph');
+        if (!$(this).attr('tabindex')) $(this).attr('tabindex', '0');
+    });
+
+    $('ul li').each(function () {
+        // if ($(this).find('a, button, input, select, textarea').length === 0 && !$(this).attr('tabindex')) {
+        //     $(this).attr('tabindex', '0');
+        // }
+        if (!$(this).attr('tabindex') && !$(this).hasClass('customer')) {
+            $(this).attr('tabindex', '0');
+        }
+    });
+
+    $('ul li a').each(function () {
+        if (!$(this).attr('tabindex')) {
+            $(this).attr('tabindex', '0');
+        }
+    });
+
+    // ✅ Ensure images are focusable with alt text as aria-label (fallback if no alt)
+    $('img').each(function () {
+        const imgWidth = $(this).attr('width') ? parseInt($(this).attr('width')) : $(this).width();
+
+        if (imgWidth > 200) {
+            if (!$(this).attr('tabindex')) $(this).attr('tabindex', '0');
+            if (!$(this).attr('aria-label')) {
+                $(this).attr('aria-label', $(this).attr('alt') || 'Image');
+            }
+        }
+    });
+
+    $('span.author-name, span.author-designation').each(function () {
+        if (!$(this).attr('tabindex')) {
+            $(this).attr('tabindex', '0');
+        }
+    });
+
+    $('a p').each(function () {
+        //console.warn('Double-tab issue detected on:', this);
+        $(this).removeAttr('tabindex').removeAttr('role');
+    });
+
+
+    $('.carousel-indicators [data-target]').attr('tabindex', '0');
+
+    // Handle carousel controls accessibility
+    $('.carousel').each(function () {
+        $(this).find('.carousel-control-prev, .carousel-control-next').attr('tabindex', '0');
+        $(this).find('.carousel-control-prev').attr('aria-label', 'Previous slide');
+        $(this).find('.carousel-control-next').attr('aria-label', 'Next slide');
+    });
+
+    $("input:not([aria-label])").each(function () {
+        const placeholder = $(this).attr("placeholder") || $(this).attr("name") || "Input field";
+        $(this).attr("aria-label", `Enter your ${placeholder.replace(/[-_]/g, ' ')}`);
+    });
+
+    $('.scroll-container__dot').each(function () {
+        let index = $(this).data('index');
+        $(this).attr('aria-label', 'Go to slide ' + index).attr('role', 'button').attr('tabindex', '0');
+    });
+
+
+    //console.log('✅ Accessibility Enhancer Fully Loaded!');
+});
+
+
+$(document).ready(function () {
+    setTimeout(function () {
+        $("li").each(function () {
+            var $li = $(this);
+            var $a = $li.children("a");
+            var liText = $li.clone().children("a").remove().end().text().trim(); // Get text without <a>
+
+            if ($a.length === 1) {
+                if (liText !== "") {
+                    // If <li> has text + <a>, add tabindex to <li> and remove from <a>
+                    $li.attr("tabindex", "0");
+                    $a.removeAttr("tabindex");
+                } else {
+                    // If <li> has only <a>, remove tabindex from <li> and add to <a>
+                    $li.removeAttr("tabindex");
+                    $a.attr("tabindex", "0");
+                }
+            }
+        });
+    }, 100);
+});
+
+$(document).ready(function () {
+    $('[data-toggle="collapse"]').attr('tabindex', '0');
+
+    // Handle Enter and Space key for accordion
+    $(document).on('keydown', function (e) {
+        const focusedElement = $(':focus');
+
+        if (focusedElement.is('[data-toggle="collapse"]')) {
+            const targetCollapse = focusedElement.attr('href') || focusedElement.attr('data-target');
+
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault(); // Prevent page scroll
+                $(targetCollapse).collapse('toggle');
+            }
+        }
+    });
+
+    // Optional: Improve focus control for collapsed sections
+    $('.collapse').on('shown.bs.collapse', function () {
+        $(this).attr('tabindex', '0').focus();
+    }).on('hidden.bs.collapse', function () {
+        $(this).attr('tabindex', '-1');
+    });
+});
+
+
+
+
+$(document).ready(function () {
+    setTimeout(() => {
+        $('[data-toggle="tooltip"]').each(function () {
+            $(this).removeAttr('aria-label aria-describedby');
+        }).tooltip();
+    }, 100);
+
+    $(document).on('inserted.bs.tooltip', '[data-toggle="tooltip"]', function () {
+        $(this).removeAttr('aria-describedby aria-label');
+    });
+});
+
+$('[data-toggle="tooltip"]').tooltip();
+
+// Add tooltip content to the parent element's aria-label
+$('[data-toggle="tooltip"]').each(function () {
+    let $tooltip = $(this);
+    let tooltipText = $tooltip.attr('data-original-title');
+    let $parent = $tooltip.parent(); // Get the parent element (could be h1, h2, div, etc.)
+
+    if (tooltipText) {
+        let existingText = $parent.text().trim(); // Get the text of the parent element
+        $parent.attr('aria-label', existingText + '. ' + tooltipText);
+    }
+});
+
+
+$(document).ready(function () {
+    $(".price-cursor").on("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            $(this).trigger("click");
+        }
+    });
+
+    $(".price-cursor").on("click", function () {
+        let tooltip = $("#tooltip-content");
+
+        if (tooltip.attr("aria-hidden") === "true") {
+            tooltip.attr("aria-hidden", "false"); // Show tooltip
+            $(this).attr("aria-expanded", "true"); // Indicate expanded
+        } else {
+            tooltip.attr("aria-hidden", "true"); // Hide tooltip
+            $(this).attr("aria-expanded", "false"); // Indicate collapsed
+        }
+    });
+});
+
+/* compartion table start*/
+
+$(document).ready(function () {
+
+    setTimeout(function () {
+        $('[data-toggle="tooltip"]').tooltip();
+
+        $("table").each(function () {
+            const table = $(this);
+            table.find("thead th").attr("tabindex", "0");
+
+            const headers = table.find("thead th").map(function () {
+                return $(this).clone().children("button").remove().end().text().trim();
+            }).get();
+
+            table.find("tbody tr").each(function () {
+                let rowLabel = ""; // Initialize empty label
+                $(this).attr("tabindex", "0"); // Make row focusable
+
+                const hasColspan = $(this).find("th[colspan], td[colspan]").length > 0;
+
+                if (hasColspan) {
+                    $(this).find("th[colspan], td[colspan]").each(function () {
+                        rowLabel += $(this).text().trim();
+                    });
+                } else {
+
+                    $(this).find("td").each(function (index) {
+                        const headerText = headers[index] || "";
+                        let cellContent = $(this).contents().filter(function () {
+                            return this.nodeType === 3; // Get only the text node content
+                        }).text().trim();
+
+                        let imgAlt = $(this).find("img").attr("alt") || "";
+                        if (imgAlt === "greycheckmark circled") imgAlt = "Available";
+                        if (imgAlt === "greyclose circled") imgAlt = "Not Available";
+
+                        const tooltipElement = $(this).find("[data-toggle='tooltip']");
+                        const tooltipText = tooltipElement.attr("data-original-title") || "";
+
+                        if (tooltipText) {
+                            tooltipElement.attr("aria-hidden", 'true');
+                            tooltipElement.removeAttr("aria-describedby");
+
+                            // Remove HTML tags from tooltipText
+                            const plainTooltipText = tooltipText.replace(/<[^>]*>/g, '');
+
+                            rowLabel += `${headerText}: ${imgAlt ? imgAlt + ' ' : ''}${cellContent}`;
+                            rowLabel += ` (${plainTooltipText})`;
+                        } else {
+                            rowLabel += `${headerText}: ${imgAlt ? imgAlt + ' ' : ''}${cellContent}`;
+                        }
+                        rowLabel += ", "; // Add comma for readability
+                    });
+                }
+
+                // Set aria-label for the row with trimmed result
+                $(this).attr("aria-label", rowLabel.trim().replace(/,\s*$/, ""));
+            });
+        });
+    }, 100);
+});
+
+
+/* compartion table end */
+
+//WCAG script end
+
+
+/* whitepaper promo banner start */
+
+// Define setupForm as a global function OUTSIDE document.ready
+function setupForm(formId, emailId, alertId, pdfUrl, fileName) {
+    var $emailInput = $(emailId);
+    var $downloadBtn = $(formId + ' .e-book-download-cta');
+    var $successAlert = $(alertId);
+    var $form = $(formId);
+
+    // Enable button only when a valid email is entered
+    $emailInput.on('input', function () {
+        var email = $emailInput.val();
+        var isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+        if (isValidEmail) {
+            $downloadBtn.removeClass('disabled');
+        } else {
+            $downloadBtn.addClass('disabled');
+        }
+    });
+
+    // Handle form submission
+    $form.on('submit', function (e) {
+        e.preventDefault();
+
+        // Prevent submission if button is still disabled
+        if ($downloadBtn.hasClass('disabled')) {
+            alert('Please enter a valid email address.');
+            return;
+        }
+
+        $.ajax({
+            type: 'POST',
+            url: '/tools/marketing/addLead',
+            data: $form.serialize(),
+            success: function (data) {
+                try {
+                    if (data.status === "success") {
+                        $form[0].reset();
+                        $downloadBtn.addClass('disabled');
+
+                        $successAlert.removeClass('d-none');
+
+                        // Hide success message after 5 seconds
+                        setTimeout(function () {
+                            $successAlert.addClass('d-none');
+                        }, 5000);
+
+                        // Trigger file download
+                        var link = document.createElement('a');
+                        link.href = pdfUrl;
+                        link.download = fileName;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }
+                } catch (ex) {
+                    alert("Unable to register. Please try again later.");
+                }
+            },
+            error: function () {
+                alert("Unable to register. Please try again later.");
+            }
+        });
+    });
+}
+/* whitepaper promo banner end */

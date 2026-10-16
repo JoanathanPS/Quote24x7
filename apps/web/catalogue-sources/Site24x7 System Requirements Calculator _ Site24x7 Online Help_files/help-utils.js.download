@@ -1,0 +1,250 @@
+var alertState = false
+var alertID
+
+function convertToShortlink(text) {
+    return text.replace(/[^a-zA-Z0-9 ]/g, "").toLowerCase().replaceAll(' ', '-')
+}
+
+const copyContent = async (content) => {
+    try {
+        await navigator.clipboard.writeText(content);
+        sendAlert('Shortlink has been copied!');
+        return true
+    } catch (err) {
+        return false
+    }
+}
+
+const copyCode = async (content) => {
+    try {
+        await navigator.clipboard.writeText(content);
+        return true
+    } catch (err) {
+        return false
+    }
+}
+
+function sendAlert(msg) {
+
+    if (alertState) {
+        clearTimeout(alertID)
+    }
+
+    let alertBox = document.querySelector('.s247-alert')
+    alertBox.innerHTML = msg
+
+    $(alertBox).animate({ "top": "60px" }, "slow")
+    alertState = true
+
+    alertID = setTimeout(function () {
+        alertState = false
+        $(alertBox).animate({ "top": "-200px" }, "slow")
+    }, 3000)
+
+}
+
+function isInTopViewport(element) {
+    const rect = element.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+
+    // Check if at least half of the element is above the fold
+    return rect.top < viewportHeight / 6 && rect.bottom > 0;
+}
+
+const pushEvent = (page) => {
+    try {
+        $zoho.salesiq.visitor.customaction("{'eventCategory':'network-metrics','eventAction':'" + page + "','eventLabel':'','customID':'-'}");
+    }
+    catch (exp) {
+    }
+}
+
+
+const urls = [
+    "/help/network-metrics.html#pre-requisites",
+    "/help/network-metrics.html#system-requirements",
+    "/help/network-metrics.html#supported-devices",
+    "/help/network-metrics.html#snmp-versions",
+    "/help/network-metrics.html#multiple-credential-support",
+    "/help/network-metrics.html#adding-a-network-device",
+    "/help/network-metrics.html#visualize",
+    "/help/network-metrics.html#custom-snmp",
+    "/help/network-metrics.html#trap-processing",
+    "/help/network-metrics.html#setting-thresholds",
+    "/help/network-metrics.html#performance-metrics",
+    "/help/network-metrics.html#network-reports",
+    "/help/network-metrics.html#troubleshooting-tips"
+]
+
+const currentPathAndHash = window.location.href.replace(window.location.origin, '');
+
+if (urls.includes(currentPathAndHash)) {
+    pushEvent(currentPathAndHash)
+    window.location.pathname = "/help/network-metrics/network-performance.html";
+}
+
+function printToPDF() {
+    const selectors = [
+        'header',
+        '.left-nav',
+        '.sidebar',
+        '#print-pdf',
+        '#display-mode',
+        '.search-input',
+        '.search-btn',
+        '.log-in',
+        '.sign-in',
+        'footer',
+        '.navigation',
+        '.s247-alert',
+        '.toc',
+        '#feedback',
+        '#back-to-top',
+        '#zsiq_float',
+        '#download-btn'
+    ];
+
+
+    const $printStyle = $(`
+    <style id="dynamic-print-style">
+      @media print {
+        ${selectors.join(',')} { display:none !important; }
+         * {
+            box-sizing: border-box;
+        }
+         body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100%;    
+            background: #fff !important;
+            color: #000 !important;            
+        }
+        body.dark * {
+            background: inherit !important;
+            color: inherit !important;
+            border-color: #e1e8ef !important;
+        }
+        body.dark a::after {
+            filter: none !important;
+            -webkit-filter: none !important;
+            background-color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+        }
+        header {
+            position: static !important;
+            top: auto !important;
+            z-index: auto !important;
+        }
+        .content{
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+        section.article {
+            display: block !important;
+            margin: 0 auto !important;    
+            padding: 10px 10px !important; 
+            width: 100% !important;    
+            box-sizing: border-box;        
+        }
+        a { color:#000 !important; text-decoration:none !important; }
+
+      }
+    </style>
+  `);
+
+
+    $("head").append($printStyle);
+    window.print();
+
+
+    setTimeout(() => $("#dynamic-print-style").remove(), 1000);
+}
+
+
+const pushDownloadEvent = (page) => {
+    try {
+        $zoho.salesiq.visitor.customaction("{'eventCategory':'HelpDocs PDF Download','eventAction':'" + page + "','eventLabel':'','customID':'-'}");
+    }
+    catch (exp) {
+    }
+}
+
+$(function () {
+    const $logo = $(".brand-logo");
+
+    $(window).on("beforeprint", function () {
+        $(".acc-item.off").each(function () {
+            $(this).data("original-class", "off");
+            $(this).removeClass("off").addClass("on");
+        });
+        $logo.data("original-src", $logo.attr("src"));
+        //ignorei18n_start
+        $logo.attr("src", (window.helpPath || '/help') + "/images/" + $logo.data("light"));
+        //ignorei18n_end
+        $logo[0].offsetHeight;
+    });
+
+
+    $(window).on("afterprint", function () {
+        $(".acc-item.on").each(function () {
+            if ($(this).data("original-class") === "off") {
+                $(this).removeClass("on").addClass("off");
+                $(this).removeData("original-class");
+            }
+        });
+
+        $logo.attr("src", $logo.data("original-src"));
+        $logo.removeData("original-src");
+    });
+
+    $('nav.breadcrumbs').wrap('<div class="d-flex flex-column flex-md-row justify-content-md-between align-items-md-center flex-wrap"></div>');
+    //ignorei18n_start
+    $('nav.breadcrumbs').parent().append(
+        '<button id="download-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download PDF</button>'
+    );
+    //ignorei18n_end
+
+    $("#download-btn").on("click", function (e) {
+        e.preventDefault();
+        pushDownloadEvent(window.location.pathname)
+        printToPDF();
+    });
+});
+
+$(document).ready(function () {
+    function openAccordionFromHash() {
+        var hash = window.location.hash.substr(1);
+        if (!hash) { return; }
+        $('.acc-item-content p.active').removeClass("active");
+        var $target = $('#' + hash);
+        if ($target.length === 0) { return; }
+
+        var $accItem = $target.closest(".acc-item");
+        if ($accItem.hasClass('off')) {
+            $accItem.removeClass('off').addClass('on');
+        }
+
+    }
+
+    openAccordionFromHash();
+
+    $(window).on('hashchange', openAccordionFromHash);
+});
+
+$(function () {
+    $('iframe[src*="youtube.com/embed"], iframe[src*="youtube-nocookie.com/embed"]').each(function () {
+        const $iframe = $(this);
+        let src = $iframe.attr('src') || '';
+
+        if (!src.includes('controls=1')) {
+            src += src.includes('?') ? '&controls=1' : '?controls=1';
+        }
+
+        $iframe.attr('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; fullscreen; gyroscope; picture-in-picture; web-share');
+        $iframe.attr('allowfullscreen', 'true');
+        $iframe.attr('frameborder', '0');
+
+        $iframe.attr('src', src);
+    });
+});

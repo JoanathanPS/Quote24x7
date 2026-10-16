@@ -1,0 +1,40 @@
+setTimeout(function () {
+
+    document.querySelectorAll('.navigation li').forEach((item) => {
+        item.removeAttribute('tabindex')
+    })
+
+    document.querySelectorAll('.shortlink').forEach((item) => {
+        item.setAttribute('tabindex', '-1')
+    })
+
+    if (document.querySelectorAll('.breadcrumbs a').length > 1) {
+        document.querySelector('.breadcrumbs a').focus()
+        document.activeElement.blur()
+    } else {
+        document.querySelector('h1').focus()
+        document.activeElement.blur()
+    }
+
+    document.querySelectorAll('p').forEach(function (para) {
+        if (para.innerHTML == '&nbsp;') {
+            para.removeAttribute('tabindex')
+            para.removeAttribute('role')
+        }
+    })
+
+    document.querySelectorAll('.navigation .category a').forEach((item) => {
+        item.addEventListener('focus', function (e) {
+            let elem = e.target.parentElement.parentElement
+            elem.classList.add('active')
+            elem.nextElementSibling.classList.add('active')
+            elem.nextElementSibling.querySelector('ul').classList.add('active')
+        })
+    })
+
+
+
+}, 110)
+
+
+

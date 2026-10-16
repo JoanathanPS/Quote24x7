@@ -1,0 +1,975 @@
+$(document).ready(function () {
+    // === Input/Slider Helpers ===
+    function getAbsoluteValue(inputId) {
+        const input = $(`#${inputId}-input`);
+        const unit = $(`#${inputId}-unit`);
+        if (!unit.length) {
+            return parseFloat(input.val() || 0);
+        }
+        return parseFloat(input.val() || 0) * parseInt(unit.val());
+    }
+
+    function setInputFromAbsolute(inputId, absoluteValue) {
+        const input = $(`#${inputId}-input`);
+        const unit = $(`#${inputId}-unit`);
+        if (!unit.length) {
+            input.val(Math.round(absoluteValue));
+            return;
+        }
+        const currentUnit = parseInt(unit.val());
+        let displayValue = absoluteValue / currentUnit;
+        // If displayValue is an integer, don't show decimals
+        if (Number.isInteger(displayValue)) {
+            input.val(displayValue);
+        } else {
+            input.val(displayValue.toFixed(2));
+        }
+    }
+
+    function validateInput(inputId) {
+        const slider = $(`#${inputId}`);
+        const input = $(`#${inputId}-input`);
+        const container = $(`#${inputId}-container`);
+        const errorMsg = $(`#${inputId}-error`);
+        const absoluteValue = getAbsoluteValue(inputId);
+         const minValue = parseInt(slider.attr('min')) || 0;
+        const maxValue = parseInt(slider.attr('max'));
+
+        if (absoluteValue > maxValue) {
+            container.addClass('error');
+            input.addClass('error');
+            errorMsg.removeClass('d-none');
+            setInputFromAbsolute(inputId, maxValue);
+            slider.val(maxValue);
+            updateRangeBackground(slider);
+            return false;
+        } 
+        else if (absoluteValue <= minValue) {
+            setInputFromAbsolute(inputId, minValue);
+            slider.val(minValue);
+            updateRangeBackground(slider);
+            return false;
+       }
+        
+        else {
+            container.removeClass('error');
+            input.removeClass('error');
+            errorMsg.addClass('d-none');
+            return true;
+        }
+    }
+
+    function autoUpgradeUnit(inputId) {
+        const input = $(`#${inputId}-input`);
+        const unit = $(`#${inputId}-unit`);
+        if (!unit.length) {
+            return false;
+        }
+
+        const inputValue = parseFloat(input.val() || 0);
+        const currentUnit = parseInt(unit.val());
+        const unitOptions = [];
+        unit.find('option').each(function() {
+            unitOptions.push(parseInt($(this).val()));
+        });
+        unitOptions.sort((a, b) => a - b);
+
+        let unitChanged = false;
+        if (inputValue >= 1000) {
+            const currentIndex = unitOptions.indexOf(currentUnit);
+            if (currentIndex < unitOptions.length - 1) {
+                const nextUnit = unitOptions[currentIndex + 1];
+                unit.val(nextUnit);
+                const newInputValue = (inputValue * currentUnit) / nextUnit;
+                input.val(newInputValue.toFixed(2));
+                updateStep(inputId)
+                updateInputMax(inputId);
+                unitChanged = true;
+            }
+        } else if (inputValue < 1 && inputValue > 0) {
+            const currentIndex = unitOptions.indexOf(currentUnit);
+            if (currentIndex > 0) {
+                const prevUnit = unitOptions[currentIndex - 1];
+                unit.val(prevUnit);
+                const newInputValue = (inputValue * currentUnit) / prevUnit;
+                input.val(newInputValue.toFixed(prevUnit === 1000 ? 0 : 2));
+                updateStep(inputId)
+                updateInputMax(inputId);
+                unitChanged = true;
+            }
+        }
+        return unitChanged;
+    }
+
+    function updateInputMax(inputId) {
+        const input = $(`#${inputId}-input`);
+        const unit = $(`#${inputId}-unit`);
+        const slider = $(`#${inputId}`);
+        if (!unit.length) {
+            return;
+        }
+        const sliderMax = parseInt(slider.attr('max'));
+        const currentUnit = parseInt(unit.val());
+        const inputMax = Math.floor(sliderMax / currentUnit);
+        input.attr('max', inputMax);
+        const currentValue = parseFloat(input.val());
+        if (currentValue > inputMax) {
+            input.val(inputMax);
+        }
+    }
+    function updateRangeBackground($rangeInput) {
+        var value = $rangeInput.val();
+        var $tooltip = $rangeInput.closest('.range-bar').find('.tooltip-customize');
+        $tooltip.text(formatValue(value));
+        $rangeInput.closest('.range-box').find('.val-num').text(`${formatValue(value)}`);
+        var percentage = (value - $rangeInput.attr('min')) / ($rangeInput.attr('max') - $rangeInput.attr('min')) * 100;
+        $rangeInput.css('background', `linear-gradient(to right, #0c201d ${percentage}%, #ddd ${percentage}%)`);
+    }
+
+
+    function syncInputToSlider(inputId) {
+        if (validateInput(inputId)) {
+            const absoluteValue = getAbsoluteValue(inputId);
+            $(`#${inputId}`).val(absoluteValue);
+            updateRangeBackground($(`#${inputId}`));
+        }
+    }
+
+    function syncSliderToInput(inputId) {
+        const sliderValue = $(`#${inputId}`).val();
+        setInputFromAbsolute(inputId, sliderValue);
+        autoUpgradeUnit(inputId);
+    }
+
+      const stepConfigInput = {
+        annualRevenue: {
+        "1000000": 10,      // 10M
+        "1000000000": 0.01  // 0.01B = 10M
+        },
+        cloudSpend: {
+        "1000": 500,         // 500K
+        "1000000": 0.5,      // 0.5M
+        "1000000000": 0.0005 // 0.0005B = 0.5M
+        },
+        observabilityCosts: {
+        "1000": 10,     // 10K
+        "1000000": 0.01 // 0.01M = 10K
+        }
+    };
+
+    const stepConfigRange = {
+        annualRevenue: 10000000,
+        annualOutages: 10,
+        mttr: 10,
+        cloudSpend: 500000,
+        observabilityCosts: 10000
+    };
+
+    function updateStep(inputId) {
+        const unit = $(`#${inputId}-unit`).val();
+        const $input = $(`#${inputId}-input`);
+        if (stepConfigInput[inputId] && stepConfigInput[inputId][unit] !== undefined) {
+        $input.attr("step", stepConfigInput[inputId][unit]);
+        }
+    }
+    let previousValues = {};
+    function initializeControls() {
+        $('input[type="range"]').each(function () {
+            const $rangeInput = $(this);
+            const inputId = $rangeInput.attr('id');
+             if (!previousValues[inputId]) {
+                previousValues[inputId] = parseFloat($rangeInput.val());
+            }
+            syncSliderToInput(inputId);
+            updateRangeBackground($rangeInput);
+            updateStep(inputId)
+            updateInputMax(inputId);
+            $rangeInput.on("mousedown", function () {
+                $rangeInput.attr("step", stepConfigRange[inputId]);
+            });
+
+            // Keyboard interaction
+            $rangeInput.on("keydown", function (e) {
+                if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+                    $rangeInput.attr("step", stepConfigRange[inputId]);
+                }
+                if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+                    $rangeInput.attr("step", stepConfigRange[inputId]);
+                }
+            });
+                $rangeInput.on('input', function () {
+                // let step = stepConfigRange[inputId] || 1;
+                // let currentValue = parseFloat($(this).val());
+                // let previousValue = previousValues[inputId];
+                // let steppedValue;
+                // if (currentValue > previousValue) {
+                //     steppedValue = previousValue + step;
+                // } else if (currentValue < previousValue) {
+                //     steppedValue = previousValue - step;
+                // }
+                // let roundedValue = Math.round(steppedValue / step) * step;
+
+                // $(this).val(roundedValue);
+                // previousValues[inputId] = roundedValue;
+                syncSliderToInput(inputId);
+                updateRangeBackground($rangeInput);
+            });
+
+            $(`#${inputId}-input`).on('input', function () {
+                $(`#${inputId}`).attr("step", "any");
+                const container = $(`#${inputId}-container`);
+                const input = $(`#${inputId}-input`);
+                const errorMsg = $(`#${inputId}-error`);
+                container.removeClass('error');
+                input.removeClass('error');
+                errorMsg.addClass('d-none');
+                autoUpgradeUnit(inputId);
+                
+                syncInputToSlider(inputId);
+                 //$(`#${inputId}`).attr("step", stepConfigRange[inputId]);
+            });
+
+            $(`#${inputId}-input`).on('blur', function () {
+                validateInput(inputId);
+            });
+
+            $(`#${inputId}-unit`).on('change', function () {
+                $(`#${inputId}`).attr("step", stepConfigRange[inputId]);
+                updateStep(inputId);
+                updateInputMax(inputId);
+                syncInputToSlider(inputId);
+            });
+        });
+
+        $('.custom-increase button').on('click', function () {
+            
+            const target = $(this).data('target');
+            const $slider = $(`#${target}`);
+            $slider.attr("step", stepConfigRange[target]);
+            let step = stepConfigRange[target] || 1;
+                
+            const isPlus = $(this).hasClass('plus');
+            const currentValue = parseInt($slider.val());
+            const min = parseInt($slider.attr('min'));
+            const max = parseInt($slider.attr('max'));
+            let newValue = isPlus ? Math.min(max, currentValue + step) : Math.max(min, currentValue - step);
+            let roundedValue = Math.round(newValue / step) * step;
+            $slider.val(roundedValue);
+            syncSliderToInput(target);
+            updateRangeBackground($slider);
+        });
+
+        $('.reset-btn').on('click', function () {
+            $('.val-input-container').removeClass('error');
+            $('.val-input').removeClass('error');
+            //$('.error-message').addClass('d-none');
+            $('input[type="range"]').each(function () {
+                const $rangeInput = $(this);
+                 const inputId = $rangeInput.attr('id');
+                $rangeInput.attr("step", stepConfigRange[inputId]);
+                const defaultValue = $rangeInput.attr('value');
+                $rangeInput.val(defaultValue);
+               
+                syncSliderToInput(inputId);
+                updateRangeBackground($rangeInput);
+            });
+        });
+    }
+
+
+    $('input[type="range"]').each(function () {
+        var $rangeInput = $(this);
+        var $tooltip = $rangeInput.closest('.range-bar').find('.tooltip-customize');
+
+        updateRangeBackground($rangeInput);
+        function updateRangeAndTooltip() {
+            // Calculate the position of the tooltip
+            var rangeWidth = $rangeInput.width();
+            var thumbWidth = 20; // Adjust if your thumb width differs
+            var tooltipWidth = $tooltip.outerWidth();
+            var value = $rangeInput.val();
+            var left = ((value - $rangeInput.attr('min')) / ($rangeInput.attr('max') - $rangeInput.attr('min'))) * (rangeWidth - thumbWidth) + (thumbWidth / 2) - (tooltipWidth / 2);
+
+            $tooltip.css({
+                'left': left + 'px'
+            });
+
+            updateRangeBackground($rangeInput);
+            // calculate();
+        }
+
+        // Update tooltip and range fill on input change
+        $rangeInput.on('input', updateRangeAndTooltip);
+
+        // Show the tooltip on hover
+        $rangeInput.on('mouseenter', function () {
+            $tooltip.css('display', 'flex');
+            updateRangeAndTooltip(); // Ensure the tooltip is positioned correctly when it appears
+        });
+
+        // Hide the tooltip when not hovering
+        $rangeInput.on('mouseleave', function () {
+            $tooltip.css('display', 'none');
+        });
+
+
+        var $rangeBox = $rangeInput.closest('.range-box');
+        var $minusButton = $rangeBox.find('.minus');
+        var $plusButton = $rangeBox.find('.plus');
+
+    
+        // $minusButton.on('click', function () {
+        //     var step = parseInt($rangeInput.attr('step')) || 1;
+        //     var min = parseInt($rangeInput.attr('min')) || 0;
+        //     var newValue = Math.max(min, parseInt($rangeInput.val()) - step);
+        //     $rangeInput.val(newValue);
+        //     updateRangeAndTooltip();
+        // });
+
+  
+        // $plusButton.on('click', function () {
+        //     var step = parseInt($rangeInput.attr('step')) || 1;
+        //     var max = parseInt($rangeInput.attr('max')) || 100;
+        //     var newValue = Math.min(max, parseInt($rangeInput.val()) + step);
+        //     $rangeInput.val(newValue);
+        //     updateRangeAndTooltip();
+        // });
+
+    });
+
+    // var chartData = {
+    //     "chart": {
+    //         "plot": {
+    //             "plotoptions": {
+    //                 "pie": {
+    //                     "startAngle": 3.14,
+    //                     "endAngle": -3.14,
+    //                     "padAngle": 0.03,
+    //                     "innerRadius": 80,
+    //                     "cornerRadius": 5,
+    //                     "animation": {
+    //                         "easingType": "back-out",
+    //                         "type": "inner"
+    //                     },
+    //                     "maxRadius": 180,
+    //                     "strokeColor": null
+    //                 }
+    //             }
+    //         },
+    //         "effects": {
+    //             "choice": "auto",
+    //             "options": {
+    //                 "dropShadow": {
+    //                     "blur": 200,
+    //                     "color": "rgba(194,191,191,0.6)",
+    //                     "dy": 20,
+    //                     "dx": -20
+    //                 }
+    //             }
+    //         },
+    //         "marginLeft": 30
+    //     },
+    //     "metadata": {
+    //         "axes": {
+    //             "x": [0],
+    //             "y": [
+    //                 [1]
+    //             ],
+    //             "tooltip": [`<div style='text-align:center;'><span style='font-size:12px;'>{{val(0)}}</span><br><span style='font-size:16px; margin-top:5px; display:block;font-weight:600;'>{{val(1)}}<span></div>`]
+    //         },
+    //         "columns": [{
+    //             "dataindex": 0,
+    //             "columnname": "Status",
+    //             "datatype": "ordinal"
+    //         }, {
+    //             "dataindex": 1,
+    //             "columnname": "Bugs count",
+    //             "datatype": "numeric",
+    //             "numeric": {
+    //                 "format": {
+    //                     "customFormat": function (value, datatype, columnInfo, type, chartObj) {
+    //                         let formattedValue = formatValue(value);
+    //                         return formattedValue;
+    //                     }
+    //                 }
+
+    //             }
+
+
+    //         }]
+    //     },
+    //     "seriesdata": {
+    //         "chartdata": [{
+    //             "type": "pie",
+    //             "data": [
+    //                 [
+
+    //                 ]
+
+    //             ]
+    //         }]
+    //     },
+    //     "canvas": {
+    //         "subtitle": {
+    //             "show": false
+    //         },
+    //         "title": {
+    //             "hAlign": "center",
+    //             "text": "Value calculator",
+    //             "show": false
+    //         },
+    //         "theme": "transparent",
+    //         "background": {
+    //             "color": "#FFFFFF",
+    //             "alpha": 1
+    //         },
+    //         "shadow": {
+    //             "show": false
+    //         },
+    //         "border": {
+    //             "show": false
+    //         }
+    //     },
+    //     "legend": {
+    //         "events": {
+    //             "init": "CALCULATE_TABLE_LEGEND"
+    //         },
+    //         "colors": ["#fa3d61", "#5ed2d1", "#343d3a", "#f8872b", "#feba1e"],
+    //         "vAlign": "center",
+    //         "hAlign": "right",
+    //         "colorBox": {
+    //             "shape": null
+    //         },
+    //         "layout": "vertical",  // vertical layout for the legend
+    //         "useChartEffect": false,
+    //         "showAs": 0,
+    //         "maxWidth": "100%",  // Allow full width
+    //         "itemWidth": "auto",
+    //         "itemHoverStyles": {
+    //             "showOnDataHover": true
+    //         },
+    //         "title": {
+    //             "show": true,
+    //             "text": "Category",
+    //             "fontWeight": "bold",
+    //             "fontSize": 12 // Reduced font size for the title
+    //         },
+    //         "selectAllBox": {
+    //             "show": true
+    //         },
+
+    //         "marginLeft": 20,
+    //         "marginRight": 100,
+    //         "marginTop": 20,  // Add spacing between the chart and legend
+    //         "marginBottom": 0,
+    //         "fontSize": 12
+    //     },
+    //     "tooltip": {
+    //         "fontSize": 10,
+    //         "backgroundColor": "#333",
+    //         "borderWidth": 0,
+    //         "opacity": 1,
+    //         "padding": 10,
+    //         "borderRadius": 0,
+    //         "useChartEffect": false
+    //     },
+    //     "noDataHandler": {
+    //         "htmlEl": "<h1>No data to display<h1/>"
+    //     }
+    // }
+
+    // const mediaQuery = window.matchMedia("(max-width: 992px)");
+    // if (mediaQuery.matches) {
+    //    chartData.legend.vAlign = "bottom"
+    //    chartData.legend.hAlign = "center"
+    //    chartData.legend.layout = "horizontal"
+    //    chartData.legend.selectAllBox.show = false
+    //    chartData.legend.title.show = false
+       
+    // }
+    // var chartObj = new $ZC.charts("#placeholder", chartData);
+    let data = {
+        "speed-up-product-delivery": [
+            {
+                "Metric": "annual revenue",
+                "Value": null,
+                "Formula": null
+            },
+            {
+                "Metric": "time to market",
+                "Value": 365,
+                "Formula": null
+            },
+            {
+                "Metric": "improvement in time",
+                "Value": 0.125,
+                "Formula": null
+            },
+            {
+                "Metric": "adjusted time to market",
+                "Value": null,
+                "Formula": "time to market-(time to market*improvement in time)"
+            },
+            {
+                "Metric": "daily revenue generation",
+                "Value": null,
+                "Formula": "annual revenue/time to market"
+            },
+            {
+                "Metric": "adjusted revenue generation",
+                "Value": null,
+                "Formula": "annual revenue/adjusted time to market"
+            },
+            {
+                "Metric": "cost savings",
+                "Value": null,
+                "Formula": "adjusted revenue generation-daily revenue generation"
+            }
+        ],
+        "enhance-availability": [
+            {
+                "Metric": "annual revenue",
+                "Value": null,
+                "Formula": null
+            },
+            {
+                "Metric": "annual operating hours",
+                "Value": 8760,
+                "Formula": null
+            },
+            {
+                "Metric": "revenue lost per hour of downtime",
+                "Value": null,
+                "Formula": "annual revenue/annual operating hours"
+            },
+            {
+                "Metric": "annual number of unplanned outages",
+                "Value": 40,
+                "Formula": null
+            },
+            {
+                "Metric": "outages improvement",
+                "Value": 0.245,
+                "Formula": null
+            },
+            {
+                "Metric": "adjusted number of unplanned outages",
+                "Value": null,
+                "Formula": "annual number of unplanned outages-(annual number of unplanned outages*outages improvement)"
+            },
+            {
+                "Metric": "average mean time to repair of an unplanned outage",
+                "Value": 240,
+                "Formula": null
+            },
+            {
+                "Metric": "mttr improvement",
+                "Value": 0.345,
+                "Formula": null
+            },
+            {
+                "Metric": "adjusted mttr",
+                "Value": null,
+                "Formula": "average mean time to repair of an unplanned outage-(average mean time to repair of an unplanned outage*mttr improvement)"
+            },
+            {
+                "Metric": "total annual hours of downtime",
+                "Value": null,
+                "Formula": "(annual number of unplanned outages*average mean time to repair of an unplanned outage)/60"
+            },
+            {
+                "Metric": "adjusted annual hours of downtime",
+                "Value": null,
+                "Formula": "(adjusted number of unplanned outages*adjusted mttr)/60"
+            },
+            {
+                "Metric": "downtime improvement",
+                "Value": null,
+                "Formula": "total annual hours of downtime-adjusted annual hours of downtime"
+            },
+            {
+                "Metric": "revenue loss",
+                "Value": null,
+                "Formula": "revenue lost per hour of downtime*total annual hours of downtime"
+            },
+            {
+                "Metric": "adjusted revenue loss",
+                "Value": null,
+                "Formula": "revenue lost per hour of downtime*adjusted annual hours of downtime"
+            },
+            {
+                "Metric": "cost savings",
+                "Value": null,
+                "Formula": "revenue loss-adjusted revenue loss"
+            }
+        ],
+        "improve-bussiness-performance-1": [
+            {
+                "Metric": "customer churn",
+                "Value": 0.1,
+                "Formula": null
+            },
+            {
+                "Metric": "improvement in churn",
+                "Value": 0.015,
+                "Formula": null
+            },
+            {
+                "Metric": "adjusted customer churn",
+                "Value": null,
+                "Formula": "customer churn-(customer churn*improvement in churn)"
+            },
+            {
+                "Metric": "annual revenue",
+                "Value": null,
+                "Formula": null
+            },
+
+            {
+                "Metric": "adjusted revenue",
+                "Value": null,
+                "Formula": "annual revenue+improvement in revenue"
+            },
+            {
+                "Metric": "cost savings",
+                "Value": null,
+                "Formula": "annual revenue*(customer churn-adjusted customer churn)"
+            }
+        ],
+        "improve-bussiness-performance-2": [
+            {
+                "Metric": "current cloud spend",
+                "Value": null,
+                "Formula": null
+            },
+            {
+                "Metric": "reduction of excess cloud capacity",
+                "Value": 0.025,
+                "Formula": null
+            },
+            {
+                "Metric": "reduction in cloud consumption",
+                "Value": 0.025,
+                "Formula": null
+            },
+            {
+                "Metric": "improvement in cloud spend",
+                "Value": null,
+                "Formula": "reduction of excess cloud capacity+reduction in cloud consumption"
+            },
+            {
+                "Metric": "adjusted cloud spend",
+                "Value": null,
+                "Formula": "current cloud spend-(current cloud spend*improvement in cloud spend)"
+            },
+            {
+                "Metric": "cost savings",
+                "Value": null,
+                "Formula": "current cloud spend-adjusted cloud spend"
+            }
+        ],
+        "reduce-observability-costs": [
+            {
+                "Metric": "current observability costs",
+                "Value": null,
+                "Formula": null
+            },
+            {
+                "Metric": "cost savings",
+                "Value": null,
+                "Formula": "current observability costs*0.83"
+            }
+        ]
+    }
+
+
+    function formatValue(value) {
+        if (value >= 1000000000) {
+            return `${(value / 1000000000).toFixed(2)}B`;
+        } else if (value >= 1000000) {
+            return `${(value / 1000000).toFixed(2)}M`;
+        } else if (value >= 1000) {
+            return `${(value / 1000).toFixed(2)}K`;
+        } else {
+            return `${value}`;
+        }
+    }
+
+    function evaluateFormula(formula, metrics) {
+        try {
+            const sortedMetrics = Object.keys(metrics).sort((a, b) => b.length - a.length);
+            sortedMetrics.forEach(metric => {
+                const value = metrics[metric];
+                const regex = new RegExp(`\\b${metric}\\b`, 'g');
+                formula = formula.replace(regex, value);
+            });
+            if (/^[0-9+\-*/().\s]+$/.test(formula)) {
+                return new Function(`"use strict"; return (${formula})`)();
+            } else {
+                throw new Error('Unsafe characters in formula');
+            }
+        } catch (e) {
+            return null;
+        }
+    }
+    function updateMetricsAndRecalculate(updates) {
+        for (let sheetName in data) {
+            const sheet = data[sheetName];
+            const metrics = {};
+            sheet.forEach(entry => {
+                metrics[entry.Metric] = entry.Value;
+            });
+
+            updates.forEach(({ metric, value }) => {
+                sheet.forEach(entry => {
+                    if (entry.Metric === metric) {
+                        entry.Value = value;
+                        metrics[metric] = value;
+                    }
+                });
+            });
+
+        }
+
+        for (let sheetName in data) {
+            const sheet = data[sheetName];
+            const metrics = {};
+
+            sheet.forEach(entry => {
+                metrics[entry.Metric] = entry.Value;
+            });
+
+            let recalculated = true;
+            while (recalculated) {
+                recalculated = false;
+                sheet.forEach(entry => {
+                    if (entry.Formula) {
+                        const newValue = evaluateFormula(entry.Formula, metrics);
+                        if (newValue !== null && !isNaN(newValue) && newValue !== metrics[entry.Metric]) {
+                            entry.Value = newValue;
+                            metrics[entry.Metric] = newValue;
+                            recalculated = true;
+                        }
+                    }
+                });
+            }
+
+        }
+    }
+    function calculateTotalCostSavings(data) {
+        let totalCostSavings = {
+            'enhance-availability': 0,
+            'speed-up-product-delivery': 0,
+            'improve-bussiness-performance': 0,
+            'reduce-observability-costs': 0,
+            'total': 0
+        };
+
+        for (let sheetName in data) {
+            let category = null;
+            if (sheetName.startsWith('enhance-availability')) {
+                category = 'enhance-availability';
+            } else if (sheetName.startsWith('speed-up-product-delivery')) {
+                category = 'speed-up-product-delivery';
+            } else if (sheetName.startsWith('improve-bussiness-performance')) {
+                category = 'improve-bussiness-performance';
+            } else if (sheetName.startsWith('reduce-observability-costs')) {
+                category = 'reduce-observability-costs';
+            }
+
+            if (category) {
+                const sheet = data[sheetName];
+                sheet.forEach(entry => {
+                    if (entry.Metric === 'cost savings' && entry.Value !== null) {
+                        totalCostSavings[category] += entry.Value;
+                        totalCostSavings.total += entry.Value;
+                    }
+                });
+            }
+        }
+
+        return {
+            "enhance-availability": totalCostSavings['enhance-availability'],
+            "speed-up-product-delivery": totalCostSavings['speed-up-product-delivery'],
+            "improve-bussiness-performance": totalCostSavings['improve-bussiness-performance'],
+            "reduce-observability-costs": totalCostSavings['reduce-observability-costs'],
+            "total": totalCostSavings.total
+        };
+    }
+
+    function updateAndRenderZohoChart(newValues) {
+
+        function normalizeLabelBack(normalizedLabel) {
+            return normalizedLabel.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        }
+        let allValuesAreZero = Object.values(newValues).every(value => value === 0);
+        if (allValuesAreZero) {
+            chartObj.seriesdata[0].data[0] = [];
+        } else {
+            let updatedData = [];
+
+            for (let normalizedLabel in newValues) {
+                if (normalizedLabel != "total") {
+                    let label = normalizeLabelBack(normalizedLabel);
+                    let value = newValues[normalizedLabel];
+                    updatedData.push([label, value]);
+                }
+            }
+
+            chartObj.seriesdata[0].data[0] = updatedData;
+        }
+        chartObj.redraw();
+    }
+
+
+    function calculate() {
+        const annualRevenue = getAbsoluteValue('annualRevenue');
+    const annualOutages = getAbsoluteValue('annualOutages');
+    const mttrMinutes = getAbsoluteValue('mttr');
+    const cloudSpend = getAbsoluteValue('cloudSpend');
+    const observabilityCosts = getAbsoluteValue('observabilityCosts');
+        updateMetricsAndRecalculate([
+            { metric: 'annual revenue', value: annualRevenue },
+            { metric: 'annual number of unplanned outages', value: annualOutages },
+            { metric: 'average mean time to repair of an unplanned outage', value: mttrMinutes },
+            { metric: 'current cloud spend', value: cloudSpend },
+            { metric: 'current observability costs', value: observabilityCosts }
+
+        ]);
+
+
+        const totalCostSavings = calculateTotalCostSavings(data);
+        // updateAndRenderZohoChart(totalCostSavings)
+        // document.getElementById('enhance-availability').lastChild.nodeValue = `${formatValue(totalCostSavings["enhance-availability"])}`;
+        // document.getElementById('speed-up-product-delivery').lastChild.nodeValue = `${formatValue(totalCostSavings["speed-up-product-delivery"])}`;
+        // document.getElementById('improve-bussiness-performance').lastChild.nodeValue = `${formatValue(totalCostSavings["improve-bussiness-performance"])}`;
+        // document.getElementById('reduce-observability-costs').lastChild.nodeValue = `${formatValue(totalCostSavings["reduce-observability-costs"])}`;
+        $('#final-savings .amount').text(`${formatValue(totalCostSavings.total)}`);
+        $('#final-savings').removeClass('d-none');
+        return totalCostSavings
+    }
+
+    // calculate();
+
+    // $('ul.zc-legend-legseries').css({
+    //     'height': '',
+    //     'max-height': ''
+    //   });
+
+    //   $('li.zc-legend-legseries').css({
+    //     'overflow': ''
+    //   });
+
+//   $('.reset-btn').on('click', function () {
+//             $('.val-input-container').removeClass('error');
+//             $('.val-input').removeClass('error');
+//             $('.error-message').addClass('d-none');
+//             $('input[type="range"]').each(function () {
+//                 const $rangeInput = $(this);
+//                 const defaultValue = $rangeInput.attr('value');
+//                 $rangeInput.val(defaultValue);
+//                 const inputId = $rangeInput.attr('id');
+//                 syncSliderToInput(inputId);
+//                 updateRangeBackground($rangeInput);
+//             });
+//         });
+        const validators = {
+            name: value => value.trim() === '' ? 'Name is required.' : '',
+            email: value => /^\S+@\S+\.\S+$/.test(value.trim()) ? '' : 'Enter a valid email address.',
+            company: value => value.trim() === '' ? 'Company name is required.' : '',
+            country: value => value.trim() === '' ? 'Country is required.' : ''
+            // phone: value => value.trim() === '' || /^[0-9+\-\s]{7,15}$/.test(value.trim()) ? '' : 'Enter a valid phone number.'
+        };
+
+        function validateField($field) {
+            const id = $field.attr('id');
+            const value = $field.val();
+            const $feedback = $field.siblings('.invalid-feedback');
+            const error = validators[id](value);
+
+            if (error) {
+            $field.addClass('is-invalid');
+            $feedback.text(error).show();
+            return false;
+            } else {
+            $field.removeClass('is-invalid');
+            $feedback.text('').hide();
+            return true;
+            }
+        }
+
+        $('#roi-form input').on('input blur', function () {
+            validateField($(this));
+        });
+
+
+        $('#roi-form').submit(function (e) {
+            e.preventDefault(); 
+
+            let isValid = true;
+
+            $('#roi-form input').each(function () {
+                if (!validateField($(this))) {
+                    isValid = false;
+                }
+            });
+
+            if (isValid) {
+                let totalCostSavings = calculate();
+                submitForm(totalCostSavings);
+            }
+        });
+
+        function submitForm(totalCostSavings) {
+        
+                const annualRevenue = Number(document.getElementById('annualRevenue').value);
+                const annualOutages = Number(document.getElementById('annualOutages').value);
+                const mttrMinutes = Number(document.getElementById('mttr').value);
+                const cloudSpend = Number(document.getElementById('cloudSpend').value);
+                const observabilityCosts = Number(document.getElementById('observabilityCosts').value);
+                
+                const description = `ROI Calculator Results
+Inputs:
+- Annual Revenue: $${formatValue(annualRevenue)}
+- Annual Outages: ${annualOutages}
+- MTTR: ${mttrMinutes} minutes
+- Cloud Spend: $${formatValue(cloudSpend)}
+- Observability Costs: $${formatValue(observabilityCosts)}
+
+Outputs:
+- Downtime reduction savings: $${formatValue(totalCostSavings['enhance-availability'])}
+- Faster delivery impact: $${formatValue(totalCostSavings['speed-up-product-delivery'])}
+- Cloud optimization gains: $${formatValue(totalCostSavings['improve-bussiness-performance'])}
+- Tool consolidation and observability savings: $${formatValue(totalCostSavings['reduce-observability-costs'])}
+- Total Savings: $${formatValue(totalCostSavings.total)}`;
+    
+            const formData = {
+                firstName: $('#name').val(),
+                email: $('#email').val(),
+                company: $('#company').val(),
+                country: $('#country').val(),
+                leadSource: "roiCalculator",
+                description: description,
+                downtimeReductionSavings: totalCostSavings['enhance-availability'],
+                fasterDeliverySavings: totalCostSavings['speed-up-product-delivery'],
+                cloudOptimizationSavings: totalCostSavings['improve-bussiness-performance'],
+                observabilitySavings: totalCostSavings['reduce-observability-costs']
+            };
+            $.ajax({
+                url: '/tools/marketing/addLead',
+                type: 'POST',
+                contentType: 'application/x-www-form-urlencoded',
+                data: $.param(formData),
+                success: function (response) {
+                    // console.log('Form submitted successfully:', response);
+                },
+                error: function (xhr, status, error) {
+                    // console.error('Error submitting form:', error);
+                }
+            });    }
+
+    initializeControls();
+});
+
+
+

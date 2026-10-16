@@ -1,0 +1,746 @@
+var font_size_h1 = 48;
+var font_size_h2 = 32;
+var font_size_h3 = 24;
+var font_size_h4 = 20;
+
+const headings = document.querySelectorAll('.content h2, .content h3, .content h4, .content h5')
+const leftNav = document.querySelectorAll('.navigation .category')
+const leftNavSelector = document.getElementById('xs-left-nav-selector')
+const feedbackSelector = document.getElementById('feedback')
+const codeBlocks = document.querySelectorAll('.article pre')
+const searchInput = document.querySelector('#search')
+const videoItems = document.querySelectorAll('video')
+const galleryImages = document.querySelectorAll('.gallery img')
+const readMoreSec = document.querySelectorAll('.read-more-sec')
+
+//ignorei18n_start
+document.querySelectorAll('.content a[href]').forEach(link => {
+  const rawHref = link.getAttribute('href');
+  if (!rawHref || /^(#|mailto:|tel:|javascript:)/i.test(rawHref)) return;
+  // Use the anchor's own parsed URL parts rather than rebuilding the href string,
+  // and only ever assign the query string -- the scheme can never be changed here.
+  if (!/^https?:$/.test(link.protocol)) return;
+  if (link.origin !== window.location.origin && !/(^|\.)(site24x7|manageengine)\.com$/i.test(link.hostname)) return;
+  const params = new URLSearchParams(link.search);
+  if (params.has('src')) return;
+  params.set('src', 'crosslink');
+  params.set('pg', 'help');
+  link.search = params.toString();
+});
+//ignorei18n_end
+
+var galleryLightBoxImages
+var galleryActiveIndex
+var tocLinks
+var currentToc
+
+searchInput
+
+const feedbackPrompts = {
+    yes: ['Easy to understand', 'Solved my issue'],
+    no: ['Hard to understand', 'Outdated information', 'Steps are not clear', "Couldn't find relevant document"]
+}
+
+var script = document.createElement('script'); script.src = "https://js.site24x7static.com/js/site24x7.js"; document.head.appendChild(script);
+var s247tmScript = document.createElement('script'); s247tmScript.src = "https://js.site24x7static.com/js/s247tm.min.js"; document.body.appendChild(s247tmScript);
+
+
+var urlRef = '/' + window.location.href.split('?')[0].split('/').slice(3).join('/')
+
+var leftNavLinks = document.querySelectorAll('.navigation .wrapper a')
+
+var activePage
+
+for (let i = 0; i < leftNavLinks.length; i++) {
+    let leftNavLinkNormalised = leftNavLinks[i].getAttribute('href').split('?')[0]
+    if (urlRef === leftNavLinkNormalised) {
+        activePage = leftNavLinks[i]
+        break;
+    } else {
+        activePage = false
+    }
+}
+
+if (document.querySelector('section.toc ul')) {
+    tocLinks = document.querySelectorAll('section.toc ul li a')
+
+    tocLinks.forEach(function (link) {
+        let targetHref = link.getAttribute('href').replace('#', '')
+        let targetId = document.getElementById(targetHref)
+        let targetName = document.getElementsByName(targetHref)
+
+        if (targetId && (targetName.length == 0)) {
+            targetId.classList.add('tocTarget')
+        } else if (targetId && (targetName.length != 0)) {
+            targetId.classList.add('tocTarget')
+        }
+    })
+
+    window.addEventListener("scroll", function () {
+
+        const position = window.scrollY + 80
+        const tocTargets = document.querySelectorAll('.tocTarget')
+
+        tocTargets.forEach(function (tocTarget) {
+            const target = tocTarget.getBoundingClientRect().top - 80;
+            const id = tocTarget.id;
+
+            const sectionTocItem = [...tocLinks].find((item) => item.hash === `#${id}`);
+
+            if (position > target && isInTopViewport(tocTarget) && currentToc !== sectionTocItem.parentNode) {
+
+                if (currentToc) {
+                    currentToc.classList.toggle("active");
+                }
+                sectionTocItem.parentNode.classList.add("active");
+                currentToc = sectionTocItem.parentNode;
+
+            }
+
+        })
+
+    })
+}
+
+leftNav.forEach((item) => item.addEventListener('click', function (e) {
+
+    if ([...item.classList].includes('active')) {
+        item.classList.remove('active')
+        item.nextElementSibling.classList.remove('active')
+        item.nextElementSibling.querySelector('ul').classList.remove('active')
+    } else {
+        item.classList.add('active')
+        item.nextElementSibling.classList.add('active')
+        item.nextElementSibling.querySelector('ul').classList.add('active')
+    }
+}))
+
+headings.forEach((heading) => {
+
+    if (![...heading.classList].includes('acc-item-heading')) {
+        let headingText = heading.textContent
+        let shortlinkID = ''
+        let headingFontSize = window.getComputedStyle(heading).fontSize
+
+        if (heading.hasAttribute('id')) {
+            shortlinkID = heading.getAttribute('id')
+            heading.setAttribute('id', shortlinkID)
+
+            const shortlinkImg = document.createElement('img')
+            shortlinkImg.src = '/help/images/help-icons-png/shortlink.png'
+            shortlinkImg.width = parseInt(headingFontSize)
+            shortlinkImg.style.marginTop = `-${parseInt(headingFontSize.replace('px', '')) / 9.6}px`
+
+            const shortlinkAnchor = document.createElement('a')
+            shortlinkAnchor.href = `#${shortlinkID}`
+            shortlinkAnchor.className = 'shortlink'
+            shortlinkAnchor.appendChild(shortlinkImg)
+
+            heading.appendChild(shortlinkAnchor)
+        }
+
+        // else {
+        //     shortlinkID = convertToShortlink(headingText)
+        // }
+
+    }
+
+})
+
+const shortlinks = document.querySelectorAll('a.shortlink')
+
+// Handle shortlink clicks
+
+shortlinks.forEach((a) => a.addEventListener('click', function (e) {
+
+    let shortlink = $(a)
+    window.location.hash = a.getAttribute('href').replace('#', '')
+
+    copyContent(window.location.href.split('?')[0])
+
+    $('html, body').animate({
+        scrollTop: shortlink.offset().top - 100
+    }, 50);
+}))
+
+// Nav theme toggle + left nav search
+//ignorei18n_start
+document.querySelector('#nav-theme-toggle')?.addEventListener('click', function () {
+    changeDisplayMode(document.body.classList.contains('dark') ? 'light' : 'dark')
+})
+const navSearchInput = document.getElementById('nav-search-input')
+const navWrapper = document.querySelector('.navigation .wrapper')
+
+const navNoResults = document.createElement('p')
+navNoResults.className = 'nav-no-results'
+navNoResults.textContent = 'No items matched.'
+navNoResults.style.display = 'none'
+navWrapper?.after(navNoResults)
+
+function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function highlightNavItem(li, term) {
+    const target = li.querySelector('span.name a') || li.querySelector('span.name')
+    if (!target) return
+    const text = target.textContent
+    const idx = text.toLowerCase().indexOf(term)
+    if (idx === -1) return
+    target.dataset.origHtml = target.innerHTML
+    const before = escapeHtml(text.slice(0, idx))
+    const match = escapeHtml(text.slice(idx, idx + term.length))
+    const after = escapeHtml(text.slice(idx + term.length))
+    target.innerHTML = `${before}<mark class="nav-search-highlight">${match}</mark>${after}`
+}
+
+function clearNavHighlights() {
+    navWrapper?.querySelectorAll('[data-orig-html]').forEach(el => {
+        el.innerHTML = el.dataset.origHtml
+        delete el.dataset.origHtml
+    })
+}
+
+if (navSearchInput && navWrapper) {
+    navSearchInput.addEventListener('input', function () {
+        const term = this.value.trim().toLowerCase()
+
+        clearNavHighlights()
+        navWrapper.querySelectorAll('li, div.sub-menu').forEach(el => el.style.display = '')
+        navWrapper.querySelectorAll('ul').forEach(ul => { ul.style.display = ''; ul.style.maxHeight = '' })
+        navWrapper.classList.remove('in-search')
+        navNoResults.style.display = 'none'
+
+        if (!term) return
+
+        navWrapper.classList.add('in-search')
+        navWrapper.querySelectorAll('li').forEach(li => li.style.display = 'none')
+
+        let matchCount = 0
+
+        navWrapper.querySelectorAll('li:not(.category)').forEach(li => {
+            if (li.textContent.trim().toLowerCase().includes(term)) {
+                li.style.display = ''
+                highlightNavItem(li, term)
+                matchCount++
+
+                let node = li.parentElement
+                while (node && node !== navWrapper) {
+                    if (node.tagName === 'UL') { node.style.display = 'block'; node.style.maxHeight = 'none' }
+                    if (node.classList.contains('sub-menu')) {
+                        node.style.display = 'block'
+                        const catLi = node.previousElementSibling
+                        if (catLi?.classList.contains('category')) catLi.style.display = ''
+                    }
+                    node = node.parentElement
+                }
+            }
+        })
+
+        navWrapper.querySelectorAll('li.category').forEach(li => {
+            if (li.textContent.trim().toLowerCase().includes(term)) {
+                li.style.display = ''
+                highlightNavItem(li, term)
+                matchCount++
+                const subMenu = li.nextElementSibling
+                if (subMenu?.classList.contains('sub-menu')) {
+                    subMenu.style.display = 'block'
+                    const ul = subMenu.querySelector('ul')
+                    if (ul) { ul.style.display = 'block'; ul.style.maxHeight = 'none' }
+                    subMenu.querySelectorAll('li').forEach(child => child.style.display = '')
+                }
+            }
+        })
+
+        navNoResults.style.display = matchCount === 0 ? '' : 'none'
+    })
+}
+//ignorei18n_end
+
+leftNavSelector.addEventListener('click', function (e) {
+    if ([...leftNavSelector.classList].includes('active')) {
+        $(".navigation").animate({
+            left: "-330px"
+        }, 300)
+
+        $(".navigation").css({
+            boxShadow: "none"
+        })
+
+        leftNavSelector.classList.remove('active')
+    } else {
+        $(".navigation").animate({
+            left: "0"
+        }, 300)
+
+        $(".navigation").css({
+            boxShadow: "rgba(0, 0, 0, 0.5) 30px 0px 50px 0px"
+        })
+
+        leftNavSelector.classList.add('active')
+    }
+})
+
+feedbackSelector.addEventListener('click', function (e) {
+    $(feedbackSelector).animate({
+        right: '-100px'
+    }, 300)
+    $('.focus').css({
+        visibility: "visible",
+        opacity: 1
+    })
+})
+
+document.querySelector('#back-to-top').addEventListener('click', function (e) {
+    $('html, body').animate({
+        scrollTop: 0
+    }, 50);
+})
+
+document.querySelector('.feedback-widget .yes').addEventListener('click', function (e) {
+    $('.feedback-widget').animate({ 'opacity': 0 }, 200, function () {
+
+        document.querySelector('.feedback-widget .default').classList.add('d-none')
+        document.querySelector('.feedback-widget').classList.add('active')
+        document.querySelector('.feedback-widget .yes-response').classList.remove('d-none')
+
+    }).animate({ 'opacity': 1 }, 200);
+
+})
+
+document.querySelector('.feedback-widget .no').addEventListener('click', function (e) {
+    $('.feedback-widget').animate({ 'opacity': 0 }, 200, function () {
+
+        document.querySelector('.feedback-widget .default').classList.add('d-none')
+        document.querySelector('.feedback-widget').classList.add('active')
+        document.querySelector('.feedback-widget .no-response').classList.remove('d-none')
+
+    }).animate({ 'opacity': 1 }, 200);
+
+})
+
+document.querySelector('.feedback-widget .s-close').addEventListener('click', function (e) {
+    $('.focus').css({
+        visibility: "hidden",
+        opacity: 0
+    }, 300)
+
+    if (window.innerWidth < 1000) {
+        $(feedbackSelector).animate({
+            right: '-30.5px'
+        }, 300)
+    } else {
+        $(feedbackSelector).animate({
+            right: '-35px'
+        }, 300)
+    }
+})
+
+
+
+document.querySelectorAll('.feedback-widget .yes-response .cancel, .feedback-widget .no-response .cancel').forEach((button) => button.addEventListener('click', function (e) {
+
+    $('.feedback-widget').animate({ 'opacity': 0 }, 200, function () {
+
+        document.querySelectorAll('.feedback-widget .prompt-wrapper .prompt.selected').forEach((prompt) => prompt.classList.remove('selected'))
+        document.querySelector('.feedback-widget .default').classList.remove('d-none')
+        document.querySelector('.feedback-widget .yes-response').classList.add('d-none')
+        document.querySelector('.feedback-widget').classList.remove('active')
+        document.querySelector('.feedback-widget .no-response').classList.add('d-none')
+
+    }).animate({ 'opacity': 1 }, 200);
+}))
+
+document.querySelectorAll('.feedback-widget .yes-response .submit, .feedback-widget .no-response .submit').forEach((button) => button.addEventListener('click', function (e) {
+
+    $('.feedback-widget').animate({ 'opacity': 0 }, 200, function () {
+
+        document.querySelectorAll('.feedback-widget .prompt-wrapper .prompt.selected').forEach((prompt) => prompt.classList.remove('selected'))
+        document.querySelector('.feedback-widget .submit-response').classList.remove('d-none')
+        document.querySelector('.feedback-widget .yes-response').classList.add('d-none')
+        document.querySelector('.feedback-widget').classList.remove('active')
+        document.querySelector('.feedback-widget .no-response').classList.add('d-none')
+
+    }).animate({ 'opacity': 1 }, 200);
+}))
+
+document.querySelectorAll('.feedback-widget .prompt-wrapper .prompt').forEach((prompt) => {
+    prompt.addEventListener('click', function (e) {
+
+        if ([...e.target.classList].includes('selected')) {
+            e.target.classList.remove('selected')
+        } else {
+            e.target.classList.add('selected')
+        }
+
+    })
+})
+
+if ((galleryImages.length > 0) && (window.innerWidth > 1000)) {
+    const galleryLightBox = document.createElement('section')
+    galleryLightBox.classList.add('gallery-light-box', 'd-none')
+
+
+    const galleryControls = document.createElement('div')
+    galleryControls.classList.add('gallery-controls')
+    galleryControls.innerHTML += `<button class="gallery-prev"></button><button class="gallery-next"></button><button class="gallery-close">&#215;</button>`
+
+    const galleryViewBox = document.createElement('div')
+    galleryViewBox.classList.add('gallery-view-box')
+
+
+    function galleryChange(direction) {
+        let activeImg = document.querySelector('.gallery-view-box img.d-block')
+        activeImg.classList.remove('d-block')
+        activeImg.classList.add('d-none')
+
+        if (direction == 'right') {
+            if ((galleryActiveIndex + 1) < galleryLightBoxImages.length) {
+                galleryActiveIndex += 1
+                galleryLightBoxImages[galleryActiveIndex].classList.remove('d-none')
+                galleryLightBoxImages[galleryActiveIndex].classList.add('d-block')
+            } else {
+
+                galleryActiveIndex = 0
+                galleryLightBoxImages[galleryActiveIndex].classList.remove('d-none')
+                galleryLightBoxImages[galleryActiveIndex].classList.add('d-block')
+            }
+        } else if (direction == 'left') {
+            if ((galleryActiveIndex - 1) > 0) {
+                galleryActiveIndex -= 1
+                galleryLightBoxImages[galleryActiveIndex].classList.remove('d-none')
+                galleryLightBoxImages[galleryActiveIndex].classList.add('d-block')
+            } else {
+                galleryActiveIndex = galleryLightBoxImages.length - 1
+                galleryLightBoxImages[galleryActiveIndex].classList.remove('d-none')
+                galleryLightBoxImages[galleryActiveIndex].classList.add('d-block')
+            }
+        }
+    }
+
+    galleryImages.forEach(function (img, index) {
+        let tempImg = img.cloneNode(true)
+        tempImg.removeAttribute('class')
+        tempImg.removeAttribute('id')
+        tempImg.removeAttribute('style')
+        tempImg.removeAttribute('height')
+        tempImg.removeAttribute('width')
+        tempImg.classList.add('d-none')
+
+        galleryViewBox.append(tempImg)
+    })
+
+    galleryLightBox.append(galleryControls)
+    galleryLightBox.append(galleryViewBox)
+
+    document.body.appendChild(galleryLightBox)
+
+    galleryLightBoxImages = document.querySelectorAll('.gallery-view-box img')
+
+    document.querySelector('.gallery-prev').addEventListener('click', function (e) {
+        galleryChange('left')
+    })
+
+    document.querySelector('.gallery-next').addEventListener('click', function (e) {
+        galleryChange('right')
+    })
+
+    document.querySelector('.gallery-close').addEventListener('click', function (e) {
+        document.querySelector('.gallery-light-box').classList.add('d-none')
+        document.querySelector('.gallery-light-box').classList.remove('d-flex')
+        document.body.classList.remove('stop-scroll')
+    })
+
+    document.addEventListener("keydown", function (e) {
+        if (e.code == 'Escape') {
+            document.querySelector('.gallery-light-box').classList.add('d-none')
+            document.querySelector('.gallery-light-box').classList.remove('d-flex')
+            document.body.classList.remove('stop-scroll')
+        } else if (e.code == 'ArrowRight') {
+            galleryChange('right')
+        } else if (e.code == 'ArrowLeft') {
+            galleryChange('left')
+        }
+    })
+
+
+
+    galleryImages.forEach((img) => img.parentElement.addEventListener('click', function (e) {
+        let source = this.querySelector('img').getAttribute('src')
+
+        let activeImg = document.querySelector('.gallery-view-box img.d-block')
+
+        if (activeImg) {
+            activeImg.classList.remove('d-block')
+            activeImg.classList.add('d-none')
+        }
+
+        galleryActiveIndex = getGalleryIndex(source)
+        galleryLightBoxImages[galleryActiveIndex].classList.remove('d-none')
+        galleryLightBoxImages[galleryActiveIndex].classList.add('d-block')
+
+        document.querySelector('.gallery-light-box').classList.add('d-flex')
+        document.querySelector('.gallery-light-box').classList.remove('d-none')
+        document.body.classList.add('stop-scroll')
+
+    }))
+}
+
+var FeedbackConstants = {
+    HELP_DOMAIN: 'help.site24x7.com',
+    HELP_CONTEXT: '/help/',
+    KBASE_DOMAIN: 'support.site24x7.com',
+    SITE24X7_DOMAIN: 'site24x7.com',
+    KBASE: 'KBase',
+    HELP_DOC: 'Help Doc',
+    WEB_PAGE: 'Web Page',
+    YES: 'Yes',
+    NO: 'No',
+    YES_FEEDBACK_TEXT: 'Would you like to help us improve our documents? Tell us what you think we could do better.',
+    NO_FEEBACK_TEXT: 'Sorry to hear that. Let us know how we can improve this document.'
+};
+
+var FeedbackUtil = new function () {
+    this._url = null;
+    this._pageType = null;
+    this._feedback = null;
+    this._rating = null;
+
+    this.init = function () {
+        FeedbackUtil.addListeners();
+        FeedbackUtil.setUrl();
+        FeedbackUtil.setPageType();
+    };
+
+    this.addListeners = function () {
+        $('.feedback-widget .submit').click(function (event) {
+            FeedbackUtil.submitFeedback();
+        });
+
+        $('.feedback-widget .yes').click(function (event) {
+            FeedbackUtil.setRating(FeedbackConstants.YES);
+            FeedbackUtil.submitRating();
+        });
+        $('.feedback-widget .no').click(function (event) {
+            FeedbackUtil.setRating(FeedbackConstants.NO);
+            FeedbackUtil.submitRating();
+        });
+    };
+
+    this.setUrl = function () {
+        FeedbackUtil._url = location.href;
+    };
+
+    this.setPageType = function () {
+        FeedbackUtil.pageType = FeedbackConstants.WEB_PAGE;
+        if (this._url.indexOf(FeedbackConstants.HELP_DOMAIN) != -1
+            || FeedbackUtil._url.indexOf(FeedbackConstants.HELP_CONTEXT) != -1) {
+            FeedbackUtil.pageType = FeedbackConstants.HELP_DOC;
+        } else if (FeedbackUtil._url.indexOf(FeedbackConstants.KBASE_DOMAIN) != -1) {
+            FeedbackUtil.pageType = FeedbackConstants.KBASE;
+        } else if (FeedbackUtil._url.indexOf(FeedbackConstants.SITE24X7_DOMAIN) != -1) {
+            FeedbackUtil.pageType = FeedbackConstants.WEB_PAGE;
+        }
+    };
+
+    this.setFeedback = function () {
+        // var feedbackOption = $("[name=feedback_option]:checked").val();
+        var prompts = document.querySelectorAll(".feedback-widget .prompt-wrapper .prompt.selected")
+
+
+        if (FeedbackUtil._rating == 'Yes') {
+            var comments = $(".yes-response .feedback-content").val();
+        } else if (FeedbackUtil._rating == 'No') {
+            var comments = $(".no-response .feedback-content").val();
+        }
+
+        let promptString = '';
+
+        if (prompts && prompts.length > 0) {
+            for (let i = 0; i < prompts.length; i++) {
+                promptString += prompts[i].getAttribute('value') + '\n';
+            }
+
+            comments = promptString + "\n\n" + comments;
+        }
+
+        /* if(feedbackOption && feedbackOption.length > 0) {
+            comments = feedbackOption + "\n\n" + comments;
+        } */
+
+        FeedbackUtil._feedback = comments;
+    };
+
+    this.setRating = function (ratingValue) {
+        FeedbackUtil._rating = ratingValue;
+    };
+
+    this.submitRating = function () {
+        if (FeedbackUtil._rating === FeedbackConstants.YES) {
+            $("#feebacktxt").text(FeedbackConstants.YES_FEEDBACK_TEXT);
+        } else {
+            $("#feebacktxt").text(FeedbackConstants.NO_FEEDBACK_TEXT);
+        }
+    };
+
+    this.submitFeedback = function (rating) {
+        FeedbackUtil.setFeedback();
+        $("[name=useful]").val(FeedbackUtil._rating);
+        $("[name=Feedback]").val(FeedbackUtil._feedback);
+        $("[name=Type_of_Page]").val(FeedbackUtil.pageType);
+        $("[name=feedback_page_name]").val(FeedbackUtil._url);
+        $("#ratingForm").submit();
+    };
+
+};
+FeedbackUtil.init();
+//FEEDBACK SCRIPT 
+
+var accItem = document.getElementsByClassName('acc-item');
+var accHD = document.getElementsByClassName('acc-item-heading');
+for (i = 0; i < accHD.length; i++) {
+    accHD[i].addEventListener('click', toggleItem, false);
+}
+
+function toggleItem() {
+    var itemClass = this.parentNode.className;
+    if (itemClass == 'acc-item off') {
+        this.parentNode.className = 'acc-item on';
+    } else {
+        this.parentNode.className = 'acc-item off';
+    }
+}
+
+if (readMoreSec.length > 0) {
+
+    document.querySelectorAll('.read-more-sec > h3:first-of-type, .read-more-sec > h4:first-of-type, .read-more-sec > h5:first-of-type').forEach((secHeading) => {
+
+        if (!secHeading.querySelector('.read-more')) {
+            let readMoreBtn = document.createElement('button')
+            readMoreBtn.classList.add('read-more')
+
+            secHeading.append(readMoreBtn)
+        }
+    })
+
+    document.querySelectorAll('.read-more-sec.off').forEach((sec) => sec.addEventListener('click', function (e, sec) {
+        if (e.target.classList.contains('read-more-sec') && e.target.classList.contains('off')) {
+            e.target.querySelector('.read-more').style.transform = 'rotate(180deg)'
+            e.target.classList.add('on')
+            e.target.classList.remove('off')
+        }
+    }))
+
+    document.querySelectorAll('.read-more').forEach((btn) => btn.addEventListener('click', function (e) {
+
+        if ([...e.target.parentElement.parentElement.classList].includes('on')) {
+            e.target.parentElement.parentElement.classList.add('off')
+            e.target.parentElement.parentElement.classList.remove('on')
+            e.target.style.transform = 'rotate(90deg)'
+        } else {
+            e.target.parentElement.parentElement.classList.add('on')
+            e.target.parentElement.parentElement.classList.remove('off')
+            e.target.style.transform = 'rotate(180deg)'
+        }
+    }))
+}
+
+document.querySelector('.focus').addEventListener('click', (e) => {
+    if ([...e.target.classList].includes("focus")) {
+        $('.focus').css({
+            visibility: "hidden",
+            opacity: 0
+        }, 300)
+
+        if (window.innerWidth < 1000) {
+            $(feedbackSelector).animate({
+                right: '-30.5px'
+            }, 300)
+        } else {
+            $(feedbackSelector).animate({
+                right: '-35px'
+            }, 300)
+        }
+    }
+})
+
+function getTOCTargets() {
+    let links = document.querySelectorAll('section.toc ul li a')
+    let targetElements = []
+
+    links.forEach(function (link) {
+        let target = link.getAttribute('href').replace('#', '')
+
+        let targetNames = document.getElementsByName(target)
+        let targetID = document.getElementById(target)
+
+        if ((targetNames.length == 0) && targetID) {
+            targetElements.push(targetID)
+        }
+    })
+
+    return targetElements
+}
+
+function getGalleryIndex(source) {
+
+    for (let i = 0; i < galleryLightBoxImages.length; i++) {
+        if (galleryLightBoxImages[i].getAttribute('src') == source) {
+            return i
+        }
+    }
+
+    return false
+
+}
+
+$(document).ready(function () {
+    if (window.location.hash) {
+        var element = $(window.location.hash);
+        if (element.length) {
+            $('html, body').animate({
+                scrollTop: element.offset().top - 100
+            }, 1000);
+        }
+    }
+});
+
+if (videoItems.length > 0) {
+    videoItems.forEach((item) => item.addEventListener('click', function (e) {
+        e.target.requestFullscreen()
+    }))
+}
+
+if (codeBlocks.length > 0) {
+
+    codeBlocks.forEach((block) => {
+
+        let copyButton = document.createElement('button')
+        copyButton.classList.add('code-copy')
+        copyButton.innerHTML = 'Copy'
+
+        if ([...block.parentElement.classList].includes('code-wrapper')) {
+            block.parentElement.append(copyButton)
+            copyButton.addEventListener('click', function (e) {
+                copyPreElem(e.target.parentElement, e.target)
+            })
+        }
+    })
+}
+
+function copyPreElem(parentElem, copyElem) {
+    if ([...parentElem.classList].includes('code-wrapper')) {
+        let preElem = parentElem.querySelector('pre');
+
+        let codeText = preElem.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+        let tempElement = document.createElement("div");
+        tempElement.innerHTML = codeText;
+
+        copyElem.innerHTML = 'Copied';
+        setTimeout(function () {
+            copyElem.innerHTML = 'Copy';
+        }, 2000);
+
+        copyCode(tempElement.textContent);
+    }
+}
