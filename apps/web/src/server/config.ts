@@ -59,7 +59,9 @@ export function isTestRuntime(): boolean {
   return (
     process.env.NODE_ENV === "test" ||
     process.env.npm_lifecycle_event === "test" ||
-    process.execArgv.some((arg) => arg.includes("--test"))
+    process.env.npm_lifecycle_event === "check" ||
+    process.execArgv.some((arg) => arg.includes("--test")) ||
+    process.argv.some((arg) => arg.includes(".test.") || arg.includes("--test"))
   );
 }
 

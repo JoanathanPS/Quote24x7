@@ -27,6 +27,7 @@ import {
   insertProcessedMessageToSupabase,
   claimProcessedMessageInSupabase,
   deleteProcessedMessageFromSupabase,
+  clearAllEmailDataFromSupabase,
 } from "../db/supabase.ts";
 
 export interface PersistedState {
@@ -171,6 +172,24 @@ class SessionStore {
     } catch {
       // Graceful fallback for read-only or restricted environments
     }
+  }
+
+  /**
+   * Completely purges all threads, messages, profiles, quotes, deliveries,
+   * AI decisions, and idempotency tracking keys from memory, disk, and Supabase.
+   */
+  public async clearAll(): Promise<void> {
+    this.threads.clear();
+    this.messages.clear();
+    this.profiles.clear();
+    this.quotes.clear();
+    this.deliveries.clear();
+    this.aiDecisions.clear();
+    this.processedMessageIds.clear();
+    this.outboundSendingPaused = false;
+    this.initialized = true;
+    this.persistToDisk();
+    await clearAllEmailDataFromSupabase();
   }
 
   public reset(): void {

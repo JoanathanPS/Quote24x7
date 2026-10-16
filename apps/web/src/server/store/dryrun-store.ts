@@ -105,6 +105,16 @@ export class DryRunStore {
     }
   }
 
+  public clearAll(): void {
+    this.threads.clear();
+    this.messages.clear();
+    this.profiles.clear();
+    this.quotes.clear();
+    this.deliveries.clear();
+    this.initialized = true;
+    this.persistToDisk();
+  }
+
   public reset(): void {
     this.threads.clear();
     this.messages.clear();

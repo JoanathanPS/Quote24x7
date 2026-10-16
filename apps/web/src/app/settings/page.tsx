@@ -16,7 +16,9 @@ import {
   BookOpen,
   SlidersHorizontal,
   Info,
+  Trash,
 } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useIntegrations, useSystemHealth } from "@/hooks/use-api";
 import { cn } from "@/lib/utils";
@@ -113,6 +115,14 @@ export default function SettingsPage() {
   const [testingId, setTestingId] = React.useState<string | null>(null);
   const [testResult, setTestResult] = React.useState<{ id: string; message: string } | null>(null);
 
+  // TanStack Query client for invalidating cache on reset
+  const queryClient = useQueryClient();
+
+  // Reset / Purge modal state
+  const [resetDialogOpen, setResetDialogOpen] = React.useState<boolean>(false);
+  const [isResetting, setIsResetting] = React.useState<boolean>(false);
+  const [resetFeedback, setResetFeedback] = React.useState<string | null>(null);
+
   const isLoading = integrationsLoading || healthLoading;
 
   const handleToggleKillSwitch = async (checked: boolean) => {
@@ -137,6 +147,30 @@ export default function SettingsPage() {
       );
     }
     setTimeout(() => setKillSwitchFeedback(null), 4500);
+  };
+
+  const handleResetData = async () => {
+    setIsResetting(true);
+    try {
+      const res = await fetch("/api/v1/reset", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResetFeedback(data.message || "All email records and threads have been purged successfully.");
+        await queryClient.invalidateQueries();
+        refetchIntegrations();
+        refetchHealth();
+      } else {
+        setResetFeedback(`Reset failed: ${data.detail || data.error || "Unknown error"}`);
+      }
+    } catch (err) {
+      setResetFeedback(`Failed to connect to reset endpoint: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsResetting(false);
+      setResetDialogOpen(false);
+      setTimeout(() => setResetFeedback(null), 6000);
+    }
   };
 
   const handleTestConnection = (integration: IntegrationStatus) => {
@@ -274,6 +308,47 @@ export default function SettingsPage() {
             <div className="mt-4 flex items-center gap-2 p-3 rounded-lg border border-primary/30 bg-primary-soft text-xs text-primary-soft-foreground animate-fade-in">
               <CheckCircle className="h-4 w-4 shrink-0 text-primary" weight="fill" />
               <span>{killSwitchFeedback}</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Data Management & Fresh Start Card */}
+      <Card className="border-border bg-surface shadow-xs">
+        <CardContent className="p-5 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1 max-w-2xl">
+              <div className="flex items-center gap-2">
+                <Trash className="h-5 w-5 text-danger" weight="bold" />
+                <h3 className="text-base font-semibold text-foreground">
+                  Data Management & Fresh Start
+                </h3>
+                <Badge variant="neutral" className="text-xs">
+                  Zero Data Reset
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Permanently purge all inbound email threads, messages, extracted customer requirements, generated quotations, and delivery logs from both local storage and the persistent Supabase database. Use this to reset the system and start completely fresh.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 sm:self-center shrink-0">
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setResetDialogOpen(true)}
+                className="h-9 px-3.5 text-xs font-semibold gap-1.5"
+              >
+                <Trash className="h-4 w-4" weight="bold" />
+                Clear All Emails & Start Afresh
+              </Button>
+            </div>
+          </div>
+
+          {resetFeedback && (
+            <div className="mt-4 flex items-center gap-2 p-3 rounded-lg border border-primary/30 bg-primary-soft text-xs text-primary-soft-foreground animate-fade-in">
+              <CheckCircle className="h-4 w-4 shrink-0 text-primary" weight="fill" />
+              <span>{resetFeedback}</span>
             </div>
           )}
         </CardContent>
@@ -457,6 +532,57 @@ export default function SettingsPage() {
             </DialogFooter>
           </DialogContent>
         )}
+      </Dialog>
+
+      {/* Reset Confirmation Dialog */}
+      <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-danger">
+              <Trash className="h-5 w-5" weight="bold" />
+              <DialogTitle className="text-base text-foreground">
+                Clear All Email Records & Start Afresh?
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-muted-foreground pt-1 leading-relaxed">
+              This action will permanently delete all email threads, messages, customer requirement profiles, quotations, delivery tracking records, and deduplication IDs from the database and local storage.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="p-3 my-2 rounded-lg bg-danger-soft/40 border border-danger/30 text-danger-soft-foreground text-xs leading-relaxed">
+            <strong>Warning:</strong> This cannot be undone. All incoming emails, active quotes, and conversation history will be wiped so you can start with a completely empty inbox.
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isResetting}
+              onClick={() => setResetDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={isResetting}
+              onClick={handleResetData}
+              className="gap-1.5"
+            >
+              {isResetting ? (
+                <>
+                  <ArrowsClockwise className="h-3.5 w-3.5 animate-spin" />
+                  Clearing Data...
+                </>
+              ) : (
+                <>
+                  <Trash className="h-3.5 w-3.5" weight="bold" />
+                  Yes, Clear All & Start Afresh
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </div>
   );

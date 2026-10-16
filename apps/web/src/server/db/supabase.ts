@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { getAppConfig } from "../config.ts";
+import { getAppConfig, isTestRuntime } from "../config.ts";
 import type {
   AiDecisionRecord,
   DeliveryRecord,
@@ -14,8 +14,12 @@ let cachedClient: SupabaseClient | null = null;
 /**
  * Returns a configured Supabase client if SUPABASE_URL and key are provided,
  * or null if Supabase is not configured (falling back to file/memory storage).
+ * Always returns null during test runtime to prevent test fixtures from polluting cloud database.
  */
 export function getSupabaseClient(): SupabaseClient | null {
+  if (isTestRuntime()) {
+    return null;
+  }
   const config = getAppConfig();
   if (!config.supabaseUrl || !config.supabaseKey) {
     return null;
@@ -29,6 +33,29 @@ export function getSupabaseClient(): SupabaseClient | null {
     });
   }
   return cachedClient;
+}
+
+/**
+ * Wipes all email threads, messages, quotations, delivery tracking logs,
+ * requirement profiles, and idempotency tracking keys from Supabase tables.
+ */
+export async function clearAllEmailDataFromSupabase(): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return true;
+
+  try {
+    await supabase.from("email_messages").delete().neq("id", "_none_");
+    await supabase.from("ai_decisions").delete().neq("id", "_none_");
+    await supabase.from("deliveries").delete().neq("id", "_none_");
+    await supabase.from("quotes").delete().neq("id", "_none_");
+    await supabase.from("requirement_profiles").delete().neq("id", "_none_");
+    await supabase.from("email_threads").delete().neq("id", "_none_");
+    await supabase.from("processed_messages").delete().neq("provider_message_id", "_none_");
+    return true;
+  } catch (err) {
+    console.warn("[supabase] Failed to clear email data from Supabase:", err);
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
