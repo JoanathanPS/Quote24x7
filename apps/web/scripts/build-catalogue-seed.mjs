@@ -207,13 +207,13 @@ const priceRows = [];
 for (const [planId, packs] of Object.entries(data.planAddOnPrices)) {
   const billingOf = new Map(data.addOns.map((a) => [a.id, a.billingPeriod]));
   for (const [addOnId, rupees] of Object.entries(packs)) {
-    priceRows.push(`  (${q(planId)}, ${q(addOnId)}, ${toPaise(rupees, `${planId}/${addOnId}`)}, ${q(billingOf.get(addOnId))}, ${q("src_store_addon_prices")})`);
+    priceRows.push(`  (${q(planId)}, ${q(addOnId)}, ${toPaise(rupees, `${planId}/${addOnId}`)}, ${q(billingOf.get(addOnId))}, 'year', ${q("src_store_addon_prices")})`);
   }
 }
 w("-- Plan/add-on prices. The same pack costs different amounts on different");
 w("-- plans, so there is one row per (plan, add-on) and no global price.");
 w("-- A zero here is a real published price, not a missing value.");
-w("insert into public.catalogue_plan_addon_prices (plan_id, addon_id, price, billing_period, source_id) values");
+w("insert into public.catalogue_plan_addon_prices (plan_id, addon_id, price, billing_period, basis, source_id) values");
 w(priceRows.join(",\n") + ";");
 w();
 w("commit;");

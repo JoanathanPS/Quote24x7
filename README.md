@@ -55,7 +55,24 @@ ALLOW_EXTERNAL_DISPATCH=true
 GEMINI_API_KEY=...
 ```
 
-### 3. Run Development Server
+### 3. Supabase Database Setup & Migrations
+
+Quote24x7 uses Supabase as its primary persistent runtime database for mail threads, messages, quotations, delivery tracking, knowledge, and pricing catalogues.
+
+```bash
+# 1. Authenticate with the Supabase CLI
+npx supabase login
+
+# 2. Link your local repository to your remote Supabase project
+npx supabase link --project-ref your-project-ref
+
+# 3. Push versioned migrations to your Supabase project
+npx supabase db push
+```
+
+> **Security Note:** All tables have Row Level Security (RLS) enabled with strictly no policies for `anon` or `authenticated` roles. Backend services authenticate with `SUPABASE_SERVICE_ROLE_KEY`.
+
+### 4. Run Development Server
 
 ```bash
 npm run dev

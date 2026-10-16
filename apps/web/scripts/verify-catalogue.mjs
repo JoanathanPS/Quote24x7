@@ -11,9 +11,9 @@
 import { createClient } from "@supabase/supabase-js";
 
 const url = process.env.SUPABASE_URL;
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!url || !key) {
-  console.error("SUPABASE_URL and a Supabase key must be set. Try: node --env-file=.env.local scripts/verify-catalogue.mjs");
+  console.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set. Try: node --env-file=.env.local scripts/verify-catalogue.mjs");
   process.exit(1);
 }
 const db = createClient(url, key, { auth: { persistSession: false } });

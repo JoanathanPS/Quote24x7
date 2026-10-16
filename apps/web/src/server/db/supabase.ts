@@ -50,6 +50,7 @@ export async function clearAllEmailDataFromSupabase(): Promise<boolean> {
     await supabase.from("quotes").delete().neq("id", "_none_");
     await supabase.from("requirement_profiles").delete().neq("id", "_none_");
     await supabase.from("email_threads").delete().neq("id", "_none_");
+    await supabase.from("webhook_events").delete().neq("id", "_none_");
     await supabase.from("processed_messages").delete().neq("provider_message_id", "_none_");
     return true;
   } catch (err) {
@@ -81,6 +82,12 @@ export function threadToRow(t: EmailThread) {
     quote_total: t.quoteTotal,
     currency: t.currency,
     status_detail: t.statusDetail,
+    state: t.state || "idle",
+    rounds_used: t.roundsUsed ?? 0,
+    nonproductive_streak: t.nonproductiveStreak ?? 0,
+    inbound_count: t.inboundCount ?? 0,
+    last_inbound_at: t.lastInboundAt ?? null,
+    subject_canonical: t.subjectCanonical ?? null,
   };
 }
 
@@ -103,6 +110,12 @@ export function rowToThread(r: Record<string, unknown>): EmailThread {
     quoteTotal: r.quote_total !== null && r.quote_total !== undefined ? Number(r.quote_total) : null,
     currency: (r.currency as EmailThread["currency"]) || null,
     statusDetail: r.status_detail ? String(r.status_detail) : null,
+    state: r.state ? String(r.state) : "idle",
+    roundsUsed: Number(r.rounds_used || 0),
+    nonproductiveStreak: Number(r.nonproductive_streak || 0),
+    inboundCount: Number(r.inbound_count || 0),
+    lastInboundAt: r.last_inbound_at ? String(r.last_inbound_at) : null,
+    subjectCanonical: r.subject_canonical ? String(r.subject_canonical) : null,
   };
 }
 
@@ -121,6 +134,9 @@ export function messageToRow(m: EmailMessage) {
     delivery_id: m.deliveryId,
     security_notes: m.securityNotes,
     attachments: m.attachments,
+    message_id_header: m.messageIdHeader ?? null,
+    in_reply_to: m.inReplyTo ?? null,
+    references: m.references ?? null,
   };
 }
 
@@ -139,6 +155,9 @@ export function rowToMessage(r: Record<string, unknown>): EmailMessage {
     deliveryId: r.delivery_id ? String(r.delivery_id) : null,
     securityNotes: Array.isArray(r.security_notes) ? (r.security_notes as string[]) : [],
     attachments: Array.isArray(r.attachments) ? (r.attachments as EmailMessage["attachments"]) : [],
+    messageIdHeader: r.message_id_header ? String(r.message_id_header) : null,
+    inReplyTo: r.in_reply_to ? String(r.in_reply_to) : null,
+    references: r.references ? String(r.references) : null,
   };
 }
 
@@ -198,6 +217,8 @@ export function quoteToRow(q: Quote) {
     option_count_note: q.optionCountNote,
     created_at: q.createdAt,
     expires_at: q.expiresAt,
+    version: q.version ?? 1,
+    superseded_by: q.supersededBy ?? null,
   };
 }
 
@@ -223,6 +244,8 @@ export function rowToQuote(r: Record<string, unknown>): Quote {
     optionCountNote: r.option_count_note ? String(r.option_count_note) : null,
     createdAt: String(r.created_at || new Date().toISOString()),
     expiresAt: r.expires_at ? String(r.expires_at) : null,
+    version: Number(r.version || 1),
+    supersededBy: r.superseded_by ? String(r.superseded_by) : null,
   };
 }
 
@@ -277,6 +300,7 @@ export function aiDecisionToRow(a: AiDecisionRecord) {
     profile_id: a.profileId,
     created_at: a.createdAt,
     source: a.source,
+    provider: a.provider ?? (a.source === "rules_fallback" ? "rules" : a.source),
     model: a.model,
     action: a.action,
     original_action: a.originalAction,
@@ -294,6 +318,10 @@ export function aiDecisionToRow(a: AiDecisionRecord) {
     failure_detail: a.failureDetail,
     latency_ms: a.latencyMs,
     catalogue_version: a.catalogueVersion,
+    decision_source: a.decisionSource ?? (a.source === "rules_fallback" ? "rules_fallback" : "ai"),
+    fallback_reason: a.fallbackReason ?? a.failureDetail ?? null,
+    prompt_tokens: a.promptTokens ?? null,
+    completion_tokens: a.completionTokens ?? null,
   };
 }
 
@@ -303,7 +331,8 @@ export function rowToAiDecision(r: Record<string, unknown>): AiDecisionRecord {
     threadId: String(r.thread_id),
     profileId: r.profile_id ? String(r.profile_id) : null,
     createdAt: String(r.created_at || new Date().toISOString()),
-    source: (r.source as AiDecisionRecord["source"]) || "rules",
+    source: (r.source as AiDecisionRecord["source"]) || "rules_fallback",
+    provider: r.provider ? String(r.provider) : null,
     model: r.model ? String(r.model) : null,
     action: (r.action as AiDecisionRecord["action"]) || "quote",
     originalAction: (r.original_action as AiDecisionRecord["originalAction"]) || null,
@@ -321,6 +350,10 @@ export function rowToAiDecision(r: Record<string, unknown>): AiDecisionRecord {
     failureDetail: r.failure_detail ? String(r.failure_detail) : null,
     latencyMs: r.latency_ms !== null && r.latency_ms !== undefined ? Number(r.latency_ms) : null,
     catalogueVersion: r.catalogue_version ? String(r.catalogue_version) : null,
+    decisionSource: (r.decision_source as AiDecisionRecord["decisionSource"]) || null,
+    fallbackReason: r.fallback_reason ? String(r.fallback_reason) : null,
+    promptTokens: r.prompt_tokens !== null && r.prompt_tokens !== undefined ? Number(r.prompt_tokens) : null,
+    completionTokens: r.completion_tokens !== null && r.completion_tokens !== undefined ? Number(r.completion_tokens) : null,
   };
 }
 
