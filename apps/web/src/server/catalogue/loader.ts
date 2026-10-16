@@ -47,6 +47,16 @@ const sourceSchema = z.object({
   caveats: z.array(z.string()),
 });
 
+export function parsePaise(str: string): number {
+  const trimmed = str.trim();
+  if (!trimmed) return 0;
+  const parts = trimmed.split(".");
+  const rupees = parseInt(parts[0] || "0", 10);
+  const paiseStr = parts[1] ? (parts[1] + "00").slice(0, 2) : "00";
+  const paise = parseInt(paiseStr, 10);
+  return rupees * 100 + paise;
+}
+
 const entitlementSchema = z.object({
   unit: z.enum(UNIT_KINDS),
   included: z.number().int().nonnegative().nullable(),
@@ -70,6 +80,12 @@ const planSchema = z.object({
   entitlements: z.array(entitlementSchema).min(1),
   capabilities: z.array(z.string()),
   allowedAddOnIds: z.array(z.string()),
+  priceMonthlyAnnualBilled: minorUnits.optional(),
+  priceMonthToMonth: minorUnits.optional(),
+  storePriceMonthlyAnnualBilled: minorUnits.nullable().optional(),
+  quoteOnRequest: z.boolean().optional(),
+  priceIsFloor: z.boolean().optional(),
+  families: z.array(z.string()).optional(),
 });
 
 const addOnSchema = z.object({
@@ -110,6 +126,7 @@ const catalogueFileSchema = z.object({
   sources: z.array(sourceSchema).min(1),
   plans: z.array(planSchema).min(1),
   addOns: z.array(addOnSchema),
+  planAddOnPrices: z.record(z.string(), z.record(z.string(), minorUnits)).optional(),
 });
 
 export type CatalogueFile = z.infer<typeof catalogueFileSchema>;
@@ -158,35 +175,6 @@ function readCatalogueFile(): { raw: string; filePath: string } {
   );
 }
 
-const PUBLIC_MONTHLY_ADDON_PRICES: Record<string, number> = {
-  addon_basic_10: 95000,
-  addon_basic_50: 456000,
-  addon_basic_100: 950000,
-  addon_basic_500: 4275000,
-  addon_advanced_2: 142500,
-  addon_advanced_5: 342000,
-  addon_advanced_25: 1520000,
-  addon_advanced_100: 5700000,
-  addon_host_10: 237500,
-  addon_host_50: 1045000,
-  addon_host_500: 10450000,
-  addon_netcomp_10: 104500,
-  addon_netcomp_100: 950000,
-  addon_netcomp_250: 225720,
-  addon_netcomp_500: 4446000,
-  addon_pv_500k_5: 237500,
-  addon_pv_5m_50: 1425000,
-  addon_pv_10m_100: 2850000,
-  addon_pv_50m_500: 1410750,
-  addon_pv_100m_1000: 2565000,
-  addon_logs_10gb: 28500,
-  addon_logs_100gb: 200450,
-  addon_logs_1tb: 1852500,
-  addon_synth_10000: 76000,
-  addon_synth_100000: 698250,
-  addon_synth_1m: 6460000,
-};
-
 interface RawExtractionSource {
   id: string;
   title: string;
@@ -219,6 +207,10 @@ interface RawExtractionPlan {
   name: string;
   summary?: string;
   priceMonthlyAnnualBilled?: string;
+  storePriceMonthlyAnnualBilled?: string | null;
+  quoteOnRequest?: boolean;
+  priceIsFloor?: boolean;
+  families?: string[];
   pollingFrequency?: string;
   monitoringLocations?: number | null;
   sourceId: string;
@@ -252,35 +244,40 @@ function buildCatalogueFromExtraction(data: RawExtractionData): CatalogueFile {
     caveats: s.caveats && s.caveats.length > 0 ? s.caveats : ["Official Site24x7 India pricing source"],
   }));
 
+  const parsedPlanAddOnPrices: Record<string, Record<string, number>> = {};
+  if (data.planAddOnPrices) {
+    for (const [planId, addons] of Object.entries(data.planAddOnPrices)) {
+      parsedPlanAddOnPrices[planId] = {};
+      for (const [addonId, priceStr] of Object.entries(addons)) {
+        parsedPlanAddOnPrices[planId][addonId] = parsePaise(priceStr);
+      }
+    }
+  }
+
   const addOns: z.infer<typeof addOnSchema>[] = [];
   for (const aDef of data.addOns || []) {
     const grant = aDef.grants?.find((g: RawExtractionGrant) => (UNIT_KINDS as readonly string[]).includes(g.unit));
     if (!grant) continue;
-    const monthlyRate = PUBLIC_MONTHLY_ADDON_PRICES[aDef.id];
-    if (monthlyRate !== undefined) {
-      addOns.push({
-        id: aDef.id,
-        name: aDef.name,
-        unit: grant.unit as UnitKind,
-        packSize: grant.quantity,
-        packPrice: monthlyRate,
-        billingPeriod: "monthly" as const,
-        verificationStatus: "public_verified" as const,
-        sourceId: "src_public_infrastructure",
-        appliesToPlanIds: [],
-      });
-    }
+    const appliesToPlanIds = Object.keys(parsedPlanAddOnPrices).filter(
+      (pid) => parsedPlanAddOnPrices[pid]?.[aDef.id] !== undefined
+    );
+    addOns.push({
+      id: aDef.id,
+      name: aDef.name,
+      unit: grant.unit as UnitKind,
+      packSize: grant.quantity,
+      packPrice: null,
+      billingPeriod: "annual" as const,
+      verificationStatus: "public_verified" as const,
+      sourceId: "src_store_addon_prices",
+      appliesToPlanIds,
+    });
   }
 
   const plans: z.infer<typeof planSchema>[] = (data.plans || []).map((p: RawExtractionPlan) => {
-    let allowedAddOnIds = Object.keys(data.planAddOnPrices?.[p.id] || {}).filter((aid) =>
+    const allowedAddOnIds = Object.keys(data.planAddOnPrices?.[p.id] || {}).filter((aid) =>
       addOns.some((a) => a.id === aid)
     );
-
-    // On Professional plan, public pricing page offers advanced monitor packs starting at 25
-    if (p.id === "plan_professional") {
-      allowedAddOnIds = allowedAddOnIds.filter((aid) => aid !== "addon_advanced_2" && aid !== "addon_advanced_5");
-    }
 
     const entitlements = (p.entitlements || [])
       .filter((e: RawExtractionEntitlement) => (UNIT_KINDS as readonly string[]).includes(e.unit))
@@ -305,12 +302,21 @@ function buildCatalogueFromExtraction(data: RawExtractionData): CatalogueFile {
       "AppLogs",
     ];
 
+    const priceMonthlyAnnualBilled = p.priceMonthlyAnnualBilled
+      ? parsePaise(p.priceMonthlyAnnualBilled)
+      : 0;
+
+    const isMsp = p.id === "plan_msp" || p.id === "plan_msp_enterprise";
+    const billingPeriod = isMsp ? ("monthly" as const) : ("annual" as const);
+    const basePrice = isMsp ? priceMonthlyAnnualBilled : priceMonthlyAnnualBilled * 12;
+
     return {
       id: p.id,
       name: p.name,
       summary: p.summary || "",
-      basePrice: p.priceMonthlyAnnualBilled ? Math.round(parseFloat(p.priceMonthlyAnnualBilled) * 100) : 0,
-      billingPeriod: "monthly" as const,
+      basePrice,
+      priceMonthlyAnnualBilled,
+      billingPeriod,
       verificationStatus: "public_verified" as const,
       pollingFrequency: p.pollingFrequency || "1 minute",
       monitoringLocations: p.monitoringLocations ?? null,
@@ -318,6 +324,12 @@ function buildCatalogueFromExtraction(data: RawExtractionData): CatalogueFile {
       entitlements,
       capabilities,
       allowedAddOnIds,
+      quoteOnRequest: p.quoteOnRequest ?? false,
+      priceIsFloor: p.priceIsFloor ?? false,
+      storePriceMonthlyAnnualBilled: p.storePriceMonthlyAnnualBilled
+        ? parsePaise(p.storePriceMonthlyAnnualBilled)
+        : null,
+      families: p.families || [],
     };
   });
 
@@ -346,6 +358,7 @@ function buildCatalogueFromExtraction(data: RawExtractionData): CatalogueFile {
     sources,
     plans,
     addOns,
+    planAddOnPrices: parsedPlanAddOnPrices,
   };
 }
 
@@ -376,7 +389,8 @@ function validateCatalogue(file: CatalogueFile): CatalogueValidationReport {
         subject: plan.id,
       });
     }
-    if (plan.billingPeriod !== file.plans[0]!.billingPeriod) {
+    const isMsp = plan.id === "plan_msp" || plan.id === "plan_msp_enterprise";
+    if (!isMsp && plan.billingPeriod !== file.plans[0]!.billingPeriod) {
       errors.push({
         code: "MIXED_BILLING_PERIOD",
         message: `Plan "${plan.name}" uses a different billing period to the rest of the catalogue. Periods may not be mixed within one version.`,
@@ -412,7 +426,10 @@ function validateCatalogue(file: CatalogueFile): CatalogueValidationReport {
         subject: addOn.id,
       });
     }
-    if (addOn.packPrice === null) {
+    const isPricedInGrid =
+      file.planAddOnPrices &&
+      Object.values(file.planAddOnPrices).some((p) => p[addOn.id] !== undefined);
+    if (addOn.packPrice === null && !isPricedInGrid) {
       warnings.push({
         code: "UNPRICED_ADDON",
         message: `Add-on "${addOn.name}" has no price in any supplied source. Configurations that need it will be rejected rather than guessed.`,
@@ -527,7 +544,7 @@ export function loadActiveCatalogue(): CatalogueVersion {
     contentHash,
     validation,
   };
-  return cached;
+  return cached!;
 }
 
 /** Test seam: clears the module-level cache. */

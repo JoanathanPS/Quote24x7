@@ -80,6 +80,9 @@ export interface Plan {
   /** One-line positioning used in option cards and the quote document. */
   summary: string;
   basePrice: MinorUnits;
+  priceMonthlyAnnualBilled?: MinorUnits;
+  priceMonthToMonth?: MinorUnits;
+  storePriceMonthlyAnnualBilled?: MinorUnits | null;
   billingPeriod: BillingPeriod;
   verificationStatus: VerificationStatus;
   entitlements: Entitlement[];
@@ -90,6 +93,9 @@ export interface Plan {
   pollingFrequency: string;
   monitoringLocations: number | null;
   sourceId: string;
+  families?: string[];
+  quoteOnRequest?: boolean;
+  priceIsFloor?: boolean;
 }
 
 export interface AddOnPack {
@@ -121,6 +127,7 @@ export interface CatalogueVersion {
   activatedAt: IsoDateTime | null;
   plans: Plan[];
   addOns: AddOnPack[];
+  planAddOnPrices?: Record<string, Record<string, MinorUnits>>;
   sources: SourceReference[];
   /** Validation findings produced at import time. */
   validation: CatalogueValidationReport;
@@ -330,6 +337,11 @@ export interface QuoteOption {
   total: MinorUnits;
   valid: boolean;
   unavailabilityReason: string | null;
+  isStartingAt?: boolean;
+  requiresReview?: boolean;
+  pricingNote?: string | null;
+  whatItAdds?: string[];
+  comparisonNote?: string | null;
   lineItems: QuoteLineItem[];
   coverage: CoverageRow[];
   /** Headroom beyond the stated requirement, used to justify Best Coverage. */
@@ -369,6 +381,8 @@ export interface Quote {
   documents: QuoteDocument[];
   /** Why fewer than three options exist, when that is the case. */
   optionCountNote: string | null;
+  /** Plain English comparison line comparing base option to alternative tier. */
+  comparisonLine?: string | null;
   version?: number;
   supersededBy?: string | null;
 }

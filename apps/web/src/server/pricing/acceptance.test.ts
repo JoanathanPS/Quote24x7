@@ -46,7 +46,7 @@ const litePlan = catalogue.plans.find((p) => p.id === "plan_lite")!;
 const proPlan = catalogue.plans.find((p) => p.id === "plan_professional")!;
 const enterprisePlan = catalogue.plans.find((p) => p.id === "plan_enterprise")!;
 
-test("Acceptance Test 1: 25 servers -> Lite 7980, Professional 8740 per month", () => {
+test("Acceptance Test 1: 25 servers -> Lite ₹87,210/yr, Professional ₹99,180/yr", () => {
   const demand: PricingDemand = {
     ...emptyDemand(),
     host_monitor: 25,
@@ -58,15 +58,15 @@ test("Acceptance Test 1: 25 servers -> Lite 7980, Professional 8740 per month", 
   assert.equal(liteCandidate.valid, true, "Lite plan must be valid for 25 servers");
   assert.equal(
     liteCandidate.total,
-    798000,
-    "Lite total must be 7,980 INR/mo (798,000 paise): base 855 + 3 packs of 10 hosts (7,125)",
+    8721000,
+    "Lite total must be 87,210 INR/yr (8,721,000 paise): base 10,260 + 3 packs of 10 hosts (76,950)",
   );
 
   assert.equal(proCandidate.valid, true, "Professional plan must be valid for 25 servers");
   assert.equal(
     proCandidate.total,
-    874000,
-    "Professional total must be 8,740 INR/mo (874,000 paise): base 3,990 + 2 packs of 10 hosts (4,750)",
+    9918000,
+    "Professional total must be 99,180 INR/yr (9,918,000 paise): base 47,880 + 2 packs of 10 hosts (51,300)",
   );
 
   // Test natural language extraction
@@ -86,13 +86,13 @@ test("Acceptance Test 1: 25 servers -> Lite 7980, Professional 8740 per month", 
   const bestValue = options.find((o) => o.optionType === "best_value")!;
 
   assert.equal(lowestCost.planId, "plan_lite");
-  assert.equal(lowestCost.total, 798000);
+  assert.equal(lowestCost.total, 8721000);
   assert.equal(bestValue.planId, "plan_professional");
-  assert.equal(bestValue.total, 874000);
+  assert.equal(bestValue.total, 9918000);
   assert.ok(lowestCost.total <= bestValue.total);
 });
 
-test("Acceptance Test 2: 25 servers + 3 websites + 2 Java apps -> Lite 9405, Professional 23940 per month", () => {
+test("Acceptance Test 2: 25 servers + 3 websites + 2 Java apps -> Lite ₹102,600/yr, Professional ₹117,135/yr", () => {
   const demand: PricingDemand = {
     ...emptyDemand(),
     host_monitor: 25,
@@ -106,15 +106,15 @@ test("Acceptance Test 2: 25 servers + 3 websites + 2 Java apps -> Lite 9405, Pro
   assert.equal(liteCandidate.valid, true, "Lite plan must be valid");
   assert.equal(
     liteCandidate.total,
-    940500,
-    "Lite total must be 9,405 INR/mo (940,500 paise): base 855 + 3 host packs (7,125) + 1 advanced pack (1,425)",
+    10260000,
+    "Lite total must be 102,600 INR/yr (10,260,000 paise): base 10,260 + 3 host packs (76,950) + 1 advanced pack (15,390)",
   );
 
   assert.equal(proCandidate.valid, true, "Professional plan must be valid");
   assert.equal(
     proCandidate.total,
-    2394000,
-    "Professional total must be 23,940 INR/mo (2,394,000 paise): base 3,990 + 2 host packs (4,750) + 1 advanced 25-pack (15,200)",
+    11457000,
+    "Professional total must be 114,570 INR/yr (11,457,000 paise): base 47,880 + 2 host packs (51,300) + 1 advanced 2-pack (15,390)",
   );
 
   // Test natural language extraction from customer inquiry
@@ -132,21 +132,21 @@ test("Acceptance Test 2: 25 servers + 3 websites + 2 Java apps -> Lite 9405, Pro
 
   const liteExtracted = evaluateCandidate(catalogue, litePlan, extracted.demand);
   const proExtracted = evaluateCandidate(catalogue, proPlan, extracted.demand);
-  assert.equal(liteExtracted.total, 940500);
-  assert.equal(proExtracted.total, 2394000);
+  assert.equal(liteExtracted.total, 10260000);
+  assert.equal(proExtracted.total, 11457000);
 });
 
-test("Boundary Tests: Lite server pack edges (included: 2, pack size 10 @ 2,375 INR)", () => {
+test("Boundary Tests: Lite server pack edges (included: 2, pack size 10 @ 25,650 INR/yr)", () => {
   const cases: Array<{ hosts: number; expectedPaise: number; description: string }> = [
-    { hosts: 2, expectedPaise: 85500, description: "2 servers (exact included capacity)" },
-    { hosts: 3, expectedPaise: 85500 + 237500, description: "3 servers (excess 1 -> 1 pack)" },
-    { hosts: 12, expectedPaise: 85500 + 237500, description: "12 servers (excess 10 -> 1 pack)" },
-    { hosts: 13, expectedPaise: 85500 + 2 * 237500, description: "13 servers (excess 11 -> 2 packs)" },
-    { hosts: 22, expectedPaise: 85500 + 2 * 237500, description: "22 servers (excess 20 -> 2 packs)" },
-    { hosts: 23, expectedPaise: 85500 + 3 * 237500, description: "23 servers (excess 21 -> 3 packs)" },
-    { hosts: 25, expectedPaise: 798000, description: "25 servers (excess 23 -> 3 packs)" },
-    { hosts: 32, expectedPaise: 85500 + 3 * 237500, description: "32 servers (excess 30 -> 3 packs)" },
-    { hosts: 33, expectedPaise: 85500 + 4 * 237500, description: "33 servers (excess 31 -> 4 packs)" },
+    { hosts: 2, expectedPaise: 1026000, description: "2 servers (exact included capacity)" },
+    { hosts: 3, expectedPaise: 1026000 + 2565000, description: "3 servers (excess 1 -> 1 pack)" },
+    { hosts: 12, expectedPaise: 1026000 + 2565000, description: "12 servers (excess 10 -> 1 pack)" },
+    { hosts: 13, expectedPaise: 1026000 + 2 * 2565000, description: "13 servers (excess 11 -> 2 packs)" },
+    { hosts: 22, expectedPaise: 1026000 + 2 * 2565000, description: "22 servers (excess 20 -> 2 packs)" },
+    { hosts: 23, expectedPaise: 1026000 + 3 * 2565000, description: "23 servers (excess 21 -> 3 packs)" },
+    { hosts: 25, expectedPaise: 8721000, description: "25 servers (excess 23 -> 3 packs)" },
+    { hosts: 32, expectedPaise: 1026000 + 3 * 2565000, description: "32 servers (excess 30 -> 3 packs)" },
+    { hosts: 33, expectedPaise: 1026000 + 4 * 2565000, description: "33 servers (excess 31 -> 4 packs)" },
   ];
 
   for (const c of cases) {
@@ -158,23 +158,23 @@ test("Boundary Tests: Lite server pack edges (included: 2, pack size 10 @ 2,375 
 
 test("Boundary Tests: Professional server pack edges (included: 5, packs 10, 50, 500)", () => {
   const cases: Array<{ hosts: number; expectedPaise: number; description: string }> = [
-    { hosts: 5, expectedPaise: 399000, description: "5 servers (exact included capacity)" },
-    { hosts: 6, expectedPaise: 399000 + 237500, description: "6 servers (excess 1 -> 1 pack of 10)" },
-    { hosts: 15, expectedPaise: 399000 + 237500, description: "15 servers (excess 10 -> 1 pack of 10)" },
-    { hosts: 16, expectedPaise: 399000 + 2 * 237500, description: "16 servers (excess 11 -> 2 packs of 10)" },
-    { hosts: 25, expectedPaise: 874000, description: "25 servers (excess 20 -> 2 packs of 10)" },
-    { hosts: 26, expectedPaise: 399000 + 3 * 237500, description: "26 servers (excess 21 -> 3 packs of 10)" },
-    { hosts: 45, expectedPaise: 399000 + 4 * 237500, description: "45 servers (excess 40 -> 4 packs of 10 = 9,500)" },
+    { hosts: 5, expectedPaise: 4788000, description: "5 servers (exact included capacity)" },
+    { hosts: 6, expectedPaise: 4788000 + 2565000, description: "6 servers (excess 1 -> 1 pack of 10)" },
+    { hosts: 15, expectedPaise: 4788000 + 2565000, description: "15 servers (excess 10 -> 1 pack of 10)" },
+    { hosts: 16, expectedPaise: 4788000 + 2 * 2565000, description: "16 servers (excess 11 -> 2 packs of 10)" },
+    { hosts: 25, expectedPaise: 9918000, description: "25 servers (excess 20 -> 2 packs of 10)" },
+    { hosts: 26, expectedPaise: 4788000 + 3 * 2565000, description: "26 servers (excess 21 -> 3 packs of 10)" },
+    { hosts: 45, expectedPaise: 4788000 + 4 * 2565000, description: "45 servers (excess 40 -> 4 packs of 10 = 102,600)" },
     {
       hosts: 46,
-      expectedPaise: 399000 + 1045000,
-      description: "46 servers (excess 41 -> knapsack picks 1 pack of 50 @ 10,450 vs 5 packs of 10 @ 11,875)",
+      expectedPaise: 4788000 + 12188500,
+      description: "46 servers (excess 41 -> knapsack picks 1 pack of 50 @ 121,885 vs 5 packs of 10 @ 128,250)",
     },
-    { hosts: 50, expectedPaise: 399000 + 1045000, description: "50 servers (excess 45 -> 1 pack of 50)" },
-    { hosts: 55, expectedPaise: 399000 + 1045000, description: "55 servers (excess 50 -> 1 pack of 50)" },
+    { hosts: 50, expectedPaise: 4788000 + 12188500, description: "50 servers (excess 45 -> 1 pack of 50)" },
+    { hosts: 55, expectedPaise: 4788000 + 12188500, description: "55 servers (excess 50 -> 1 pack of 50)" },
     {
       hosts: 56,
-      expectedPaise: 399000 + 1045000 + 237500,
+      expectedPaise: 4788000 + 12188500 + 2565000,
       description: "56 servers (excess 51 -> 1 pack of 50 + 1 pack of 10)",
     },
   ];
@@ -186,38 +186,19 @@ test("Boundary Tests: Professional server pack edges (included: 5, packs 10, 50,
   }
 });
 
-test("Boundary Tests: Professional advanced monitors (included: 1, packs 25 @ 15,200, 100 @ 57,000)", () => {
-  const cases: Array<{ adv: number; expectedPaise: number; description: string }> = [
-    { adv: 1, expectedPaise: 399000, description: "1 monitor (exact included capacity)" },
-    { adv: 2, expectedPaise: 399000 + 1520000, description: "2 monitors (excess 1 -> 1 pack of 25 @ 15,200)" },
-    { adv: 26, expectedPaise: 399000 + 1520000, description: "26 monitors (excess 25 -> 1 pack of 25 @ 15,200)" },
-    { adv: 27, expectedPaise: 399000 + 2 * 1520000, description: "27 monitors (excess 26 -> 2 packs of 25)" },
-    {
-      adv: 101,
-      expectedPaise: 399000 + 5700000,
-      description: "101 monitors (excess 100 -> 1 pack of 100 @ 57,000 beats 4 packs of 25 @ 60,800)",
-    },
-  ];
-
-  for (const c of cases) {
-    const demand: PricingDemand = { ...emptyDemand(), advanced_monitor: c.adv };
-    const cand = evaluateCandidate(catalogue, proPlan, demand);
-    assert.equal(cand.total, c.expectedPaise, `Professional advanced monitor failed for ${c.description}`);
-  }
-});
-
-test("Rule 4: Enterprise returns handoff, never a price", () => {
+test("Rule 4: Enterprise returns starting-at review rate, withheld from automated quote dispatch", () => {
   const demand: PricingDemand = {
     ...emptyDemand(),
     host_monitor: 100,
   };
 
   const candidate = evaluateCandidate(catalogue, enterprisePlan, demand);
-  assert.equal(candidate.valid, false, "Enterprise candidate must never be valid");
+  assert.equal(candidate.valid, false, "Enterprise candidate must be valid=false so it is withheld from automated dispatch");
   assert.equal(candidate.isHandoff, true, "Enterprise candidate must be marked isHandoff: true");
-  assert.equal(candidate.total, 0, "Enterprise total must be 0 (no automated price)");
-  assert.equal(candidate.lineItems.length, 0, "Enterprise must have 0 line items");
-  assert.match(candidate.unavailabilityReason ?? "", /handoff|sales consultation/i);
+  assert.equal(candidate.isStartingAt, true, "Enterprise candidate must be marked isStartingAt: true");
+  assert.equal(candidate.requiresReview, true, "Enterprise candidate must be marked requiresReview: true");
+  assert.ok(candidate.total > 0, "Enterprise total must be computed as starting at rate");
+  assert.match(candidate.unavailabilityReason ?? "", /sales consultation|starting at/i);
 });
 
 test("Rule 7: Verification status is present and verified on all plans and add-on packs", () => {

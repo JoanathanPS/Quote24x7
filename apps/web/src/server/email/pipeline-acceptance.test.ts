@@ -43,10 +43,10 @@ test("Acceptance Test 1: 'we have 25 servers' -> NEEDS_INFO, one email with the 
   assert.ok(liteOpt, "Lite option must be present in quote options");
   assert.ok(proOpt, "Professional option must be present in quote options");
 
-  // Lite: 7,980 INR/mo (798,000 paise)
-  assert.equal(liteOpt.total, 798000, "Lite for 25 servers must be 7,980 INR/mo");
-  // Professional: 8,740 INR/mo (874,000 paise)
-  assert.equal(proOpt.total, 874000, "Professional for 25 servers must be 8,740 INR/mo");
+  // Lite: 87,210 INR/yr (8,721,000 paise)
+  assert.equal(liteOpt.total, 8721000, "Lite for 25 servers must be 87,210 INR/yr");
+  // Professional: 99,180 INR/yr (9,918,000 paise)
+  assert.equal(proOpt.total, 9918000, "Professional for 25 servers must be 99,180 INR/yr");
 
   // Verify outbound message
   const messages = store.getMessages(result.threadId);
@@ -57,14 +57,14 @@ test("Acceptance Test 1: 'we have 25 servers' -> NEEDS_INFO, one email with the 
   assert.ok(outbound, "Outbound message must be recorded");
   assert.equal(outbound.attachments.length, 0, "No PDF attachment should be present");
 
-  // Verify email body contains both 7,980 and 8,740
+  // Verify email body contains both estimates
   assert.ok(
-    outbound.bodyText.includes("7,980") || outbound.bodyText.includes("7980"),
-    "Email body must include 7,980 estimate"
+    outbound.bodyText.includes("87,210") || outbound.bodyText.includes("87210"),
+    "Email body must include 87,210 estimate",
   );
   assert.ok(
-    outbound.bodyText.includes("8,740") || outbound.bodyText.includes("8740"),
-    "Email body must include 8,740 estimate"
+    outbound.bodyText.includes("99,180") || outbound.bodyText.includes("99180"),
+    "Email body must include 99,180 estimate",
   );
 
   // Verify exactly one question asking about unmentioned categories

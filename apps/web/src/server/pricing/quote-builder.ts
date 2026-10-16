@@ -39,7 +39,7 @@ export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Ca
   const { quoteId, threadId, profile, demand, catalogue, createdAt } = input;
 
   const candidates = catalogue.plans.map((plan) => evaluateCandidate(catalogue, plan, demand));
-  const { options, rejected, optionCountNote } = rankOptions(candidates, demand, quoteId);
+  const { options, rejected, optionCountNote, comparisonLine } = rankOptions(candidates, demand, quoteId);
 
   const trace = [
     {
@@ -86,6 +86,7 @@ export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Ca
     integrityChecks,
     documents: input.documents ?? [],
     optionCountNote,
+    comparisonLine,
   };
 
   return { quote, rejected };

@@ -12,7 +12,7 @@ import type {
   UnitKind,
 } from "@/types/domain";
 
-import { multiplyMinor, sumMinor } from "./money.ts";
+import { formatMoney, multiplyMinor, sumMinor } from "./money.ts";
 
 /**
  * Deterministic pricing engine.
@@ -262,12 +262,14 @@ export interface Candidate {
   valid: boolean;
   unavailabilityReason: string | null;
   isHandoff?: boolean;
+  isStartingAt?: boolean;
+  requiresReview?: boolean;
+  pricingNote?: string | null;
+  whatItAdds?: string[];
   lineItems: QuoteLineItem[];
   coverage: CoverageRow[];
   subtotal: MinorUnits;
   total: MinorUnits;
-  coveragePoints?: number;
-  coverageScore?: number;
   trace: CalculationStep[];
   addOnPackCount: number;
 }
@@ -277,12 +279,48 @@ function packsForPlan(
   plan: Plan,
   unit: UnitKind,
 ): AddOnPack[] {
-  return catalogue.addOns.filter(
-    (addOn) =>
-      addOn.unit === unit &&
-      plan.allowedAddOnIds.includes(addOn.id) &&
-      (addOn.appliesToPlanIds.length === 0 || addOn.appliesToPlanIds.includes(plan.id)),
-  );
+  const planPrices = catalogue.planAddOnPrices?.[plan.id];
+  if (!planPrices) {
+    return [];
+  }
+
+  const matching: AddOnPack[] = [];
+  for (const addOn of catalogue.addOns) {
+    if (addOn.unit !== unit) continue;
+    if (!plan.allowedAddOnIds.includes(addOn.id)) continue;
+    const pricePaise = planPrices[addOn.id];
+    if (pricePaise === undefined || pricePaise === null) continue;
+    matching.push({
+      ...addOn,
+      packPrice: pricePaise,
+    });
+  }
+  return matching;
+}
+
+export function applyGrowthBuffer(
+  demand: PricingDemand,
+  expectingGrowth: boolean,
+): { bufferedDemand: PricingDemand; assumptions: string[] } {
+  if (!expectingGrowth) {
+    return { bufferedDemand: { ...demand }, assumptions: [] };
+  }
+
+  const bufferedDemand: PricingDemand = { ...demand };
+  const assumptions: string[] = [];
+
+  for (const unit of DEMAND_UNITS) {
+    const raw = demand[unit];
+    if (raw > 0) {
+      const buffered = Math.floor((raw * 110 + 99) / 100);
+      bufferedDemand[unit] = buffered;
+      assumptions.push(
+        `Expecting 10% growth: ${UNIT_LABELS[unit]} buffered from ${raw} to ${buffered} (ceil(need × 110 / 100); exact Zoho rule needs_confirmation).`,
+      );
+    }
+  }
+
+  return { bufferedDemand, assumptions };
 }
 
 export function evaluateCandidate(
@@ -290,30 +328,6 @@ export function evaluateCandidate(
   plan: Plan,
   demand: PricingDemand,
 ): Candidate {
-  // Rule 4: Enterprise returns "handoff", never a price.
-  if (plan.id === "plan_enterprise" || plan.id === "plan_enterprise_plus_web") {
-    return {
-      plan,
-      valid: false,
-      isHandoff: true,
-      unavailabilityReason: "Enterprise requires custom sales consultation handoff; automated pricing is never generated for Enterprise tier.",
-      lineItems: [],
-      coverage: [],
-      subtotal: 0,
-      total: 0,
-      trace: [
-        {
-          step: 1,
-          ruleId: "RULE-ENTERPRISE-HANDOFF",
-          description: `${plan.name} tier requires sales engineering consultation`,
-          computation: "Enterprise pricing is custom-negotiated; automated pricing is withheld.",
-          resultMinor: null,
-        },
-      ],
-      addOnPackCount: 0,
-    };
-  }
-
   const lineItems: QuoteLineItem[] = [];
   const coverage: CoverageRow[] = [];
   const trace: CalculationStep[] = [];
@@ -325,22 +339,35 @@ export function evaluateCandidate(
     trace.push({ step, ruleId, description, computation, resultMinor });
   };
 
+  const isMsp =
+    plan.id === "plan_msp" ||
+    plan.id === "plan_msp_enterprise" ||
+    plan.billingPeriod === "monthly";
+  const monthlyListPrice = plan.priceMonthlyAnnualBilled ?? plan.basePrice;
+  const planBaseTotal = isMsp ? monthlyListPrice : monthlyListPrice * 12;
+
   lineItems.push({
     id: `${plan.id}__base`,
     ruleId: "RULE-BASE-PRICE",
-    description: `${plan.name} plan — base subscription`,
+    description: isMsp
+      ? `${plan.name} plan — monthly subscription`
+      : `${plan.name} plan — annual subscription (${formatMoney(monthlyListPrice, catalogue.currency)}/mo × 12 months)`,
     quantity: 1,
-    unit: "subscription",
-    unitPrice: plan.basePrice,
-    lineTotal: plan.basePrice,
+    unit: isMsp ? "month" : "annual subscription",
+    unitPrice: planBaseTotal,
+    lineTotal: planBaseTotal,
     includedQuantity: null,
     sourceId: plan.sourceId,
   });
   pushStep(
     "RULE-BASE-PRICE",
-    `${plan.name} base price for one ${plan.billingPeriod} subscription`,
-    `base = ${plan.basePrice} minor units`,
-    plan.basePrice,
+    isMsp
+      ? `${plan.name} base price for monthly subscription`
+      : `${plan.name} base price for annual subscription (${plan.name} list monthly × 12)`,
+    isMsp
+      ? `base = ${planBaseTotal} paise (quoted per month)`
+      : `${monthlyListPrice} paise/mo × 12 = ${planBaseTotal} paise`,
+    planBaseTotal,
   );
 
   let unavailabilityReason: string | null = null;
@@ -454,7 +481,7 @@ export function evaluateCandidate(
       lineItems.push({
         id: `${plan.id}__${item.pack.id}`,
         ruleId: "RULE-ADDON-PACK",
-        description: `${item.pack.name} add-on pack`,
+        description: `${item.pack.name} add-on pack (annual)`,
         quantity: item.count,
         unit: "packs",
         unitPrice: item.pack.packPrice!,
@@ -465,7 +492,7 @@ export function evaluateCandidate(
       pushStep(
         "RULE-ADDON-PACK",
         `${item.pack.name} on ${plan.name}`,
-        `knapsack-fit of ${excess} excess ${UNIT_SHORT_UNITS[unit]} → ${item.count} × ${item.pack.packSize} = ${item.unitsDelivered} ${UNIT_SHORT_UNITS[unit]} at ${item.pack.packPrice} each`,
+        `knapsack-fit of ${excess} excess ${UNIT_SHORT_UNITS[unit]} → ${item.count} × ${item.pack.packSize} = ${item.unitsDelivered} ${UNIT_SHORT_UNITS[unit]} at verbatim Store rate ${item.pack.packPrice} paise/yr each`,
         item.cost,
       );
     }
@@ -482,9 +509,6 @@ export function evaluateCandidate(
   }
 
   const subtotal = sumMinor(lineItems.map((item) => item.lineTotal), `candidate ${plan.id}`);
-
-  // Tax is deliberately not calculated: no verified tax treatment exists for
-  // this market in the demo catalogue, and inventing one is forbidden.
   const total = subtotal;
   pushStep(
     "RULE-TOTAL",
@@ -493,8 +517,37 @@ export function evaluateCandidate(
     total,
   );
 
+  const isEnterprise =
+    plan.id === "plan_enterprise" ||
+    plan.id === "plan_enterprise_plus_web" ||
+    plan.id === "plan_msp_enterprise" ||
+    Boolean(plan.quoteOnRequest);
+
+  if (isEnterprise) {
+    pushStep(
+      "RULE-ENTERPRISE-STARTING-AT",
+      `${plan.name} tier priced as starting-at rate`,
+      `Computed total ${total} paise is a starting floor; requires sales engineering review and is withheld from automated quotes.`,
+      total,
+    );
+    return {
+      plan,
+      valid: false,
+      isHandoff: true,
+      isStartingAt: true,
+      requiresReview: true,
+      pricingNote: "Starting at rate, confirmed by Site24x7 sales",
+      unavailabilityReason: `${plan.name} requires custom sales consultation handoff; pricing is starting at rate confirmed by Site24x7 sales.`,
+      lineItems,
+      coverage,
+      subtotal,
+      total,
+      trace,
+      addOnPackCount,
+    };
+  }
+
   const valid = unavailabilityReason === null && coverage.every((row) => row.satisfied);
-  const { coveragePoints, coverageScore } = scoreCandidate(plan, demand, coverage);
 
   return {
     plan,
@@ -504,42 +557,9 @@ export function evaluateCandidate(
     coverage,
     subtotal,
     total,
-    coveragePoints,
-    coverageScore,
     trace,
     addOnPackCount,
   };
-}
-
-/**
- * Capability breadth and service-level scoring.
- * Replaces capacity points: stated requirements must be satisfied at lowest
- * monthly price without rewarding unnecessary headroom.
- */
-export function scoreCandidate(
-  plan: Plan,
-  _demand: PricingDemand,
-  _coverage: readonly CoverageRow[],
-): { coveragePoints: number; coverageScore: number } {
-  const supportedUnitKinds = plan.entitlements.filter((item) => item.included !== null).length;
-  const breadthPoints = supportedUnitKinds * 25;
-  const pollingPoints = plan.pollingFrequency.includes("10 second") ? 50 : 25;
-  const locationPoints = (plan.monitoringLocations ?? 0) * 5;
-  const capabilityPoints = plan.capabilities.length * 10;
-  const coverageScore = breadthPoints + pollingPoints + locationPoints + capabilityPoints;
-
-  return {
-    coveragePoints: 100,
-    coverageScore,
-  };
-}
-
-function betterValue(a: Candidate, b: Candidate): number {
-  const scoreA = a.coverageScore ?? 0;
-  const scoreB = b.coverageScore ?? 0;
-  if (scoreA !== scoreB) return scoreB - scoreA;
-  if (a.total !== b.total) return a.total - b.total;
-  return a.plan.id.localeCompare(b.plan.id);
 }
 
 function cheapest(a: Candidate, b: Candidate): number {
@@ -548,22 +568,104 @@ function cheapest(a: Candidate, b: Candidate): number {
   return a.plan.id.localeCompare(b.plan.id);
 }
 
-function broadest(a: Candidate, b: Candidate): number {
-  if (a.plan.capabilities.length !== b.plan.capabilities.length) {
-    return b.plan.capabilities.length - a.plan.capabilities.length;
+export function includesStrictlyMore(
+  alt: Candidate,
+  base: Candidate,
+  demand: PricingDemand,
+): boolean {
+  for (const unit of DEMAND_UNITS) {
+    if (demand[unit] > 0) {
+      const altCov = alt.coverage.find((c) => c.unit === unit)?.total ?? 0;
+      if (altCov < demand[unit]) return false;
+    }
   }
-  const scoreA = a.coverageScore ?? 0;
-  const scoreB = b.coverageScore ?? 0;
-  if (scoreA !== scoreB) return scoreB - scoreA;
-  if (a.total !== b.total) return a.total - b.total;
-  return a.plan.id.localeCompare(b.plan.id);
+
+  const hasMoreIncluded = DEMAND_UNITS.some(
+    (u) => (includedFor(alt.plan, u) ?? 0) > (includedFor(base.plan, u) ?? 0),
+  );
+  if (hasMoreIncluded) return true;
+
+  const hasMoreCoverage = DEMAND_UNITS.some(
+    (u) =>
+      demand[u] > 0 &&
+      (alt.coverage.find((c) => c.unit === u)?.total ?? 0) >
+        (base.coverage.find((c) => c.unit === u)?.total ?? 0),
+  );
+  if (hasMoreCoverage) return true;
+
+  if (alt.plan.capabilities.length > base.plan.capabilities.length) return true;
+
+  if ((alt.plan.monitoringLocations ?? 0) > (base.plan.monitoringLocations ?? 0)) return true;
+
+  if (
+    alt.plan.pollingFrequency.includes("second") &&
+    !base.plan.pollingFrequency.includes("second")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+export function describeWhatItAdds(alt: Candidate, base: Candidate): string[] {
+  const adds: string[] = [];
+
+  for (const unit of DEMAND_UNITS) {
+    const altInc = includedFor(alt.plan, unit) ?? 0;
+    const baseInc = includedFor(base.plan, unit) ?? 0;
+    if (altInc > baseInc) {
+      adds.push(`Includes ${altInc} ${UNIT_SHORT_UNITS[unit]} (${base.plan.name} includes ${baseInc})`);
+    }
+  }
+
+  for (const cap of alt.plan.capabilities) {
+    if (!base.plan.capabilities.includes(cap)) {
+      adds.push(`Includes ${cap}`);
+    }
+  }
+
+  if (
+    alt.plan.pollingFrequency.includes("second") &&
+    !base.plan.pollingFrequency.includes("second")
+  ) {
+    adds.push(`Faster polling (${alt.plan.pollingFrequency} vs ${base.plan.pollingFrequency})`);
+  }
+
+  if ((alt.plan.monitoringLocations ?? 0) > (base.plan.monitoringLocations ?? 0)) {
+    adds.push(
+      `${alt.plan.monitoringLocations} monitoring locations (vs ${base.plan.monitoringLocations})`,
+    );
+  }
+
+  return adds;
+}
+
+export function buildComparisonLine(
+  lowest: QuoteOption,
+  alternative: QuoteOption,
+  _demand?: PricingDemand,
+): string {
+  const addOnsCount = lowest.lineItems
+    .filter((i) => i.ruleId === "RULE-ADDON-PACK")
+    .reduce((acc, i) => acc + i.quantity, 0);
+  const addOnsText =
+    addOnsCount > 0
+      ? ` with ${addOnsCount} add-on pack${addOnsCount > 1 ? "s" : ""}`
+      : "";
+
+  const adds =
+    alternative.whatItAdds && alternative.whatItAdds.length > 0
+      ? alternative.whatItAdds.slice(0, 2).join(" and ")
+      : "additional capability";
+
+  return `${lowest.planName}${addOnsText} costs ${formatMoney(lowest.total, "INR")}/year; ${alternative.planName} includes ${adds} at ${formatMoney(alternative.total, "INR")}/year.`;
 }
 
 const RANK_REASONS: Record<OptionType, (candidate: Candidate) => string> = {
-  best_value: (candidate) =>
-    `Recommended configuration: optimal balance of core monitoring capabilities, service levels (${candidate.plan.pollingFrequency} polling), and monthly commitment.`,
   lowest_cost: (candidate) =>
-    `Cheapest configuration meeting every stated requirement, using ${candidate.addOnPackCount} add-on pack(s) (lowest valid total monthly commitment).`,
+    `Cheapest configuration meeting every stated requirement, using ${candidate.addOnPackCount} add-on pack(s).`,
+  best_value: (candidate) =>
+    `Recommended configuration: optimal balance of included allowances, service levels (${candidate.plan.pollingFrequency} polling), and commitment.`,
   best_coverage: (candidate) =>
     `Widest supported coverage among valid configurations: ${candidate.plan.capabilities.length} capability areas, ${candidate.plan.pollingFrequency} polling.`,
 };
@@ -572,22 +674,9 @@ export interface RankedOptions {
   options: QuoteOption[];
   rejected: Candidate[];
   optionCountNote: string | null;
+  comparisonLine?: string | null;
 }
 
-/**
- * Selects up to three distinct options with strict cost and value invariants:
- * 1. "lowest_cost" ALWAYS represents the lowest valid total price across all candidates.
- * 2. "best_value" represents the recommended configuration with the optimal balance
- *    of capability, headroom, and cost efficiency.
- * 3. "best_coverage" represents maximum headroom and polling frequency.
- *
- * Invariants guaranteed:
- * - A plan is never reused across multiple slots.
- * - lowest_cost.total <= best_value.total (when both present).
- * - lowest_cost.total <= best_coverage.total (when both present).
- * - When candidates overlap in price at the minimum, best_value receives the
- *   candidate with the higher coverage score, ensuring lowest_cost is never more expensive.
- */
 export function rankOptions(
   candidates: readonly Candidate[],
   demand: PricingDemand,
@@ -602,72 +691,49 @@ export function rankOptions(
       rejected,
       optionCountNote:
         "No configuration in the active catalogue satisfies this request. No price is shown rather than an invented one.",
+      comparisonLine: null,
     };
   }
 
-  // If only 1 valid candidate exists:
-  // Present as "best_value" (the primary recommended card across views).
+  const sortedByPrice = [...valid].sort(cheapest);
+  const lowestCostCandidate = sortedByPrice[0]!;
+
   if (valid.length === 1) {
     const pick = valid[0]!;
     const options: QuoteOption[] = [toQuoteOption(pick, "best_value", demand, quoteId)];
     const optionCountNote =
       "Only 1 genuinely distinct valid configuration exists for this request. The remaining plans either lack a capability the request needs, or have no priced add-on to cover the shortfall. Options are not invented to reach three.";
-    return { options, rejected, optionCountNote };
+    return { options, rejected, optionCountNote, comparisonLine: null };
   }
 
-  // 1. Identify the candidate with the absolute minimum total price.
-  const sortedByPrice = [...valid].sort(cheapest);
-  const minTotal = sortedByPrice[0]!.total;
-  const cheapestGroup = valid.filter((c) => c.total === minTotal);
-
-  let lowestCostCandidate: Candidate;
-  let bestValueCandidate: Candidate;
-  let remainingForCoverage: Candidate[];
-
-  if (cheapestGroup.length > 1) {
-    // Overlapping prices at the minimum:
-    // The candidate with higher coverage score is assigned to "best_value",
-    // while another minimum-price candidate is assigned to "lowest_cost".
-    // Both share the exact minimum price, ensuring lowest_cost is never more expensive.
-    const sortedCheapestGroup = [...cheapestGroup].sort(betterValue);
-    bestValueCandidate = sortedCheapestGroup[0]!;
-    lowestCostCandidate = sortedCheapestGroup[1]!;
-    remainingForCoverage = valid.filter(
-      (c) => c.plan.id !== bestValueCandidate.plan.id && c.plan.id !== lowestCostCandidate.plan.id,
+  const alternatives = sortedByPrice
+    .slice(1)
+    .filter(
+      (alt) =>
+        alt.total > lowestCostCandidate.total &&
+        includesStrictlyMore(alt, lowestCostCandidate, demand),
     );
-  } else {
-    // Differently priced candidates:
-    // "lowest_cost" is unconditionally the absolute cheapest valid configuration.
-    lowestCostCandidate = sortedByPrice[0]!;
-    const remainingForValue = valid.filter((c) => c.plan.id !== lowestCostCandidate.plan.id);
-    bestValueCandidate = [...remainingForValue].sort(betterValue)[0]!;
-    remainingForCoverage = remainingForValue.filter((c) => c.plan.id !== bestValueCandidate.plan.id);
+
+  if (alternatives.length > 0) {
+    const altCandidate = alternatives[0]!;
+    const whatItAdds = describeWhatItAdds(altCandidate, lowestCostCandidate);
+    const lowestOpt = toQuoteOption(lowestCostCandidate, "lowest_cost", demand, quoteId);
+    const altOpt = toQuoteOption(altCandidate, "best_value", demand, quoteId, whatItAdds);
+    const comparisonLine = buildComparisonLine(lowestOpt, altOpt, demand);
+    altOpt.comparisonNote = comparisonLine;
+
+    const options: QuoteOption[] = [altOpt, lowestOpt];
+    return { options, rejected, optionCountNote: null, comparisonLine };
   }
 
-  // 3. "best_coverage": widest coverage among remaining unused candidates
-  const bestCoverageCandidate =
-    remainingForCoverage.length > 0 ? [...remainingForCoverage].sort(broadest)[0]! : null;
-
-  // Build the options array:
-  // Primary recommendation (best_value) is first, followed by lowest_cost and best_coverage.
-  const options: QuoteOption[] = [
-    toQuoteOption(bestValueCandidate, "best_value", demand, quoteId),
-    toQuoteOption(lowestCostCandidate, "lowest_cost", demand, quoteId),
-  ];
-
-  if (bestCoverageCandidate) {
-    options.push(toQuoteOption(bestCoverageCandidate, "best_coverage", demand, quoteId));
-  }
-
-  let optionCountNote: string | null = null;
-  if (options.length < 3) {
-    optionCountNote =
-      `Only ${options.length} genuinely distinct valid configuration${options.length === 1 ? " exists" : "s exist"} ` +
-      `for this request. The remaining plans either lack a capability the request needs, or have no priced add-on ` +
-      `to cover the shortfall. Options are not invented to reach three.`;
-  }
-
-  return { options, rejected, optionCountNote };
+  const singleOpt = toQuoteOption(lowestCostCandidate, "best_value", demand, quoteId);
+  return {
+    options: [singleOpt],
+    rejected,
+    optionCountNote:
+      "Only 1 genuinely distinct valid configuration exists for this request without redundant extra costs. Options are not invented.",
+    comparisonLine: null,
+  };
 }
 
 function toQuoteOption(
@@ -675,6 +741,8 @@ function toQuoteOption(
   optionType: OptionType,
   demand: PricingDemand,
   quoteId: string,
+  whatItAdds?: string[],
+  comparisonNote?: string | null,
 ): QuoteOption {
   const headroomNotes: string[] = [];
   for (const row of candidate.coverage) {
@@ -697,8 +765,13 @@ function toQuoteOption(
     subtotal: candidate.subtotal,
     taxTotal: null,
     total: candidate.total,
-    valid: true,
-    unavailabilityReason: null,
+    valid: candidate.valid,
+    unavailabilityReason: candidate.unavailabilityReason,
+    isStartingAt: candidate.isStartingAt,
+    requiresReview: candidate.requiresReview,
+    pricingNote: candidate.pricingNote,
+    whatItAdds,
+    comparisonNote,
     lineItems: candidate.lineItems,
     coverage: candidate.coverage,
     headroomNotes,
