@@ -142,6 +142,9 @@ export async function POST(request: NextRequest) {
           providerMessageId = fetched.id;
           rfcMessageId = fetched.messageId || null;
           headers = fetched.headers || null;
+          if (fetched.attachments && fetched.attachments.length > 0) {
+            attachments.push(...fetched.attachments);
+          }
         }
       }
 

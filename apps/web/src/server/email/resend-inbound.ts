@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { getAppConfig } from "../config.ts";
+import type { InboundAttachmentPayload } from "./inbound-processor.ts";
 
 export interface WebhookHeaders {
   id?: string | null;
@@ -74,11 +75,12 @@ export interface RetrievedInboundEmail {
   html?: string;
   headers?: Record<string, string> | null;
   receivedAt?: string;
+  attachments?: InboundAttachmentPayload[];
 }
 
 /**
- * Retrieves the complete content (text, HTML, headers) for a Resend inbound email ID.
- * Resend inbound webhooks send metadata only; this call fetches the full body.
+ * Retrieves the complete content (text, HTML, headers, attachments) for a Resend inbound email ID.
+ * Resend inbound webhooks send metadata only; this call fetches the full body and file attachments.
  */
 export async function fetchInboundEmailContent(
   emailId: string
@@ -122,6 +124,34 @@ export async function fetchInboundEmailContent(
       data.headers?.["message-id"] ||
       `<${data.id}@resend.dev>`;
 
+    // Download attachments if present on the received email
+    const attachments: InboundAttachmentPayload[] = [];
+    if (Array.isArray(data.attachments) && data.attachments.length > 0) {
+      for (const att of data.attachments) {
+        if (!att.filename) continue;
+        try {
+          const attResp = await resend.emails.receiving.attachments.get({
+            emailId,
+            id: att.id,
+          });
+          if (attResp.data?.download_url) {
+            const dl = await fetch(attResp.data.download_url);
+            if (dl.ok) {
+              const arrayBuf = await dl.arrayBuffer();
+              attachments.push({
+                filename: att.filename,
+                contentType: att.content_type || "application/octet-stream",
+                content: Buffer.from(arrayBuf),
+                sizeBytes: att.size || arrayBuf.byteLength,
+              });
+            }
+          }
+        } catch (attErr) {
+          console.warn(`[resend-inbound] Failed to download attachment ${att.filename}:`, attErr);
+        }
+      }
+    }
+
     return {
       id: data.id,
       messageId: rfcMessageId,
@@ -133,6 +163,7 @@ export async function fetchInboundEmailContent(
       html: data.html || undefined,
       headers: data.headers || null,
       receivedAt: data.created_at || new Date().toISOString(),
+      attachments: attachments.length > 0 ? attachments : undefined,
     };
   } catch (err) {
     console.error(`Exception while fetching inbound email ${emailId}:`, err);
