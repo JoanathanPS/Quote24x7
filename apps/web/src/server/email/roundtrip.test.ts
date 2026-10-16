@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import zlib from "node:zlib";
+import * as XLSX from "xlsx";
 
 import { processInboundEmail } from "./inbound-processor.ts";
 import { renderQuotePdf } from "../documents/pdf-renderer.ts";
@@ -1401,5 +1403,121 @@ test("Phase 7 - Idempotency: Duplicate RFC Message-ID drops replay without produ
   const finalDeliveryCount = store.getDeliveries().length;
   assert.equal(finalDeliveryCount, initialDeliveryCount, "Duplicate replay must not trigger an outbound delivery");
 });
+
+test("Multi-Format: Inbound email with Excel (.xlsx) attachment extracts requirements and generates quote", async () => {
+  const workbook = XLSX.utils.book_new();
+  const data = [
+    ["Tier", "Asset Type", "Quantity"],
+    ["Production", "Linux application servers", 50],
+    ["Network", "Core switches and routers", 10],
+  ];
+  const worksheet = XLSX.utils.aoa_to_sheet(data);
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+  const excelBuffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+
+  const senderEmail = `excel_inbound_${Date.now()}@fintech.example.com`;
+  const result = await processInboundEmail({
+    providerMessageId: `msg_att_excel_${Date.now()}`,
+    from: senderEmail,
+    fromName: "Sanjay Kumar",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Monitoring sizing for our data center infrastructure",
+    text: "Hi team, please find our server counts in the attached inventory spreadsheet. Annual billing please.",
+    attachments: [
+      {
+        filename: "infra_inventory.xlsx",
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        content: excelBuffer,
+      },
+    ],
+  });
+
+  assert.equal(result.actionTaken, "quoted");
+  const thread = store.getThread(result.threadId);
+  assert.ok(thread);
+  assert.equal(thread?.status, "completed");
+
+  const messages = store.getMessages(result.threadId);
+  const inbound = messages.find((m) => m.direction === "inbound");
+  assert.ok(inbound);
+  assert.equal(inbound.attachments.length, 1);
+  assert.equal(inbound.attachments[0]?.documentKind, "excel");
+  assert.equal(inbound.attachments[0]?.name, "infra_inventory.xlsx");
+
+  const quote = store.getQuote(thread.quoteId!);
+  assert.ok(quote);
+  const bestValue = quote.options.find((o) => o.tier === "best_value");
+  assert.ok(bestValue);
+  const serverRow = bestValue.coverage.find((c) => c.unit === "host_monitor");
+  assert.equal(serverRow?.required, 50);
+});
+
+test("Multi-Format: Inbound email with CSV attachment extracts requirements and quotes cleanly", async () => {
+  const csvData = "Hostname,Component,Count\nweb-pool,Linux Servers,35\nnet-pool,Network Devices,5";
+  const csvBuffer = Buffer.from(csvData, "utf-8");
+
+  const senderEmail = `csv_inbound_${Date.now()}@cloud.example.com`;
+  const result = await processInboundEmail({
+    providerMessageId: `msg_att_csv_${Date.now()}`,
+    from: senderEmail,
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Sizing quote request",
+    text: "Please see attached CSV for our workload specifications. Annual.",
+    attachments: [
+      {
+        filename: "servers.csv",
+        contentType: "text/csv",
+        content: csvBuffer,
+      },
+    ],
+  });
+
+  assert.equal(result.actionTaken, "quoted");
+  const thread = store.getThread(result.threadId);
+  assert.ok(thread);
+  const quote = store.getQuote(thread.quoteId!);
+  assert.ok(quote);
+  const bestValue = quote.options.find((o) => o.tier === "best_value");
+  const serverRow = bestValue?.coverage.find((c) => c.unit === "host_monitor");
+  assert.equal(serverRow?.required, 35);
+});
+
+test("Multi-Format: Inbound email with Image attachment stores scan metadata and proceeds with inquiry", async () => {
+  const pngHeader = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+    0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+    0x42, 0x60, 0x82,
+  ]);
+
+  const senderEmail = `img_inbound_${Date.now()}@agency.example.com`;
+  const result = await processInboundEmail({
+    providerMessageId: `msg_att_img_${Date.now()}`,
+    from: senderEmail,
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Infrastructure diagram attached",
+    text: "We have 20 servers as shown in the attached screenshot. Annual billing.",
+    attachments: [
+      {
+        filename: "aws_architecture.png",
+        contentType: "image/png",
+        content: pngHeader,
+      },
+    ],
+  });
+
+  assert.equal(result.actionTaken, "quoted");
+  const thread = store.getThread(result.threadId);
+  assert.ok(thread);
+
+  const messages = store.getMessages(result.threadId);
+  const inbound = messages.find((m) => m.direction === "inbound");
+  assert.ok(inbound);
+  assert.equal(inbound.attachments.length, 1);
+  assert.equal(inbound.attachments[0]?.documentKind, "image");
+  assert.ok(inbound.attachments[0]?.contentBase64);
+});
+
 
 
