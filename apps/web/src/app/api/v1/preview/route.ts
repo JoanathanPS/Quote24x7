@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     quote,
     threadId: thread.id,
   });
-  const check = runPreSendChecks(rendered.textContent + "\n" + rendered.htmlContent);
+  const check = runPreSendChecks(rendered.textContent + "\n" + rendered.htmlContent, { isQuoteEmail: true });
   return NextResponse.json({
     type: "quote",
     threadId,
