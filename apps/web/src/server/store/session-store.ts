@@ -457,6 +457,10 @@ class SessionStore {
     this.trackWrite(writePromise);
   }
 
+  upsertDelivery(delivery: DeliveryRecord): void {
+    this.saveDelivery(delivery);
+  }
+
   updateDelivery(id: string, updates: Partial<DeliveryRecord>): DeliveryRecord | undefined {
     this.ensureInitialized();
     const existing = this.deliveries.get(id);

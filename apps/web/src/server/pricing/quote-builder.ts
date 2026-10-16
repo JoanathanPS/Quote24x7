@@ -33,6 +33,8 @@ export interface BuildQuoteInput {
   createdAt: string;
   documents?: QuoteDocument[];
   status?: Quote["status"];
+  version?: number;
+  supersededBy?: string | null;
 }
 
 export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Candidate[] } {
@@ -77,6 +79,8 @@ export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Ca
     currency: catalogue.currency,
     billingPeriod: catalogue.plans[0]?.billingPeriod ?? "annual",
     createdAt,
+    version: input.version ?? 1,
+    supersededBy: input.supersededBy ?? null,
     // No verified quote-validity policy exists, so no expiry date is claimed.
     expiresAt: null,
     options,

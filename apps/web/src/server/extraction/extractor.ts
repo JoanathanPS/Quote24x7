@@ -45,6 +45,8 @@ export interface ExtractionInput {
   senderName: string | null;
   subject: string;
   bodyText: string;
+  headers?: Record<string, string> | null;
+  previousProfile?: RequirementProfile | null;
 }
 
 export interface ExtractionResult {
@@ -53,6 +55,7 @@ export interface ExtractionResult {
   isComplete: boolean;
   missingMaterialFields: string[];
   suggestedQuestion: ClarificationQuestion | null;
+  clarificationQuestions: string[];
   organization: string | null;
   billingPeriod: BillingPeriod;
   currency: CurrencyCode;
@@ -74,11 +77,27 @@ export function triageInboundEmail(
   subject: string,
   bodyText: string,
   _from?: string,
+  headers?: Record<string, string> | null,
 ): EmailTriageCategory {
-  const combined = `${subject}\n${bodyText}`.toLowerCase();
+  const combined = `${subject}\n${bodyText}\n${_from || ""}`.toLowerCase();
   const cleanBody = bodyText.trim().toLowerCase();
 
-  // 1. Unsupported: reseller request, RFP attachment, non-India market, feature request
+  // 1. Automated mail / bounces / system notices
+  const autoHdr = headers ? (headers["auto-submitted"] || headers["Auto-Submitted"]) : null;
+  if (autoHdr && autoHdr.toLowerCase() !== "no") {
+    return "ignored_automated";
+  }
+  const isBounceOrAuto =
+    /\b(?:out\s+of\s+(?:the\s+)?office|auto-?reply|automatic\s+reply|mailer-daemon|delivery\s+status\s+notification|undelivered\s+mail|failure\s+notice|dmarc|report\s+domain|noreply|no-reply|postmaster|newsletter)\b/i.test(
+      combined,
+    ) ||
+    /\[##\d+##\]/.test(combined);
+
+  if (isBounceOrAuto) {
+    return "ignored_automated";
+  }
+
+  // 2. Unsupported: reseller request, RFP attachment, non-India market, feature request
   const isReseller =
     /\b(?:reseller|partner\s+discount|partner\s+margin|white-?label|partner\s+program|become\s+a\s+partner|distributor|deal\s+registration)\b/i.test(
       combined,
@@ -100,30 +119,32 @@ export function triageInboundEmail(
     return "unsupported";
   }
 
-  // 2. Non-substantive: "hi", "thanks", "ok", bounces, auto-replies, out-of-office, unsubscribe, vendor solicitations
-  const isBounceOrAuto =
-    /\b(?:out\s+of\s+(?:the\s+)?office|auto-?reply|automatic\s+reply|mailer-daemon|delivery\s+status\s+notification|undelivered\s+mail|failure\s+notice)\b/i.test(
-      combined,
-    );
+  // 3. Casual pleasantries / acknowledgement
+  const isShortPleasantry =
+    /^(?:hi|hello|hey|greetings|thanks(?:\s+for\s+(?:the\s+)?(?:email|update|reply|info|information|response))?|thank\s+you(?:\s+for\s+(?:the\s+)?(?:email|update|reply|info|information|response))?|thx|ok|okay|k|noted|received|acknowledged|cool|sure|got\s+it|sounds\s+good|ok\s+sounds\s+good|all\s+good|fine)[.!]?$/i.test(
+      cleanBody,
+    ) ||
+    (cleanBody.length < 50 &&
+      /^(?:(?:hi|hello|thanks|thank\s+you|ok|okay|sure|cool|got\s+it|noted|sounds\s+good|for\s+the\s+email|for\s+the\s+update)[,\s.!]*)+$/i.test(
+        cleanBody,
+      ));
+
+  if (isShortPleasantry) {
+    return "casual_acknowledgement";
+  }
+
+  // 4. Other non-substantive: unsubscribe, vendor solicitations
   const isUnsubscribe = /\b(?:unsubscribe|stop\s+emails|opt-?out)\b/i.test(combined);
   const isVendorSolicitation =
     /\b(?:seo\s+services?|guest\s+post|hire\s+(?:offshore|remote)\s+developers?|lead\s+generation\s+services?|software\s+development\s+agency)\b/i.test(
       combined,
     );
-  const isShortPleasantry =
-    /^(?:hi|hello|hey|greetings|thanks|thank\s+you|thx|ok|okay|k|noted|received|acknowledged|cool|sure|got\s+it|sounds\s+good|ok\s+sounds\s+good|all\s+good|fine)[.!]?$/i.test(
-      cleanBody,
-    ) ||
-    (cleanBody.length < 40 &&
-      /^(?:(?:hi|hello|thanks|thank\s+you|ok|okay|sure|cool|got\s+it|noted|sounds\s+good)[,\s.!]*)+$/i.test(
-        cleanBody,
-      ));
 
-  if (isBounceOrAuto || isUnsubscribe || isVendorSolicitation || isShortPleasantry) {
+  if (isUnsubscribe || isVendorSolicitation) {
     return "non_substantive";
   }
 
-  // 3. Actionable RFQ: has at least one monitoring need mentioned
+  // 5. Actionable RFQ: has at least one monitoring need mentioned
   const hasMonitoringNeed =
     /\b(?:servers?|hosts?|vms?|virtual\s+machines?|instances?|nodes?|machines?|linux|windows)\b/i.test(
       combined,
@@ -143,7 +164,7 @@ export function triageInboundEmail(
     return "actionable_rfq";
   }
 
-  // 4. Vague inquiry: broad interest with no quantities or specifics
+  // 6. Vague inquiry: broad interest with no quantities or specifics
   return "vague_inquiry";
 }
 
@@ -237,10 +258,10 @@ export function isSubstantiveEmail(
 
   // Non-substantive indicators
   if (
-    /^(?:hi|hello|hey|greetings|thanks|thank\s+you|thx|ok|okay|k|noted|received|acknowledged|cool|sure|got\s+it|sounds\s+good)[.!]?$/i.test(
+    /^(?:hi|hello|hey|greetings|thanks(?:\s+for\s+(?:the\s+)?(?:email|update|reply|info|information|response))?|thank\s+you(?:\s+for\s+(?:the\s+)?(?:email|update|reply|info|information|response))?|thx|ok|okay|k|noted|received|acknowledged|cool|sure|got\s+it|sounds\s+good)[.!]?$/i.test(
       lower,
     ) ||
-    lower.length < 20
+    lower.length < 35
   ) {
     const hasNumber = /\b\d+\b/.test(lower);
     if (!hasNumber) return false;
@@ -287,10 +308,20 @@ export function isSubstantiveEmail(
  * Tracks the 6 billable intake units in state: stated, none, or unknown.
  */
 export function extractRequirements(input: ExtractionInput): ExtractionResult {
+  if (input.previousProfile) {
+    return mergeRequirements({
+      existingProfile: input.previousProfile,
+      replyText: input.bodyText,
+      senderEmail: input.senderEmail,
+      senderName: input.senderName,
+      subject: input.subject,
+    });
+  }
+
   const text = `${input.subject}\n${input.bodyText}`;
   const lower = text.toLowerCase();
 
-  const triageCategory = triageInboundEmail(input.subject, input.bodyText, input.senderEmail);
+  const triageCategory = triageInboundEmail(input.subject, input.bodyText, input.senderEmail, input.headers);
   const fields: RequirementField[] = [];
   const missingMaterialFields: string[] = [];
 
@@ -1207,17 +1238,29 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     triageCategory,
   };
 
+  const clarificationQuestions =
+    !isComplete && unknownUnits.length > 0
+      ? buildClarificationQuestions(unknownUnits)
+      : [];
+
+  const isSubstantive =
+    triageCategory !== "non_substantive" &&
+    triageCategory !== "casual_acknowledgement" &&
+    triageCategory !== "ignored_automated" &&
+    isSubstantiveEmail(input.bodyText);
+
   return {
     profile,
     demand,
     isComplete,
     missingMaterialFields: unknownUnits.map((u) => UNIT_TO_FIELD_KEY[u]),
     suggestedQuestion,
+    clarificationQuestions,
     organization,
     billingPeriod,
     currency,
     triageCategory,
-    isSubstantive: triageCategory !== "non_substantive",
+    isSubstantive,
     intakeRequirements,
     optionalParameters,
   };
@@ -1426,12 +1469,18 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
 
   const isSubstantive = isSubstantiveEmail(replyText, existingProfile);
 
+  const clarificationQuestions =
+    !isComplete && remainingUnknowns.length > 0
+      ? buildClarificationQuestions(remainingUnknowns)
+      : [];
+
   return {
     profile,
     demand,
     isComplete,
     missingMaterialFields: remainingUnknowns.map((u) => UNIT_TO_FIELD_KEY[u]),
     suggestedQuestion,
+    clarificationQuestions,
     organization: replyExtraction.organization || existingProfile.fields.find((f) => f.key === "organization")?.value as string || null,
     billingPeriod: replyExtraction.billingPeriod,
     currency: replyExtraction.currency,

@@ -818,8 +818,8 @@ async function doProcessInboundEmail(
     };
   }
 
-  // 5b. Non-Substantive Inbound ("hi", "thanks", "ok", etc.)
-  if (triage === "non_substantive") {
+  // 5b. Non-Substantive Inbound ("hi", "thanks", "ok", etc.) or Casual Acknowledgement
+  if (triage === "non_substantive" || triage === "casual_acknowledgement") {
     // Reply with short polite message. DO NOT consume a clarification round, DO NOT increment nonproductive streak.
     const replyResult = await sendNonSubstantiveReplyEmail({
       thread,

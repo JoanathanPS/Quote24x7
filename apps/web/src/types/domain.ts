@@ -260,6 +260,8 @@ export type EmailTriageCategory =
   | "actionable_rfq"
   | "vague_inquiry"
   | "non_substantive"
+  | "casual_acknowledgement"
+  | "ignored_automated"
   | "unsupported";
 
 export interface OptionalRequirementParameters {

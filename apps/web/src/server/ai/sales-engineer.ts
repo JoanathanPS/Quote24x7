@@ -581,6 +581,7 @@ function buildAiDecision(
       isComplete: action === "prepare_quote",
       missingMaterialFields,
       suggestedQuestion,
+      clarificationQuestions: [],
       organization: rulesResult.organization,
       billingPeriod: rulesResult.billingPeriod,
       currency: rulesResult.currency,
