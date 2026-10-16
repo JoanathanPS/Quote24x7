@@ -328,7 +328,7 @@ export default function CustomerProposalPage() {
               asChild
               className="gap-2 font-medium"
             >
-              <a href={`mailto:quotes@auth.joanathan.in?subject=${replySubject}`}>
+              <a href={`mailto:quotes@joanathan.in?subject=${replySubject}`}>
                 <EnvelopeSimple size={18} />
                 <span>Request Revision by Email</span>
               </a>

@@ -51,6 +51,7 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { EmailBody } from "@/components/email-body";
 
 function getStatusBadge(status: ThreadStatus): {
   label: string;
@@ -467,9 +468,10 @@ export default function ThreadDetailPage() {
 
                     <CardContent className="p-4 pt-0 space-y-3">
                       {/* Sanitized Body */}
-                      <div className="rounded-md border border-border/50 bg-surface/75 p-3.5 font-sans text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed selection:bg-primary-soft">
-                        {msg.bodyText}
-                      </div>
+                      <EmailBody
+                        text={msg.bodyText}
+                        className="rounded-md border border-border/50 bg-surface/75 p-3.5 font-sans text-sm text-foreground/90 leading-relaxed selection:bg-primary-soft"
+                      />
 
                       {/* Security Notes if flagged */}
                       {msg.securityNotes && msg.securityNotes.length > 0 && (

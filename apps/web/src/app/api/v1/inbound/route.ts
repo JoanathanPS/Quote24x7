@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       } else if (typeof eventData.to === "string") {
         to = [eventData.to.trim()];
       } else {
-        to = ["quotes@quote24x7.internal"];
+        to = [];
       }
     }
 

@@ -45,6 +45,7 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { EmailBody } from "@/components/email-body";
 
 type HumanFilter = "all" | "needs_reply" | "configuring" | "proposal_ready" | "needs_review";
 
@@ -585,9 +586,10 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
                 </div>
 
                 {/* Message Body */}
-                <div className="font-sans text-xs text-foreground/90 whitespace-pre-wrap leading-relaxed">
-                  {msg.bodyText}
-                </div>
+                <EmailBody
+                  text={msg.bodyText}
+                  className="font-sans text-xs text-foreground/90 leading-relaxed"
+                />
 
                 {/* Attachments if any */}
                 {msg.attachments && msg.attachments.length > 0 && (

@@ -8,6 +8,13 @@ export interface AppConfig {
   resendApiKey: string | null;
   /** Verified sender email address (e.g. "Quote24x7 <quotes@joanathan.in>") */
   outboundFromEmail: string;
+  /**
+   * The single mailbox this pipeline answers. Resend's inbound webhook fires for
+   * every address on the receiving domain, so mail to hello@, info@ or anything
+   * else arrives here too; anything not addressed to this mailbox is dropped
+   * before it can open a thread or spend an AI call.
+   */
+  inboundAddress: string;
   /** Webhook signing secret for verifying incoming Resend webhooks */
   resendWebhookSecret: string | null;
   /** Whether live outbound dispatch to Resend is enabled */
@@ -84,6 +91,9 @@ export function getAppConfig(): AppConfig {
     cleanedFrom && cleanedFrom.includes("@")
       ? cleanedFrom
       : "Quote24x7 <quotes@joanathan.in>";
+  const rawInboundAddress = formatFromEmail(process.env.INBOUND_TO_EMAIL || "");
+  const inboundAddress =
+    rawInboundAddress.includes("@") ? rawInboundAddress : "quotes@joanathan.in";
   const resendWebhookSecret = process.env.RESEND_WEBHOOK_SECRET?.trim() || null;
   const isLiveDispatchEnabled =
     Boolean(resendApiKey) && process.env.ALLOW_EXTERNAL_DISPATCH === "true";
@@ -131,6 +141,7 @@ export function getAppConfig(): AppConfig {
   return {
     resendApiKey,
     outboundFromEmail,
+    inboundAddress,
     resendWebhookSecret,
     isLiveDispatchEnabled,
     appBaseUrl,

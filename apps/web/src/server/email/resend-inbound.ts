@@ -108,10 +108,10 @@ export async function fetchInboundEmailContent(
     }
 
     const toAddresses = Array.isArray(data.to)
-      ? data.to
+      ? data.to.map(String)
       : data.to
         ? [String(data.to)]
-        : ["quotes@quote24x7.internal"];
+        : [];
 
     const textContent =
       data.text ||

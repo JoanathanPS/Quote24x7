@@ -25,9 +25,11 @@ import {
   upsertDeliveryToSupabase,
   insertAiDecisionToSupabase,
   insertProcessedMessageToSupabase,
+  claimProcessedMessageInSupabase,
+  deleteProcessedMessageFromSupabase,
 } from "../db/supabase.ts";
 
-interface PersistedState {
+export interface PersistedState {
   threads: EmailThread[];
   messages: EmailMessage[];
   profiles: Array<[string, RequirementProfile]>;
@@ -81,7 +83,8 @@ class SessionStore {
     return path.resolve(process.cwd(), ".data", "session-store.json");
   }
 
-  private loadState(parsed: PersistedState): void {
+  /** Merges a persisted snapshot into memory. Safe to call repeatedly with the same snapshot. */
+  public loadState(parsed: PersistedState): void {
     if (parsed.outboundSendingPaused !== undefined) {
       this.outboundSendingPaused = Boolean(parsed.outboundSendingPaused);
     }
@@ -89,9 +92,13 @@ class SessionStore {
       for (const thread of parsed.threads) {
         this.threads.set(thread.id, thread);
       }
+      // Merge by ID: this runs on every request when Supabase is configured,
+      // so appending would add another copy of every message each time.
       for (const msg of parsed.messages || []) {
         const existing = this.messages.get(msg.threadId) ?? [];
-        existing.push(msg);
+        const idx = existing.findIndex((m) => m.id === msg.id);
+        if (idx >= 0) existing[idx] = msg;
+        else existing.push(msg);
         this.messages.set(msg.threadId, existing);
       }
       for (const [id, prof] of parsed.profiles || []) {
@@ -108,7 +115,9 @@ class SessionStore {
       }
       for (const decision of parsed.aiDecisions || []) {
         const existing = this.aiDecisions.get(decision.threadId) ?? [];
-        existing.push(decision);
+        const idx = existing.findIndex((d) => d.id === decision.id);
+        if (idx >= 0) existing[idx] = decision;
+        else existing.push(decision);
         this.aiDecisions.set(decision.threadId, existing);
       }
     }
@@ -315,9 +324,19 @@ class SessionStore {
   getMessages(threadId: string): EmailMessage[] {
     this.ensureInitialized();
     const msgs = this.messages.get(threadId) ?? [];
-    return [...msgs].sort(
+    const sorted = [...msgs].sort(
       (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()
     );
+    // One inbound email is one message, even if a provider retry stored it
+    // twice under different internal IDs. Keep the earliest copy.
+    const seenInbound = new Set<string>();
+    return sorted.filter((m) => {
+      if (m.direction !== "inbound" || !m.providerMessageId) return true;
+      const key = m.providerMessageId.replace(/[<>]/g, "").trim().toLowerCase();
+      if (seenInbound.has(key)) return false;
+      seenInbound.add(key);
+      return true;
+    });
   }
 
   getMessageByProviderMessageId(msgId: string): EmailMessage | undefined {
@@ -499,6 +518,29 @@ class SessionStore {
     this.processedMessageIds.add(providerMessageId);
     this.persistToDisk();
     insertProcessedMessageToSupabase(providerMessageId);
+  }
+
+  /**
+   * Claims an inbound message ID before it is processed. Returns false when it
+   * was already claimed, e.g. by a webhook retry or the same email arriving on
+   * both inbound endpoints. With Supabase the claim is an insert against the
+   * processed_messages primary key, so it holds across serverless instances.
+   */
+  async claimInboundMessage(providerMessageId: string): Promise<boolean> {
+    this.ensureInitialized();
+    if (this.processedMessageIds.has(providerMessageId)) return false;
+    if (!(await claimProcessedMessageInSupabase(providerMessageId))) return false;
+    this.processedMessageIds.add(providerMessageId);
+    this.persistToDisk();
+    return true;
+  }
+
+  /** Undoes a claim so a provider retry can process the message again. */
+  async releaseInboundMessage(providerMessageId: string): Promise<void> {
+    this.ensureInitialized();
+    this.processedMessageIds.delete(providerMessageId);
+    this.persistToDisk();
+    await deleteProcessedMessageFromSupabase(providerMessageId);
   }
 
   // --- Metrics ---

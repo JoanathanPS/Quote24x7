@@ -16,7 +16,7 @@ test("Acceptance Test 1: 'we have 25 servers' -> NEEDS_INFO, one email with the 
     messageId: `<${providerMessageId}@infra-testing.example.com>`,
     from: senderEmail,
     fromName: senderName,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Pricing inquiry for our infrastructure",
     text: "we have 25 servers",
   });
@@ -83,7 +83,7 @@ test("Acceptance Test 2: A DMARC report -> no reply", async () => {
     messageId: `<${dmarcMsgId}@dmarc.google.com>`,
     from: "dmarc-noreply@google.com",
     fromName: "Google DMARC Reporting",
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Report Domain: quote24x7.internal Submitter: google.com Report-ID: <1234567890>",
     text: "This is an automated DMARC aggregate report xml payload.",
     headers: {
@@ -113,7 +113,7 @@ test("Acceptance Test 3: The same Message-ID twice -> one thread and one outboun
     messageId: sharedRfcId,
     from: senderEmail,
     fromName: "DevOps Lead",
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Need monitoring for 30 servers and 5 network devices",
     text: "We need 30 servers and 5 network devices. Annual plan.",
   };
@@ -150,7 +150,7 @@ test("Acceptance Test 4: A changed quantity -> quote v2 supersedes v1", async ()
     messageId: `<turn1_${Date.now()}@supersede-test.example.com>`,
     from: senderEmail,
     fromName: senderName,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Site24x7 Pricing Estimate",
     text: "we have 25 servers",
   });
@@ -171,7 +171,7 @@ test("Acceptance Test 4: A changed quantity -> quote v2 supersedes v1", async ()
     messageId: `<turn2_${Date.now()}@supersede-test.example.com>`,
     from: senderEmail,
     fromName: senderName,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: `Re: Site24x7 Pricing Estimate [Ref: #${threadId}]`,
     text: "We only need servers, no websites or apps. We actually have 30 servers now.",
     headers: {
@@ -316,3 +316,78 @@ test("Delivery tracking: Flags queued > 10m, retries with backoff, and dead-lett
   assert.equal(updatedDel2.lastErrorCode, "DEAD_LETTER");
   assert.equal(updatedDel2.retryEligible, false);
 });
+
+test("Acceptance Test 7: Mail addressed to the wrong mailbox is rejected, not processed", async () => {
+  const providerMessageId = `msg_wrong_recip_${Date.now()}`;
+  const result = await processInboundEmail({
+    providerMessageId,
+    messageId: `<${providerMessageId}@infra-testing.example.com>`,
+    from: "wrong_recip_lead@infra-testing.example.com",
+    fromName: "Stray",
+    to: ["hello@joanathan.in"],
+    subject: "Pricing inquiry for our infrastructure",
+    text: "we have 25 servers",
+  });
+
+  assert.equal(result.status, "REJECTED_RECIPIENT");
+  assert.equal(result.actionTaken, "rejected_recipient");
+  assert.equal(result.duplicate, false);
+  assert.ok(
+    result.message?.includes("hello@joanathan.in"),
+    "Rejection message should name the wrong recipient"
+  );
+
+  // No thread, no quote, no outbound dispatch
+  assert.equal(result.quote, undefined);
+  assert.equal(result.outboundResult, undefined);
+});
+
+test("Acceptance Test 8: Mail to a +tagged variant of our mailbox is not rejected by the recipient guard", async () => {
+  const providerMessageId = `msg_tagged_${Date.now()}`;
+  // If Supabase is unavailable the pipeline throws before pricing; if available it
+  // proceeds to classification. Either way the recipient guard must NOT reject —
+  // a failure, if any, must come from the catalogue step rather than REJECTED_RECIPIENT.
+  try {
+    const result = await processInboundEmail({
+      providerMessageId,
+      messageId: `<${providerMessageId}@infra-testing.example.com>`,
+      from: "tagged_lead@infra-testing.example.com",
+      fromName: "Tagged",
+      to: ["quotes+ref-th-abc123@joanathan.in"],
+      subject: "Pricing inquiry for our infrastructure",
+      text: "we have 25 servers",
+    });
+    assert.notEqual(result.actionTaken, "rejected_recipient");
+    assert.notEqual(result.status, "REJECTED_RECIPIENT");
+  } catch (err) {
+    assert.ok(
+      (err instanceof Error ? err.message : String(err)).includes("Supabase") || (err as Error).name === "CatalogueLoadError",
+      "Expected catalogue-step failure, not recipient rejection"
+    );
+  }
+});
+
+test("Acceptance Test 9: Mail with no usable recipient is still accepted by the recipient guard", async () => {
+  const providerMessageId = `msg_no_recip_${Date.now()}`;
+  // An empty/missing recipient is not "wrong mailbox". It must proceed past the
+  // guard; if Supabase is unavailable the throw comes from the catalogue step.
+  try {
+    const result = await processInboundEmail({
+      providerMessageId,
+      messageId: `<${providerMessageId}@infra-testing.example.com>`,
+      from: "norecip_lead@infra-testing.example.com",
+      fromName: "NoRecip",
+      to: [],
+      subject: "Pricing inquiry for our infrastructure",
+      text: "we have 25 servers",
+    });
+    assert.notEqual(result.actionTaken, "rejected_recipient");
+    assert.notEqual(result.status, "REJECTED_RECIPIENT");
+  } catch (err) {
+    assert.ok(
+      (err instanceof Error ? err.message : String(err)).includes("Supabase") || (err as Error).name === "CatalogueLoadError",
+      "Expected catalogue-step failure, not recipient rejection"
+    );
+  }
+});
+

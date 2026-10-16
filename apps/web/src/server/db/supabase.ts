@@ -507,3 +507,35 @@ export async function insertProcessedMessageToSupabase(providerMessageId: string
     console.warn(`[supabase] Failed to record processed message ${providerMessageId}:`, err);
   }
 }
+
+/**
+ * Inserts (never upserts) the ID so a primary-key conflict (23505) reveals that
+ * another request already claimed it. Returns true when Supabase is not
+ * configured or the claim cannot be checked; the in-memory guards still apply.
+ */
+export async function claimProcessedMessageInSupabase(providerMessageId: string): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return true;
+  try {
+    const { error } = await supabase
+      .from("processed_messages")
+      .insert({ provider_message_id: providerMessageId });
+    if (!error) return true;
+    if (error.code === "23505") return false;
+    console.warn(`[supabase] Could not claim message ${providerMessageId}:`, error);
+    return true;
+  } catch (err) {
+    console.warn(`[supabase] Could not claim message ${providerMessageId}:`, err);
+    return true;
+  }
+}
+
+export async function deleteProcessedMessageFromSupabase(providerMessageId: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    await supabase.from("processed_messages").delete().eq("provider_message_id", providerMessageId);
+  } catch (err) {
+    console.warn(`[supabase] Failed to release processed message ${providerMessageId}:`, err);
+  }
+}

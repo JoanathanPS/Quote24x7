@@ -62,7 +62,11 @@ export async function POST(request: NextRequest) {
       const emailId = String(eventData.email_id || eventData.id || "").trim();
       let from = typeof eventData.from === "string" ? eventData.from : "";
       let fromName: string | null = null;
-      let to = Array.isArray(eventData.to) ? eventData.to : ["quotes@quote24x7.internal"];
+      let to: string[] = Array.isArray(eventData.to)
+        ? eventData.to.map(String)
+        : typeof eventData.to === "string"
+          ? [eventData.to]
+          : [];
       let subject = typeof eventData.subject === "string" ? eventData.subject : "Quote Request";
       let text = typeof eventData.text === "string" ? eventData.text : "";
       let html = typeof eventData.html === "string" ? eventData.html : undefined;

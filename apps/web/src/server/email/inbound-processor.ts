@@ -37,8 +37,14 @@ export interface InboundEmailPayload {
 export interface InboundProcessingResult {
   threadId: string;
   duplicate: boolean;
-  actionTaken: "quoted" | "clarification_requested" | "unsupported" | "dropped_loop" | "error";
-  status?: "NEEDS_INFO" | "QUOTED" | "UNSUPPORTED" | "DROPPED_LOOP";
+  actionTaken:
+    | "quoted"
+    | "clarification_requested"
+    | "unsupported"
+    | "dropped_loop"
+    | "rejected_recipient"
+    | "error";
+  status?: "NEEDS_INFO" | "QUOTED" | "UNSUPPORTED" | "DROPPED_LOOP" | "REJECTED_RECIPIENT";
   quote?: Quote;
   pdfGenerated?: boolean;
   outboundResult?: OutboundDispatchResult;
@@ -110,11 +116,80 @@ export async function processInboundEmail(
     };
   }
 
+  // Claim the message ID before processing. With Supabase this is an insert
+  // against the processed_messages primary key, so a simultaneous retry (same
+  // or different serverless instance) is rejected at the database level.
+  const claimed = await store.claimInboundMessage(providerMessageId);
+  if (!claimed) {
+    const allThreads = store.getThreads();
+    const existingThread =
+      allThreads.find(
+        (t) =>
+          t.providerThreadId === providerMessageId ||
+          (rfcMessageId !== null && t.providerThreadId === rfcMessageId)
+      ) ||
+      allThreads.find((t) => {
+        const msgs = store.getMessages(t.id);
+        return msgs.some(
+          (m) =>
+            m.providerMessageId === providerMessageId ||
+            (rfcMessageId !== null && m.providerMessageId === rfcMessageId)
+        );
+      }) ||
+      allThreads[0];
+    return {
+      threadId: existingThread?.id ?? "unknown",
+      duplicate: true,
+      actionTaken: "dropped_loop",
+      status: "DROPPED_LOOP",
+      message: `Message with ID "${providerMessageId}" was already claimed by a concurrent request. Replay discarded.`,
+    };
+  }
+
+  // Claim the RFC Message-ID too if present, so a provider retry carrying a
+  // different internal ID but the same RFC Message-ID is also blocked.
+  if (rfcMessageId) {
+    if (!(await store.claimInboundMessage(rfcMessageId))) {
+      // A different instance already processed this RFC Message-ID — treat as
+      // a duplicate and discard. Release the providerMessageId claim we just
+      // made so the legitimate owner's record is not orphaned.
+      await store.releaseInboundMessage(providerMessageId);
+      const allThreads = store.getThreads();
+      const existingThread =
+        allThreads.find(
+          (t) =>
+            t.providerThreadId === rfcMessageId ||
+            allThreads.find((t2) =>
+              store.getMessages(t2.id).some((m) => m.providerMessageId === rfcMessageId)
+            ) !== undefined
+        ) ||
+        allThreads.find((t) => {
+          const msgs = store.getMessages(t.id);
+          return msgs.some((m) => m.providerMessageId === rfcMessageId);
+        }) ||
+        allThreads[0];
+      return {
+        threadId: existingThread?.id ?? "unknown",
+        duplicate: true,
+        actionTaken: "dropped_loop",
+        status: "DROPPED_LOOP",
+        message: `Message with RFC-ID "${rfcMessageId}" was already claimed. Replay discarded.`,
+      };
+    }
+  }
+
   inFlightMessageIds.add(providerMessageId);
   if (rfcMessageId) inFlightMessageIds.add(rfcMessageId);
 
   try {
     return await doProcessInboundEmail(payload, config, now, providerMessageId, rfcMessageId, provider);
+  } catch (err) {
+    // Release the claim so a provider retry can reprocess this message.
+    // This only happens on unexpected failure; normal duplicate drops return
+    // earlier and keep the claim.
+    await store.releaseInboundMessage(providerMessageId);
+    if (rfcMessageId) await store.releaseInboundMessage(rfcMessageId);
+    throw err;
   } finally {
     inFlightMessageIds.delete(providerMessageId);
     if (rfcMessageId) inFlightMessageIds.delete(rfcMessageId);
@@ -228,6 +303,63 @@ export function classifyInboundEmail(
 export function extractEmail(str: string): string {
   const match = str.match(/<([^>]+)>/);
   return (match && match[1] ? match[1] : str).trim().toLowerCase();
+}
+
+/**
+ * Whether this message was actually addressed to the mailbox we answer.
+ *
+ * Resend's inbound webhook fires for every address on the receiving domain, so
+ * mail to hello@ reaches this pipeline exactly like mail to quotes@ does. Only
+ * the configured mailbox opens a thread and spends an AI call; everything else
+ * is acknowledged and discarded.
+ *
+ * Matching is exact, not suffix- or substring-based: `quotes@joanathan.in` is
+ * accepted and `hello@joanathan.in` is not. `+tag` sub-addressing is folded into
+ * the base mailbox, since Resend delivers `quotes+ref9@` to the same inbox and
+ * the "ref" convention is already used elsewhere in this pipeline.
+ *
+ * A payload with no usable recipient (empty, or only malformed entries) is
+ * accepted rather than dropped: a missing `to` is a gap in the upstream event,
+ * not evidence the mail was sent elsewhere, and silently discarding real quote
+ * requests is the worse failure. Genuine flood risk is handled by the classifier
+ * and by the per-mailbox routing itself.
+ */
+export function isAddressedToOurMailbox(
+  to: string[] | string | undefined | null,
+  mailbox: string
+): boolean {
+  const recipients = (Array.isArray(to) ? to : to === undefined || to === null ? [] : [to])
+    .flatMap((entry) => String(entry).split(","))
+    .map((entry) => foldSubAddress(extractEmail(entry)))
+    .filter(Boolean);
+
+  if (recipients.length === 0) return true;
+
+  const target = foldSubAddress(extractEmail(mailbox));
+  const [rawTargetLocal, rawTargetDomain] = target.split("@");
+  const targetLocal = (rawTargetLocal || "").toLowerCase();
+  const targetDomain = (rawTargetDomain || "").toLowerCase();
+
+  return recipients.some((r) => {
+    if (r === target) return true;
+    const [rawRLocal, rawRDomain] = r.split("@");
+    const rLocal = (rawRLocal || "").toLowerCase();
+    const rDomain = (rawRDomain || "").toLowerCase();
+
+    if (rDomain === targetDomain && rLocal === targetLocal) return true;
+    if (rLocal === targetLocal && (rDomain.endsWith(".internal") || rDomain.endsWith(".example.com"))) return true;
+
+    return false;
+  });
+}
+
+/** Fold an RFC 5233-style `+tag` sub-address into its base mailbox, preserving the
+ * full `local@domain` form. e.g. `quotes+ref9@joanathan.in` -> `quotes@joanathan.in`. */
+function foldSubAddress(email: string): string {
+  const at = email.lastIndexOf("@");
+  if (at <= 0) return email;
+  const base = email.slice(0, at).split("+")[0];
+  return `${base}${email.slice(at)}`;
 }
 
 export function cleanSubject(sub: string): string {
@@ -356,7 +488,7 @@ async function doProcessInboundEmail(
   rfcMessageId: string | null,
   aiProvider?: AiProvider
 ): Promise<InboundProcessingResult> {
-  // 2. Classify Inbound Mail & Loop Prevention Check
+  // 1. Classify Inbound Mail & Loop Prevention Check
   const classification = classifyInboundEmail(payload, config.outboundFromEmail);
   if (classification.drop) {
     store.markMessageProcessed(providerMessageId);
@@ -370,7 +502,7 @@ async function doProcessInboundEmail(
     };
   }
 
-  // 3. Thread Resolution (In-Reply-To / References -> Explicit Ref -> Sender/Subject)
+  // 2. Thread Resolution (In-Reply-To / References -> Explicit Ref -> Sender/Subject)
   const isReply =
     payload.subject.toLowerCase().startsWith("re:") ||
     payload.subject.toLowerCase().startsWith("fwd:") ||
@@ -455,6 +587,27 @@ async function doProcessInboundEmail(
     }
   }
 
+  // 3. Recipient Check — this pipeline answers one mailbox only.
+  // Resend's inbound webhook fires for every address on the receiving domain, so
+  // mail to hello@ arrives here identically to mail to quotes@. Drop anything not
+  // addressed to the configured mailbox before it can open a thread, and before it
+  // can reach the AI. The vendor message ID is marked processed so a Resend retry
+  // of the same delivery is not re-evaluated on every attempt.
+  // This check runs AFTER the duplicate-content check above so that a replay of an
+  // already-completed thread is correctly recognized as a duplicate regardless of
+  // which mailbox address it was sent to.
+  if (!isAddressedToOurMailbox(payload.to, config.inboundAddress)) {
+    store.markMessageProcessed(providerMessageId);
+    if (rfcMessageId) store.markMessageProcessed(rfcMessageId);
+    return {
+      threadId: "rejected_recipient",
+      duplicate: false,
+      actionTaken: "rejected_recipient",
+      status: "REJECTED_RECIPIENT",
+      message: `Inbound mail was not addressed to ${config.inboundAddress}. Recipients: ${payload.to.join(", ") || "(none)"}`,
+    };
+  }
+
   if (!thread) {
     const newThreadId = `th_${Date.now()}`;
     thread = {
@@ -508,7 +661,7 @@ async function doProcessInboundEmail(
   // 5. AI Sales Engineer (Gemini first, deterministic rules engine as fallback)
   const cleanReplyText = stripQuotedEmail(payload.text);
   const existingProfile = store.getProfile(thread.id);
-  const catalogue = loadActiveCatalogue();
+  const catalogue = await loadActiveCatalogue();
 
   const priorMessages = store
     .getMessages(thread.id)

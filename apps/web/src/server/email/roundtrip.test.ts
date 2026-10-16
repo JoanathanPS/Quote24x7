@@ -35,7 +35,7 @@ test("Roundtrip 1: Inbound email with complete requirements generates quote, PDF
     providerMessageId,
     from: senderEmail,
     fromName: senderName,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject,
     text: bodyText,
   });
@@ -100,7 +100,7 @@ test("Roundtrip 2: Inbound email with missing material requirements triggers cla
     providerMessageId,
     from: senderEmail,
     fromName: "Alex",
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject,
     text: bodyText,
   });
@@ -128,7 +128,7 @@ test("Roundtrip 3: Idempotency rejects duplicate message IDs", async () => {
   const payload = {
     providerMessageId,
     from: senderEmail,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Pricing inquiry",
     text: "We have 10 servers and 5 network devices. Annual plan.",
   };
@@ -340,7 +340,7 @@ test("Pricing Correctness: 5-capability inquiry extracts and prices all requeste
   const result = await processInboundEmail({
     providerMessageId,
     from: senderEmail,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Site24x7 Pricing Request",
     text: rawText,
   });
@@ -412,7 +412,7 @@ test("Fail Closed: Mentioned capability without quantity triggers clarification 
   const result = await processInboundEmail({
     providerMessageId,
     from: senderEmail,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Need Site24x7 quote",
     text: rawText,
   });
@@ -441,7 +441,7 @@ test("Honesty: Genuinely omitted optional capabilities price cleanly without cla
   const result = await processInboundEmail({
     providerMessageId,
     from: senderEmail,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Basic infra monitoring",
     text: rawText,
   });
@@ -486,7 +486,7 @@ test("Fail Closed: Empty options fail integrity checks and do not produce valida
   // Create a catalogue with only WebUptimePack which has host_monitor = null
   const restrictedCatalogue = {
     ...catalogue,
-    plans: catalogue.plans.filter((p) => p.id === "plan_webuptimepack"),
+    plans: catalogue.plans.filter((p: { id: string }) => p.id === "plan_webuptimepack"),
   };
 
   const demand = {
@@ -572,7 +572,7 @@ Please share a clear quotation.
 
   const extraction = extractRequirements({
     threadId: "th_colon_form_test",
-    senderEmail: "joanathanps2006@gmail.com",
+    senderEmail: "it.team@colon-form.example.com",
     senderName: "IT Team",
     subject: "Site24x7 Pricing Quote",
     bodyText: formEmail,
@@ -598,7 +598,7 @@ test("Autonomous Conversation: Complete multi-turn sequence (initial email -> cl
     providerMessageId: initialMessageId,
     from: senderEmail,
     fromName: senderName,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Site24x7 Infrastructure Sizing",
     text: "Hi Quote24x7 team, we need monitoring for 60 Linux servers, 12 core network switches, and synthetic transaction monitoring. Annual plan please.",
   });
@@ -626,7 +626,7 @@ test("Autonomous Conversation: Complete multi-turn sequence (initial email -> cl
     providerMessageId: replyMessageId,
     from: senderEmail,
     fromName: senderName,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Re: Site24x7 Infrastructure Sizing",
     text: "Thanks! We need 4 synthetic transaction monitors for our user journeys.",
   });
@@ -719,7 +719,7 @@ test("Loop Prevention: Discards auto-replies, out-of-office, and postmaster mess
   const res1 = await processInboundEmail({
     providerMessageId: `msg_loop_${Date.now()}_1`,
     from: senderEmail,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Automatic reply: Out of office until Monday",
     text: "I am out of the office and will respond when I return.",
   });
@@ -729,7 +729,7 @@ test("Loop Prevention: Discards auto-replies, out-of-office, and postmaster mess
   const res2 = await processInboundEmail({
     providerMessageId: `msg_loop_${Date.now()}_2`,
     from: "mailer-daemon@mx.google.com",
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Delivery Status Notification (Failure)",
     text: "Message could not be delivered to recipient mailbox.",
   });
@@ -804,7 +804,7 @@ test("Autonomous Loop Termination: Escalates to manual review if clarification r
   const result = await processInboundEmail({
     providerMessageId: `msg_limit_reply_${Date.now()}`,
     from: senderEmail,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Re: Vague quote",
     text: "Just give me the best plan you have.",
   });
@@ -826,7 +826,7 @@ test("Resend Inbound: Inbound webhook event (type: 'email.received') processes s
     providerMessageId,
     from: senderEmail,
     fromName: "FinTech Inbound Lead",
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Pricing for 50 servers and 10 switches",
     text: "We require monitoring for 50 servers and 10 network devices. Annual plan please.",
   });
@@ -869,7 +869,7 @@ test("Threading Headers: Outbound reply builds valid In-Reply-To and References 
     direction: "inbound",
     fromAddress: "buyer@threading.example.com",
     fromName: "Buyer",
-    toAddresses: ["quotes@quote24x7.internal"],
+    toAddresses: ["quotes@joanathan.in"],
     subject: "Inquiry on monitoring",
     bodyText: "Need pricing.",
     occurredAt: new Date().toISOString(),
@@ -889,7 +889,7 @@ test("Threading Headers: Outbound reply builds valid In-Reply-To and References 
     threadId,
     providerMessageId: `msg_outbound_${Date.now()}`,
     direction: "outbound",
-    fromAddress: "quotes@quote24x7.internal",
+    fromAddress: "quotes@joanathan.in",
     fromName: "Quote24x7 Assistant",
     toAddresses: ["buyer@threading.example.com"],
     subject: "Re: Inquiry on monitoring [Ref: #" + threadId + "] - Quick Sizing Clarification",
@@ -907,7 +907,7 @@ test("Threading Headers: Outbound reply builds valid In-Reply-To and References 
     direction: "inbound",
     fromAddress: "buyer@threading.example.com",
     fromName: "Buyer",
-    toAddresses: ["quotes@quote24x7.internal"],
+    toAddresses: ["quotes@joanathan.in"],
     subject: "Re: Inquiry on monitoring [Ref: #" + threadId + "] - Quick Sizing Clarification",
     bodyText: "We have 25 servers.",
     occurredAt: new Date().toISOString(),
@@ -929,7 +929,7 @@ test("Full-Conversation Retention: Preserves 25 Linux servers, APM, and website 
   const turn1 = await processInboundEmail({
     providerMessageId: `msg_turn1_${Date.now()}`,
     from: senderEmail,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Need pricing for monitoring",
     text: `
       Hi,
@@ -948,7 +948,7 @@ test("Full-Conversation Retention: Preserves 25 Linux servers, APM, and website 
   const turn2 = await processInboundEmail({
     providerMessageId: `msg_turn2_${Date.now()}`,
     from: senderEmail,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: `Re: Need pricing for monitoring [Ref: #${threadId}] - Quick Sizing Clarification`,
     text: `
       Hi,
@@ -1018,7 +1018,7 @@ test("Duplicate Suppression: Webhook replay or identical payload does not genera
   const payload = {
     providerMessageId,
     from: senderEmail,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Migration quote",
     text: "We need 10 servers and 2 network devices. Annual billing.",
   };
@@ -1047,6 +1047,64 @@ test("Duplicate Suppression: Webhook replay or identical payload does not genera
   assert.equal(thread?.quoteId, initialQuoteId);
 });
 
+test("Duplicate Suppression: Replay to non-primary mailbox on completed thread is recognized as duplicate", async () => {
+  const now = new Date().toISOString();
+  const threadId = `th_dup_alt_${Date.now()}`;
+  const senderEmail = `dup_alt_${Date.now()}@suppression.example.com`;
+  const bodyText = "We need 8 servers and 3 network devices. Annual plan.";
+
+  // Manually set up a completed thread with a quote and an existing inbound message
+  // so we can test the duplicate-content check without needing Supabase
+  store.saveThread({
+    id: threadId,
+    provider: "resend",
+    providerThreadId: `msg_dup_alt_${Date.now()}`,
+    senderEmail,
+    senderName: null,
+    organisation: null,
+    subject: "Infrastructure sizing",
+    status: "completed",
+    requestType: "quote",
+    createdAt: now,
+    updatedAt: now,
+    lastMessageAt: now,
+    messageCount: 1,
+    quoteId: "qt_test",
+    quoteTotal: null,
+    currency: "INR",
+    statusDetail: null,
+  });
+
+  store.addMessage({
+    id: "msg_in_existing",
+    threadId,
+    providerMessageId: `msg_dup_alt_${Date.now()}`,
+    direction: "inbound",
+    fromAddress: senderEmail,
+    fromName: null,
+    toAddresses: ["quotes@joanathan.in"],
+    subject: "Infrastructure sizing",
+    bodyText,
+    occurredAt: now,
+    deliveryId: null,
+    securityNotes: [],
+    attachments: [],
+  });
+
+  // Replay with a new message ID, identical content, but addressed to a different
+  // mailbox on the same domain. This should be caught as a duplicate BEFORE
+  // the recipient check rejects it.
+  const result = await processInboundEmail({
+    providerMessageId: `msg_dup_alt_retry_${Date.now()}`,
+    from: senderEmail,
+    to: ["hello@joanathan.in"],
+    subject: `Re: Infrastructure sizing [Ref: #${threadId}]`,
+    text: bodyText,
+  });
+  assert.equal(result.duplicate, true);
+  assert.equal(result.actionTaken, "dropped_loop");
+});
+
 test("Public Proposal Links: Localhost URLs are eliminated and public base URLs are formatted properly", async () => {
   const config = getAppConfig();
 
@@ -1057,7 +1115,7 @@ test("Public Proposal Links: Localhost URLs are eliminated and public base URLs 
   const result = await processInboundEmail({
     providerMessageId: `msg_url_${Date.now()}`,
     from: senderEmail,
-    to: ["quotes@quote24x7.internal"],
+    to: ["quotes@joanathan.in"],
     subject: "Pricing inquiry",
     text: "15 servers, 2 network devices. Annual.",
   });
