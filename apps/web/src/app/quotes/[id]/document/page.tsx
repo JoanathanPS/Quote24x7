@@ -293,7 +293,7 @@ export default function QuoteDocumentPage() {
                 <span>Prepared For</span>
               </div>
               <div className="text-sm font-bold text-foreground print:text-black">
-                {thread?.senderName || (isThreadLoading ? "Loading..." : "Valued Customer")}
+                {thread?.senderName || (isThreadLoading ? "Loading..." : "Customer")}
               </div>
               <div className="flex items-center gap-1 text-xs text-muted-foreground print:text-neutral-700">
                 <Buildings size={13} className="shrink-0" />

@@ -85,7 +85,7 @@ export default function CustomerProposalPage() {
 
   const currentOption = activeOption ?? quote.options[0];
   const billingPeriodLabel = quote.billingPeriod === "annual" ? "Annually" : "Monthly";
-  const customerName = thread?.senderName || "Valued Customer";
+  const customerName = thread?.senderName || "Customer";
   const customerOrg = thread?.organisation || "Client Organization";
   const replySubject = encodeURIComponent(`Question regarding Site24x7 Proposal #${quote.id}`);
 

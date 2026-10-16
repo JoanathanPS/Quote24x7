@@ -22,7 +22,7 @@ function safePdfText(str: string | null | undefined): string {
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/\.\.\./g, " ")
     .replace(/\[x\]/gi, "Satisfied")
-    .replace(/Valued Customer/gi, "Enterprise Evaluator")
+    .replace(/Valued Customer/gi, "Customer")
     .replace(/[^\x20-\x7E\n]/g, " ");
 }
 
@@ -43,7 +43,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
 
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(`Estimate #${quote.id}`);
-  pdfDoc.setAuthor("Quote24x7 Sales Desk");
+  pdfDoc.setAuthor("Quote24x7 Assistant");
   pdfDoc.setSubject("Site24x7 India Commercial Estimate");
 
   // Deterministic metadata timestamps

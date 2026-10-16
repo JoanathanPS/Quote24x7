@@ -163,8 +163,8 @@ test("Phase 8 - Quote Template: Complete itemized breakdown, transparent cadence
   // 3. Selected plan name and exact cadence string
   assert.ok(textContent.includes(`Selected plan: ${bestValue.planName}`));
   const plan = catalogue.plans.find((p) => p.id === bestValue.planId)!;
-  const planMonthlyPaise = plan.priceMonthlyAnnualBilled ?? plan.basePrice;
-  const expectedCadence = `annual upfront, quoted as equivalent per-month rate of ${planMonthlyPaise} paise plus add-ons; total billed today is ${formatMoney(bestValue.total, "INR")}`;
+  const planMonthlyRate = plan.priceMonthlyAnnualBilled ?? plan.basePrice;
+  const expectedCadence = `annual upfront, quoted as equivalent per-month rate of ${formatMoney(planMonthlyRate, "INR")} plus add-ons; total amount is ${formatMoney(bestValue.total, "INR")}`;
   assert.ok(
     textContent.includes(expectedCadence),
     `Must contain exact cadence string: ${expectedCadence}`
@@ -189,7 +189,7 @@ test("Phase 8 - Quote Template: Complete itemized breakdown, transparent cadence
   // Exact numbers match engine output: sum of line items equals total billed today
   const computedSum = bestValue.lineItems.reduce((acc, item) => acc + item.lineTotal, 0);
   assert.equal(computedSum, bestValue.total, "Line items sum must exactly equal option total");
-  assert.ok(textContent.includes(`Total Billed Today: ${formatMoney(bestValue.total, "INR")}`));
+  assert.ok(textContent.includes(`Total: ${formatMoney(bestValue.total, "INR")}`));
   assert.ok(htmlContent.includes(formatMoney(bestValue.total, "INR")));
 
   // 5. Transparent calculation note verbatim

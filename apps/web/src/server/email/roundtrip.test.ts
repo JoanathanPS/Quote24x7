@@ -894,7 +894,7 @@ test("Threading Headers: Outbound reply builds valid In-Reply-To and References 
     fromAddress: "quotes@quotes.joanathan.in",
     fromName: "Quote24x7 Assistant",
     toAddresses: ["buyer@threading.example.com"],
-    subject: "Re: Inquiry on monitoring [Ref: #" + threadId + "] - Quick Sizing Clarification",
+    subject: "Re: Inquiry on monitoring [Ref: #" + threadId + "] - Clarification Needed",
     bodyText: "How many servers?",
     occurredAt: new Date().toISOString(),
     deliveryId: "del_test",
@@ -910,7 +910,7 @@ test("Threading Headers: Outbound reply builds valid In-Reply-To and References 
     fromAddress: "buyer@threading.example.com",
     fromName: "Buyer",
     toAddresses: ["quotes@quotes.joanathan.in"],
-    subject: "Re: Inquiry on monitoring [Ref: #" + threadId + "] - Quick Sizing Clarification",
+    subject: "Re: Inquiry on monitoring [Ref: #" + threadId + "] - Clarification Needed",
     bodyText: "We have 25 servers.",
     occurredAt: new Date().toISOString(),
     deliveryId: null,
@@ -951,7 +951,7 @@ test("Full-Conversation Retention: Preserves 25 Linux servers, APM, and website 
     providerMessageId: `msg_turn2_${Date.now()}`,
     from: senderEmail,
     to: ["quotes@quotes.joanathan.in"],
-    subject: `Re: Need pricing for monitoring [Ref: #${threadId}] - Quick Sizing Clarification`,
+    subject: `Re: Need pricing for monitoring [Ref: #${threadId}] - Clarification Needed`,
     text: `
       Hi,
       We have around 25 servers, mostly Linux, and a few applications that are

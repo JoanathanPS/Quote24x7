@@ -6,6 +6,48 @@ import { dryRunStore } from "../store/dryrun-store.ts";
 import { formatMoney } from "../pricing/money.ts";
 import { loadActiveCatalogue } from "../catalogue/loader.ts";
 
+const BANNED_PHRASES = [
+  /valued customer/i,
+  /autonomous/i,
+  /sizing clarification/i,
+  /sizing questions/i,
+  /sales desk/i,
+  /operations\s*&\s*solutions/i,
+  /enterprise solutions/i,
+  /billing cadence/i,
+  /total billed today/i,
+  /\bpaise\b/i,
+  /📎/,
+];
+
+export interface PreSendCheckResult {
+  passed: boolean;
+  violations: string[];
+}
+
+export function runPreSendChecks(content: string): PreSendCheckResult {
+  const violations: string[] = [];
+  for (const pattern of BANNED_PHRASES) {
+    const match = content.match(pattern);
+    if (match) {
+      violations.push(`Banned phrase found: "${match[0]}"`);
+    }
+  }
+  return { passed: violations.length === 0, violations };
+}
+
+interface DispatchInput {
+  threadId: string;
+  recipientEmail: string;
+  subject: string;
+  textContent: string;
+  htmlContent?: string;
+  attachments?: { filename: string; content: Buffer }[];
+  quoteId?: string | null;
+  prefixTag: string;
+  fromName?: string;
+}
+
 /**
  * Escapes text that originates outside this module before it is placed in an
  * HTML email body.
@@ -210,24 +252,147 @@ function resolveOutboundRecipient(
   return policy.targetRecipient;
 }
 
-/**
- * Resend Outbound Email Service.
- * Transmits commercial quotation proposals with attached PDF documents,
- * or clarification inquiries when material requirements are missing.
- */
+async function dispatchEmail(input: DispatchInput): Promise<OutboundDispatchResult> {
+  const config = getAppConfig();
+  const deliveryId = `del_${Date.now()}`;
+  const now = new Date().toISOString();
+
+  const targetRecipient = resolveOutboundRecipient(config, input.threadId, input.recipientEmail);
+
+  if (targetRecipient.toLowerCase() === config.outboundFromEmail.toLowerCase()) {
+    throw new Error(
+      `Loop Prevention: Outbound recipient (${targetRecipient}) matches system sender address.`
+    );
+  }
+
+  const check = runPreSendChecks(input.textContent + "\n" + (input.htmlContent ?? ""));
+  if (!check.passed) {
+    console.error(`[PRE-SEND] Banned phrase detected in outbound to ${targetRecipient}:`, check.violations);
+  }
+
+  const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
+    input.threadId,
+    `${input.prefixTag}_${Date.now()}`
+  );
+
+  let providerMessageId: string | null = null;
+  let status: "accepted" | "failed" = "accepted";
+  let mode: "live" | "dry_run" = "dry_run";
+  let errorMessage: string | undefined;
+
+  const isSendingPaused = store.getOutboundSendingPaused();
+
+  if (isSendingPaused) {
+    status = "accepted";
+    mode = "dry_run";
+    providerMessageId = `paused_${Date.now()}`;
+    errorMessage = "Automated outbound dispatch paused by operator kill switch";
+  } else if (config.isLiveDispatchEnabled && config.resendApiKey) {
+    try {
+      const resend = new Resend(config.resendApiKey);
+      const res = await resend.emails.send({
+        from: formatFromEmail(config.outboundFromEmail),
+        to: targetRecipient,
+        replyTo: formatFromEmail(config.inboundAddress || "quotes@quotes.joanathan.in"),
+        subject: input.subject,
+        text: input.textContent,
+        html: input.htmlContent,
+        headers: Object.keys(threadingHeaders).length > 0 ? threadingHeaders : undefined,
+        attachments: input.attachments,
+      });
+
+      if (res.error) {
+        status = "failed";
+        errorMessage = `${res.error.name}: ${res.error.message}`;
+      } else if (res.data?.id) {
+        providerMessageId = res.data.id;
+        mode = "live";
+      }
+    } catch (err) {
+      status = "failed";
+      errorMessage = err instanceof Error ? err.message : String(err);
+    }
+  } else {
+    providerMessageId = `dryrun_${Date.now()}`;
+    mode = "dry_run";
+  }
+
+  const deliveryRecord: DeliveryRecord = {
+    id: deliveryId,
+    threadId: input.threadId,
+    quoteId: input.quoteId ?? null,
+    provider: "resend",
+    providerMessageId,
+    recipient: targetRecipient,
+    subject: input.subject,
+    status: status === "accepted" ? "queued" : "failed",
+    attemptCount: 1,
+    maxAttempts: 3,
+    lastErrorCode: status === "failed" ? "DISPATCH_ERROR" : null,
+    lastErrorMessage: errorMessage ?? null,
+    nextRetryAt: null,
+    retryEligible: status === "failed",
+    createdAt: now,
+    updatedAt: now,
+    events: [
+      {
+        at: now,
+        status: status === "accepted" ? "queued" : "failed",
+        detail:
+          mode === "live"
+            ? `Dispatched via Resend API (messageId: ${providerMessageId}${inReplyTo ? `, In-Reply-To: ${inReplyTo}` : ""})`
+            : isSendingPaused
+              ? "Queued in store: Automated outbound dispatch paused by operator kill switch"
+              : `Dry-run simulated dispatch (${input.prefixTag})`,
+      },
+    ],
+  };
+
+  if (mode === "dry_run") {
+    dryRunStore.saveDelivery(deliveryRecord);
+  } else {
+    store.saveDelivery(deliveryRecord);
+  }
+
+  const outboundMessage: EmailMessage = {
+    id: `msg_out_${Date.now()}`,
+    threadId: input.threadId,
+    providerMessageId: providerMessageId ?? `local_out_${Date.now()}`,
+    direction: "outbound",
+    fromAddress: config.outboundFromEmail,
+    fromName: input.fromName ?? "Quote24x7 Assistant",
+    toAddresses: [targetRecipient],
+    subject: input.subject,
+    bodyText: input.textContent,
+    occurredAt: now,
+    deliveryId,
+    securityNotes: [],
+    attachments: input.attachments?.map((a) => ({
+      name: a.filename,
+      contentType: "application/pdf",
+      sizeBytes: a.content.length,
+      scanned: true,
+    })) ?? [],
+    messageIdHeader: messageId,
+    inReplyTo: inReplyTo ?? null,
+    references: references ?? null,
+  };
+
+  store.addMessage(outboundMessage);
+
+  return {
+    success: status === "accepted",
+    providerMessageId,
+    deliveryId,
+    status,
+    mode,
+    error: errorMessage,
+    dispatchedTo: targetRecipient,
+  };
+}
+
 /**
  * Deterministically renders the plain text and responsive HTML quotation email.
- * Adheres strictly to Phase 8 specifications:
- * - Polite greeting with buyer's name.
- * - Summary of understood requirements.
- * - Selected plan name, billing cadence: 'annual upfront, quoted as equivalent per-month rate of X paise plus add-ons; total billed today is Y'.
- * - Itemized table: Plan base + each add-on (name, included units, purchased units, pack size, pack count, line total).
- * - Transparent calculation note: 'Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.'
- * - Comparison line (when applicable): 'A lighter configuration on <Alternative Plan> would cost <Z>, but leaves no headroom for <feature>.'
- * - Mention official quotation PDF is attached ("Quote24x7-Proposal-${input.quote.id}.pdf").
- * - Disclaimer: quotes generated against current Site24x7 India pricing and final checkout occurs via Zoho Store.
- * - Prompt: 'Reply to this email if you'd like to adjust counts, add capabilities, or change billing frequency.'
- * - Both plain text and responsive HTML versions.
  */
 export function renderQuoteEmail(input: {
   recipientName?: string | null;
@@ -240,7 +405,6 @@ export function renderQuoteEmail(input: {
     input.quote.options.find((o) => o.optionType === "best_value") ?? input.quote.options[0];
   const lowestCost = input.quote.options.find((o) => o.optionType === "lowest_cost");
 
-  // 1. Summary of understood requirements
   const understoodLines: string[] = [];
   if (bestValue?.coverage && bestValue.coverage.length > 0) {
     for (const row of bestValue.coverage) {
@@ -253,21 +417,19 @@ export function renderQuoteEmail(input: {
     understoodLines.push("• Sizing parameters provided in your inquiry");
   }
 
-  // 2. Selected plan name & billing cadence
   const catalogue = loadActiveCatalogue();
   const plan = catalogue.plans.find((p) => p.id === bestValue?.planId);
-  const planMonthlyPaise =
+  const planMonthlyRate =
     plan?.priceMonthlyAnnualBilled ??
     plan?.basePrice ??
     (bestValue?.lineItems?.[0]?.lineTotal
       ? Math.floor(bestValue.lineItems[0].lineTotal / 12)
       : 0);
-  const totalBilledToday = formatMoney(bestValue?.total ?? 0, input.quote.currency);
+  const totalAmount = formatMoney(bestValue?.total ?? 0, input.quote.currency);
 
   const planName = bestValue?.planName ?? "Recommended Plan";
-  const cadenceString = `annual upfront, quoted as equivalent per-month rate of ${planMonthlyPaise} paise plus add-ons; total billed today is ${totalBilledToday}`;
+  const cadenceString = `annual upfront, quoted as equivalent per-month rate of ${formatMoney(planMonthlyRate, input.quote.currency)} plus add-ons; total amount is ${totalAmount}`;
 
-  // 3. Itemized table (Plan base + each add-on: name, included units, purchased units, pack size, pack count, line total)
   const lineItems = bestValue?.lineItems ?? [];
   const textTableLines = [
     "Itemized Pricing Table:",
@@ -284,13 +446,11 @@ export function renderQuoteEmail(input: {
       return `${name} | ${includedUnits} | ${purchasedUnits} | ${packSize} | ${packCount} | ${lineTotal}`;
     }),
     "--------------------------------------------------------------------------------",
-    `Total Billed Today: ${totalBilledToday}`,
+    `Total: ${totalAmount}`,
   ];
 
-  // 4. Transparent calculation note
   const calculationNote = "Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.";
 
-  // 5. Comparison line (when applicable)
   let comparisonLine: string | null = null;
   if (lowestCost && lowestCost.planId !== bestValue?.planId) {
     const feature =
@@ -300,16 +460,10 @@ export function renderQuoteEmail(input: {
     comparisonLine = `A lighter configuration on ${lowestCost.planName} would cost ${formatMoney(lowestCost.total, input.quote.currency)}, but leaves no headroom for ${feature}.`;
   }
 
-  // 6. Mention official quotation PDF is attached
   const pdfNotice = `Your official quotation document (PDF) is attached: Quote24x7-Proposal-${input.quote.id}.pdf`;
-
-  // 7. Disclaimer
   const disclaimer = "Disclaimer: quotes generated against current Site24x7 India pricing and final checkout occurs via Zoho Store.";
-
-  // 8. Prompt
   const prompt = "Reply to this email if you'd like to adjust counts, add capabilities, or change billing frequency.";
 
-  // Build Plain Text Content
   const textParts = [
     greeting,
     "",
@@ -319,7 +473,7 @@ export function renderQuoteEmail(input: {
     ...understoodLines,
     "",
     `Selected plan: ${planName}`,
-    `Billing cadence: ${cadenceString}`,
+    `Billing: ${cadenceString}`,
     "",
     textTableLines.join("\n"),
     "",
@@ -338,7 +492,6 @@ export function renderQuoteEmail(input: {
 
   const textContent = textParts.join("\n").trim();
 
-  // Build HTML Content
   const htmlTableRows = lineItems
     .map((item) => {
       const isBase = item.ruleId === "RULE-PLAN-BASE";
@@ -416,7 +569,7 @@ ${htmlUnderstoodList}
 
     <div style="margin: 18px 0;">
       <div style="font-size: 15px; font-weight: 700; color: #0f172a;">Selected Plan: ${escapeHtml(planName)}</div>
-      <div style="font-size: 13px; color: #475569; margin-top: 4px;"><strong>Billing Cadence:</strong> ${escapeHtml(cadenceString)}</div>
+      <div style="font-size: 13px; color: #475569; margin-top: 4px;"><strong>Billing:</strong> ${escapeHtml(cadenceString)}</div>
     </div>
 
     <div class="table-container">
@@ -434,8 +587,8 @@ ${htmlUnderstoodList}
         <tbody>
 ${htmlTableRows}
           <tr style="border-top: 2px solid #0f172a; font-weight: 700; background-color: #f8fafc;">
-            <td colspan="5" style="padding: 12px 10px;">Total Billed Today</td>
-            <td style="padding: 12px 10px; text-align: right; color: #2563eb; font-size: 15px;">${escapeHtml(totalBilledToday)}</td>
+            <td colspan="5" style="padding: 12px 10px;">Total</td>
+            <td style="padding: 12px 10px; text-align: right; color: #2563eb; font-size: 15px;">${escapeHtml(totalAmount)}</td>
           </tr>
         </tbody>
       </table>
@@ -451,7 +604,7 @@ ${
 }
 
     <div class="attachment-box">
-      📎 <strong>PDF Attached:</strong> ${escapeHtml(pdfNotice)}
+      <strong>PDF Attached:</strong> ${escapeHtml(pdfNotice)}
     </div>
 
     <div class="reply-prompt">
@@ -468,31 +621,9 @@ ${
   return { textContent, htmlContent };
 }
 
-/**
- * Resend Outbound Email Service.
- * Transmits commercial quotation proposals with attached PDF documents,
- * or clarification inquiries when material requirements are missing.
- */
 export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<OutboundDispatchResult> {
-  const config = getAppConfig();
-  const deliveryId = `del_${Date.now()}`;
-  const now = new Date().toISOString();
-
-  // Safety checks & Loop Prevention
-  const targetRecipient = resolveOutboundRecipient(config, input.thread.id, input.recipientEmail);
-
-  if (targetRecipient.toLowerCase() === config.outboundFromEmail.toLowerCase()) {
-    throw new Error(
-      `Loop Prevention: Outbound recipient (${targetRecipient}) matches system sender address.`
-    );
-  }
-
   const cleanSub = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
   const subject = `Re: ${cleanSub} - Proposal Ref #${input.quote.id} [Ref: #${input.thread.id}]`;
-  const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
-    input.thread.id,
-    input.quote.id
-  );
 
   const { textContent, htmlContent } = renderQuoteEmail({
     recipientName: input.recipientName,
@@ -501,133 +632,21 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
     conversationalResponse: input.conversationalResponse,
   });
 
-
-  let providerMessageId: string | null = null;
-  let status: "accepted" | "failed" = "accepted";
-  let mode: "live" | "dry_run" = "dry_run";
-  let errorMessage: string | undefined;
-
-  const isSendingPaused = store.getOutboundSendingPaused();
-
-  if (isSendingPaused) {
-    status = "accepted";
-    mode = "dry_run";
-    providerMessageId = `paused_${Date.now()}`;
-    errorMessage = "Automated outbound dispatch paused by operator kill switch";
-  } else if (config.isLiveDispatchEnabled && config.resendApiKey) {
-    // Real Resend Dispatch
-    try {
-      const resend = new Resend(config.resendApiKey);
-
-      const res = await resend.emails.send({
-        from: formatFromEmail(config.outboundFromEmail),
-        to: targetRecipient,
-        replyTo: formatFromEmail(config.inboundAddress || "quotes@quotes.joanathan.in"),
-        subject,
-        text: textContent,
-        html: htmlContent,
-        headers: Object.keys(threadingHeaders).length > 0 ? threadingHeaders : undefined,
-        attachments: [
-          {
-            filename: `Quote24x7-Proposal-${input.quote.id}.pdf`,
-            content: input.pdfBuffer,
-          },
-        ],
-      });
-
-      if (res.error) {
-        status = "failed";
-        errorMessage = `${res.error.name}: ${res.error.message}`;
-      } else if (res.data?.id) {
-        providerMessageId = res.data.id;
-        mode = "live";
-      }
-    } catch (err) {
-      status = "failed";
-      errorMessage = err instanceof Error ? err.message : String(err);
-    }
-  } else {
-    // Dry Run / Demo Mode (Resend key missing or ALLOW_EXTERNAL_DISPATCH not true)
-    providerMessageId = `dryrun_${Date.now()}`;
-    mode = "dry_run";
-  }
-
-  // Record Delivery in store
-  const deliveryRecord: DeliveryRecord = {
-    id: deliveryId,
+  return dispatchEmail({
     threadId: input.thread.id,
-    quoteId: input.quote.id,
-    provider: "resend",
-    providerMessageId,
-    recipient: targetRecipient,
+    recipientEmail: input.recipientEmail,
     subject,
-    status: status === "accepted" ? "queued" : "failed", // Marked queued until webhook confirms accepted/delivered
-    attemptCount: 1,
-    maxAttempts: 3,
-    lastErrorCode: status === "failed" ? "DISPATCH_ERROR" : null,
-    lastErrorMessage: errorMessage ?? null,
-    nextRetryAt: null,
-    retryEligible: status === "failed",
-    createdAt: now,
-    updatedAt: now,
-    events: [
-      {
-        at: now,
-        status: status === "accepted" ? "queued" : "failed",
-        detail:
-          mode === "live"
-            ? `Dispatched via Resend API (messageId: ${providerMessageId}${inReplyTo ? `, In-Reply-To: ${inReplyTo}` : ""})`
-            : isSendingPaused
-              ? "Queued in store: Automated outbound dispatch paused by operator kill switch"
-              : `Dry-run simulated dispatch (ALLOW_EXTERNAL_DISPATCH is not true)`,
-      },
-    ],
-  };
-
-  if (mode === "dry_run") {
-    dryRunStore.saveDelivery(deliveryRecord);
-  } else {
-    store.saveDelivery(deliveryRecord);
-  }
-
-  // Record outbound message in thread timeline
-  const outboundMessage: EmailMessage = {
-    id: `msg_out_${Date.now()}`,
-    threadId: input.thread.id,
-    providerMessageId: providerMessageId ?? `local_out_${Date.now()}`,
-    direction: "outbound",
-    fromAddress: config.outboundFromEmail,
-    fromName: "Quote24x7 Assistant",
-    toAddresses: [targetRecipient],
-    subject,
-    bodyText: textContent,
-    occurredAt: now,
-    deliveryId,
-    securityNotes: [],
+    textContent,
+    htmlContent,
     attachments: [
       {
-        name: `Quote24x7-Proposal-${input.quote.id}.pdf`,
-        contentType: "application/pdf",
-        sizeBytes: input.pdfBuffer.length,
-        scanned: true,
+        filename: `Quote24x7-Proposal-${input.quote.id}.pdf`,
+        content: input.pdfBuffer,
       },
     ],
-    messageIdHeader: messageId,
-    inReplyTo: inReplyTo ?? null,
-    references: references ?? null,
-  };
-
-  store.addMessage(outboundMessage);
-
-  return {
-    success: status === "accepted",
-    providerMessageId,
-    deliveryId,
-    status,
-    mode,
-    error: errorMessage,
-    dispatchedTo: targetRecipient,
-  };
+    quoteId: input.quote.id,
+    prefixTag: input.quote.id,
+  });
 }
 
 export function extractClarificationQuestions(questionText: string, maxQuestions = 3): string[] {
@@ -654,11 +673,6 @@ export function extractClarificationQuestions(questionText: string, maxQuestions
 
 /**
  * Deterministically renders the plain text and responsive HTML clarification email.
- * Adheres strictly to Phase 8 specifications:
- * - Polite greeting with buyer's name if known.
- * - At most 3 numbered questions (e.g. 1., 2., 3.). No prices anywhere in the body.
- * - Strict limit under 120 words.
- * - Both plain text and responsive HTML versions.
  */
 export function renderClarificationEmail(input: {
   recipientName?: string | null;
@@ -718,7 +732,7 @@ export function renderClarificationEmail(input: {
             </a>
           </td>
           <td align="right" valign="middle">
-            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #0070ea; letter-spacing: 0.5px;">Sizing Clarification</div>
+            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #0070ea; letter-spacing: 0.5px;">Clarification Needed</div>
             <div class="ref" style="margin-top: 2px;">Conversation #${escapeHtml(input.threadId)}</div>
           </td>
         </tr>
@@ -728,7 +742,7 @@ export function renderClarificationEmail(input: {
     <p>${escapeHtml(greeting)}</p>
     <p>Thank you for contacting us about Site24x7. To configure the best-value plan and accurately size your monitoring requirements, could you please clarify:</p>
     <div class="card">
-      <div class="card-title">Sizing Questions</div>
+      <div class="card-title">Questions</div>
       <ol>
         ${htmlList}
       </ol>
@@ -748,19 +762,11 @@ export function renderClarificationEmail(input: {
   return { textContent, htmlContent, wordCount };
 }
 
-/**
- * Transmits a clarification inquiry when requirements are missing.
- */
 export async function sendClarificationEmail(
   input: SendClarificationEmailInput
 ): Promise<OutboundDispatchResult> {
-  const config = getAppConfig();
-  const deliveryId = `del_${Date.now()}`;
-  const now = new Date().toISOString();
-  const targetRecipient = resolveOutboundRecipient(config, input.thread.id, input.recipientEmail);
-
   const cleanSubject = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
-  const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Quick Sizing Clarification`;
+  const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Clarification Needed`;
 
   const { textContent, htmlContent } = renderClarificationEmail({
     recipientName: input.recipientName,
@@ -769,133 +775,19 @@ export async function sendClarificationEmail(
     threadId: input.thread.id,
   });
 
-  let providerMessageId: string | null = null;
-  let status: "accepted" | "failed" = "accepted";
-  let mode: "live" | "dry_run" = "dry_run";
-  let errorMessage: string | undefined;
-
-  const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
-    input.thread.id,
-    `clar_${Date.now()}`
-  );
-
-  const isSendingPaused = store.getOutboundSendingPaused();
-
-  if (isSendingPaused) {
-    status = "accepted";
-    mode = "dry_run";
-    providerMessageId = `paused_${Date.now()}`;
-    errorMessage = "Automated outbound dispatch paused by operator kill switch";
-  } else if (config.isLiveDispatchEnabled && config.resendApiKey) {
-    try {
-      const resend = new Resend(config.resendApiKey);
-      const res = await resend.emails.send({
-        from: formatFromEmail(config.outboundFromEmail),
-        to: targetRecipient,
-        replyTo: formatFromEmail(config.inboundAddress || "quotes@quotes.joanathan.in"),
-        subject,
-        text: textContent,
-        html: htmlContent,
-        headers: Object.keys(threadingHeaders).length > 0 ? threadingHeaders : undefined,
-      });
-
-      if (res.error) {
-        status = "failed";
-        errorMessage = `${res.error.name}: ${res.error.message}`;
-      } else if (res.data?.id) {
-        providerMessageId = res.data.id;
-        mode = "live";
-      }
-    } catch (err) {
-      status = "failed";
-      errorMessage = err instanceof Error ? err.message : String(err);
-    }
-  } else {
-    providerMessageId = `dryrun_${Date.now()}`;
-    mode = "dry_run";
-  }
-
-  const deliveryRecord: DeliveryRecord = {
-    id: deliveryId,
+  return dispatchEmail({
     threadId: input.thread.id,
-    quoteId: null,
-    provider: "resend",
-    providerMessageId,
-    recipient: targetRecipient,
+    recipientEmail: input.recipientEmail,
     subject,
-    status: status === "accepted" ? "queued" : "failed",
-    attemptCount: 1,
-    maxAttempts: 3,
-    lastErrorCode: status === "failed" ? "DISPATCH_ERROR" : null,
-    lastErrorMessage: errorMessage ?? null,
-    nextRetryAt: null,
-    retryEligible: status === "failed",
-    createdAt: now,
-    updatedAt: now,
-    events: [
-      {
-        at: now,
-        status: status === "accepted" ? "queued" : "failed",
-        detail:
-          mode === "live"
-            ? `Clarification dispatched via Resend (messageId: ${providerMessageId}${inReplyTo ? `, In-Reply-To: ${inReplyTo}` : ""})`
-            : isSendingPaused
-              ? "Queued in store: Automated outbound dispatch paused by operator kill switch"
-              : "Clarification email queued in demo mode",
-      },
-    ],
-  };
-
-  if (mode === "dry_run") {
-    dryRunStore.saveDelivery(deliveryRecord);
-  } else {
-    store.saveDelivery(deliveryRecord);
-  }
-
-  const outboundMessage: EmailMessage = {
-    id: `msg_out_${Date.now()}`,
-    threadId: input.thread.id,
-    providerMessageId: providerMessageId ?? `local_out_${Date.now()}`,
-    direction: "outbound",
-    fromAddress: config.outboundFromEmail,
-    fromName: "Quote24x7 Assistant",
-    toAddresses: [targetRecipient],
-    subject,
-    bodyText: textContent,
-    occurredAt: now,
-    deliveryId,
-    securityNotes: [],
-    attachments: [],
-    messageIdHeader: messageId,
-    inReplyTo: inReplyTo ?? null,
-    references: references ?? null,
-  };
-
-  store.addMessage(outboundMessage);
-
-  return {
-    success: status === "accepted",
-    providerMessageId,
-    deliveryId,
-    status,
-    mode,
-    error: errorMessage,
-    dispatchedTo: targetRecipient,
-  };
+    textContent,
+    htmlContent,
+    prefixTag: "clar",
+  });
 }
 
-/**
- * Transmits a short polite message for non-substantive inquiries (e.g. "hi", "thanks", "ok").
- * Does not consume a clarification round and does not increment nonproductive streak.
- */
 export async function sendNonSubstantiveReplyEmail(
   input: SendNonSubstantiveReplyEmailInput
 ): Promise<OutboundDispatchResult> {
-  const config = getAppConfig();
-  const deliveryId = `del_${Date.now()}`;
-  const now = new Date().toISOString();
-  const targetRecipient = resolveOutboundRecipient(config, input.thread.id, input.recipientEmail);
-
   const cleanSubject = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
   const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}]`;
 
@@ -911,131 +803,20 @@ Quote24x7 Assistant
 https://quotes.joanathan.in/
   `.trim();
 
-  let providerMessageId: string | null = null;
-  let status: "accepted" | "failed" = "accepted";
-  let mode: "live" | "dry_run" = "dry_run";
-  let errorMessage: string | undefined;
-
-  const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
-    input.thread.id,
-    `ack_${Date.now()}`
-  );
-  const isSendingPaused = store.getOutboundSendingPaused();
-
-  if (isSendingPaused) {
-    status = "accepted";
-    mode = "dry_run";
-    providerMessageId = `paused_${Date.now()}`;
-    errorMessage = "Automated outbound dispatch paused by operator kill switch";
-  } else if (config.isLiveDispatchEnabled && config.resendApiKey) {
-    try {
-      const resend = new Resend(config.resendApiKey);
-      const res = await resend.emails.send({
-        from: formatFromEmail(config.outboundFromEmail),
-        to: targetRecipient,
-        replyTo: formatFromEmail(config.inboundAddress || "quotes@quotes.joanathan.in"),
-        subject,
-        text: textContent,
-        headers: Object.keys(threadingHeaders).length > 0 ? threadingHeaders : undefined,
-      });
-
-      if (res.error) {
-        status = "failed";
-        errorMessage = `${res.error.name}: ${res.error.message}`;
-      } else if (res.data?.id) {
-        providerMessageId = res.data.id;
-        mode = "live";
-      }
-    } catch (err) {
-      status = "failed";
-      errorMessage = err instanceof Error ? err.message : String(err);
-    }
-  } else {
-    providerMessageId = `dryrun_${Date.now()}`;
-    mode = "dry_run";
-  }
-
-  const deliveryRecord: DeliveryRecord = {
-    id: deliveryId,
+  return dispatchEmail({
     threadId: input.thread.id,
-    quoteId: null,
-    provider: "resend",
-    providerMessageId,
-    recipient: targetRecipient,
+    recipientEmail: input.recipientEmail,
     subject,
-    status: status === "accepted" ? "queued" : "failed",
-    attemptCount: 1,
-    maxAttempts: 3,
-    lastErrorCode: status === "failed" ? "DISPATCH_ERROR" : null,
-    lastErrorMessage: errorMessage ?? null,
-    nextRetryAt: null,
-    retryEligible: status === "failed",
-    createdAt: now,
-    updatedAt: now,
-    events: [
-      {
-        at: now,
-        status: status === "accepted" ? "queued" : "failed",
-        detail:
-          mode === "live"
-            ? `Non-substantive acknowledgment dispatched via Resend (messageId: ${providerMessageId}${inReplyTo ? `, In-Reply-To: ${inReplyTo}` : ""})`
-            : "Non-substantive acknowledgment queued in demo mode",
-      },
-    ],
-  };
-
-  if (mode === "dry_run") {
-    dryRunStore.saveDelivery(deliveryRecord);
-  } else {
-    store.saveDelivery(deliveryRecord);
-  }
-
-  const outboundMessage: EmailMessage = {
-    id: `msg_out_${Date.now()}`,
-    threadId: input.thread.id,
-    providerMessageId: providerMessageId ?? `local_out_${Date.now()}`,
-    direction: "outbound",
-    fromAddress: config.outboundFromEmail,
-    fromName: "Quote24x7 Assistant",
-    toAddresses: [targetRecipient],
-    subject,
-    bodyText: textContent,
-    occurredAt: now,
-    deliveryId,
-    securityNotes: [],
-    attachments: [],
-    messageIdHeader: messageId,
-    inReplyTo: inReplyTo ?? null,
-    references: references ?? null,
-  };
-
-  store.addMessage(outboundMessage);
-
-  return {
-    success: status === "accepted",
-    providerMessageId,
-    deliveryId,
-    status,
-    mode,
-    error: errorMessage,
-    dispatchedTo: targetRecipient,
-  };
+    textContent,
+    prefixTag: "ack",
+  });
 }
 
-/**
- * Transmits the final yield email when clarification rounds are exhausted or after
- * 2 consecutive non-productive buyer replies. Parks the thread and links to calculator.
- */
 export async function sendFinalYieldEmail(
   input: SendFinalYieldEmailInput
 ): Promise<OutboundDispatchResult> {
-  const config = getAppConfig();
-  const deliveryId = `del_${Date.now()}`;
-  const now = new Date().toISOString();
-  const targetRecipient = resolveOutboundRecipient(config, input.thread.id, input.recipientEmail);
-
   const cleanSubject = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
-  const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Sizing Information Needed`;
+  const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Information Needed`;
 
   const missingList = input.missingUnits.length > 0
     ? input.missingUnits.map((u) => `• ${u}`).join("\n")
@@ -1059,136 +840,25 @@ Quote24x7 Assistant
 https://quotes.joanathan.in/
   `.trim();
 
-  let providerMessageId: string | null = null;
-  let status: "accepted" | "failed" = "accepted";
-  let mode: "live" | "dry_run" = "dry_run";
-  let errorMessage: string | undefined;
-
-  const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
-    input.thread.id,
-    `yield_${Date.now()}`
-  );
-  const isSendingPaused = store.getOutboundSendingPaused();
-
-  if (isSendingPaused) {
-    status = "accepted";
-    mode = "dry_run";
-    providerMessageId = `paused_${Date.now()}`;
-    errorMessage = "Automated outbound dispatch paused by operator kill switch";
-  } else if (config.isLiveDispatchEnabled && config.resendApiKey) {
-    try {
-      const resend = new Resend(config.resendApiKey);
-      const res = await resend.emails.send({
-        from: formatFromEmail(config.outboundFromEmail),
-        to: targetRecipient,
-        replyTo: formatFromEmail(config.inboundAddress || "quotes@quotes.joanathan.in"),
-        subject,
-        text: textContent,
-        headers: Object.keys(threadingHeaders).length > 0 ? threadingHeaders : undefined,
-      });
-
-      if (res.error) {
-        status = "failed";
-        errorMessage = `${res.error.name}: ${res.error.message}`;
-      } else if (res.data?.id) {
-        providerMessageId = res.data.id;
-        mode = "live";
-      }
-    } catch (err) {
-      status = "failed";
-      errorMessage = err instanceof Error ? err.message : String(err);
-    }
-  } else {
-    providerMessageId = `dryrun_${Date.now()}`;
-    mode = "dry_run";
-  }
-
-  const deliveryRecord: DeliveryRecord = {
-    id: deliveryId,
+  return dispatchEmail({
     threadId: input.thread.id,
-    quoteId: null,
-    provider: "resend",
-    providerMessageId,
-    recipient: targetRecipient,
+    recipientEmail: input.recipientEmail,
     subject,
-    status: status === "accepted" ? "queued" : "failed",
-    attemptCount: 1,
-    maxAttempts: 3,
-    lastErrorCode: status === "failed" ? "DISPATCH_ERROR" : null,
-    lastErrorMessage: errorMessage ?? null,
-    nextRetryAt: null,
-    retryEligible: status === "failed",
-    createdAt: now,
-    updatedAt: now,
-    events: [
-      {
-        at: now,
-        status: status === "accepted" ? "queued" : "failed",
-        detail:
-          mode === "live"
-            ? `Final yield email dispatched via Resend (messageId: ${providerMessageId}${inReplyTo ? `, In-Reply-To: ${inReplyTo}` : ""})`
-            : "Final yield email queued in demo mode",
-      },
-    ],
-  };
-
-  if (mode === "dry_run") {
-    dryRunStore.saveDelivery(deliveryRecord);
-  } else {
-    store.saveDelivery(deliveryRecord);
-  }
-
-  const outboundMessage: EmailMessage = {
-    id: `msg_out_${Date.now()}`,
-    threadId: input.thread.id,
-    providerMessageId: providerMessageId ?? `local_out_${Date.now()}`,
-    direction: "outbound",
-    fromAddress: config.outboundFromEmail,
-    fromName: "Quote24x7 Assistant",
-    toAddresses: [targetRecipient],
-    subject,
-    bodyText: textContent,
-    occurredAt: now,
-    deliveryId,
-    securityNotes: [],
-    attachments: [],
-    messageIdHeader: messageId,
-    inReplyTo: inReplyTo ?? null,
-    references: references ?? null,
-  };
-
-  store.addMessage(outboundMessage);
-
-  return {
-    success: status === "accepted",
-    providerMessageId,
-    deliveryId,
-    status,
-    mode,
-    error: errorMessage,
-    dispatchedTo: targetRecipient,
-  };
+    textContent,
+    prefixTag: "yield",
+  });
 }
 
-/**
- * Transmits a notification when requirements cannot be satisfied by active catalogue plans
- * or verified prices are missing, escalating to manual review.
- */
 export async function sendUnpriceableNotificationEmail(
   input: SendUnpriceableNotificationEmailInput
 ): Promise<OutboundDispatchResult> {
-  const config = getAppConfig();
-  const deliveryId = `del_${Date.now()}`;
-  const now = new Date().toISOString();
-  const targetRecipient = resolveOutboundRecipient(config, input.thread.id, input.recipientEmail);
-
   const cleanSubject = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
-  const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Sizing & Custom Pricing Notice`;
+  const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Custom Pricing Notice`;
 
   const reasonList = input.rejectionReasons.map((r) => `• ${r}`).join("\n");
 
   const textContent = `
-Dear ${input.recipientName || "Valued Customer"},
+Hi ${input.recipientName || "there"},
 
 Thank you for contacting Quote24x7 regarding Site24x7 monitoring.
 
@@ -1199,126 +869,21 @@ ${reasonList}
 Reference: #${input.thread.id}
 
 What happens next:
-1. Your request has been escalated to our Enterprise Solutions team for manual sizing and custom volume pricing.
+1. Your request has been escalated to our team for manual sizing and custom volume pricing.
 2. If your requirements can be adjusted or clarified, you may reply directly to this email to trigger an updated calculation.
 
 We appreciate your patience and look forward to assisting you.
 
-Warm regards,
-Quote24x7 Operations & Solutions Team
+Best regards,
+Quote24x7 Assistant
 https://quotes.joanathan.in/
   `.trim();
 
-  let providerMessageId: string | null = null;
-  let status: "accepted" | "failed" = "accepted";
-  let mode: "live" | "dry_run" = "dry_run";
-  let errorMessage: string | undefined;
-
-  const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
-    input.thread.id,
-    `unp_${Date.now()}`
-  );
-
-  const isSendingPaused = store.getOutboundSendingPaused();
-
-  if (isSendingPaused) {
-    status = "accepted";
-    mode = "dry_run";
-    providerMessageId = `paused_${Date.now()}`;
-    errorMessage = "Automated outbound dispatch paused by operator kill switch";
-  } else if (config.isLiveDispatchEnabled && config.resendApiKey) {
-    try {
-      const resend = new Resend(config.resendApiKey);
-      const res = await resend.emails.send({
-        from: formatFromEmail(config.outboundFromEmail),
-        to: targetRecipient,
-        replyTo: formatFromEmail(config.inboundAddress || "quotes@quotes.joanathan.in"),
-        subject,
-        text: textContent,
-        headers: Object.keys(threadingHeaders).length > 0 ? threadingHeaders : undefined,
-      });
-
-      if (res.error) {
-        status = "failed";
-        errorMessage = `${res.error.name}: ${res.error.message}`;
-      } else if (res.data?.id) {
-        providerMessageId = res.data.id;
-        mode = "live";
-      }
-    } catch (err) {
-      status = "failed";
-      errorMessage = err instanceof Error ? err.message : String(err);
-    }
-  } else {
-    providerMessageId = `dryrun_${Date.now()}`;
-    mode = "dry_run";
-  }
-
-  const deliveryRecord: DeliveryRecord = {
-    id: deliveryId,
+  return dispatchEmail({
     threadId: input.thread.id,
-    quoteId: null,
-    provider: "resend",
-    providerMessageId,
-    recipient: targetRecipient,
+    recipientEmail: input.recipientEmail,
     subject,
-    status: status === "accepted" ? "queued" : "failed",
-    attemptCount: 1,
-    maxAttempts: 3,
-    lastErrorCode: status === "failed" ? "DISPATCH_ERROR" : null,
-    lastErrorMessage: errorMessage ?? null,
-    nextRetryAt: null,
-    retryEligible: status === "failed",
-    createdAt: now,
-    updatedAt: now,
-    events: [
-      {
-        at: now,
-        status: status === "accepted" ? "queued" : "failed",
-        detail:
-          mode === "live"
-            ? `Unpriceable notification dispatched via Resend (messageId: ${providerMessageId}${inReplyTo ? `, In-Reply-To: ${inReplyTo}` : ""})`
-            : isSendingPaused
-              ? "Queued in store: Automated outbound dispatch paused by operator kill switch"
-              : "Unpriceable notification email queued in demo mode",
-      },
-    ],
-  };
-
-  if (mode === "dry_run") {
-    dryRunStore.saveDelivery(deliveryRecord);
-  } else {
-    store.saveDelivery(deliveryRecord);
-  }
-
-  const outboundMessage: EmailMessage = {
-    id: `msg_out_${Date.now()}`,
-    threadId: input.thread.id,
-    providerMessageId: providerMessageId ?? `local_out_${Date.now()}`,
-    direction: "outbound",
-    fromAddress: config.outboundFromEmail,
-    fromName: "Quote24x7 Operations & Solutions Team",
-    toAddresses: [targetRecipient],
-    subject,
-    bodyText: textContent,
-    occurredAt: now,
-    deliveryId,
-    securityNotes: [],
-    attachments: [],
-    messageIdHeader: messageId,
-    inReplyTo: inReplyTo ?? null,
-    references: references ?? null,
-  };
-
-  store.addMessage(outboundMessage);
-
-  return {
-    success: status === "accepted",
-    providerMessageId,
-    deliveryId,
-    status,
-    mode,
-    error: errorMessage,
-    dispatchedTo: targetRecipient,
-  };
+    textContent,
+    prefixTag: "unp",
+  });
 }
