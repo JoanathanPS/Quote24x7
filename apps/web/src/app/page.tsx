@@ -103,10 +103,10 @@ export default function InboxPage() {
       }
       if (search.trim()) {
         const q = search.toLowerCase();
-        const matchesSender = t.senderEmail.toLowerCase().includes(q);
+        const matchesSender = t.senderEmail?.toLowerCase().includes(q) ?? false;
         const matchesName = t.senderName?.toLowerCase().includes(q) ?? false;
         const matchesOrg = t.organisation?.toLowerCase().includes(q) ?? false;
-        const matchesSubject = t.subject.toLowerCase().includes(q);
+        const matchesSubject = t.subject?.toLowerCase().includes(q) ?? false;
         return matchesSender || matchesName || matchesOrg || matchesSubject;
       }
       return true;
