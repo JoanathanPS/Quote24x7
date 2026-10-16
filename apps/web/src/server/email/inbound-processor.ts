@@ -77,6 +77,23 @@ export interface InboundProcessingResult {
 }
 
 const inFlightMessageIds = new Set<string>();
+const threadLocks = new Map<string, Promise<unknown>>();
+
+async function withThreadLock<T>(threadId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = threadLocks.get(threadId) ?? Promise.resolve();
+  let release: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  threadLocks.set(threadId, gate);
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release!();
+    if (threadLocks.get(threadId) === gate) {
+      threadLocks.delete(threadId);
+    }
+  }
+}
 
 /**
  * Core Inbound Email Pipeline for Quote24x7.
@@ -201,7 +218,10 @@ export async function processInboundEmail(
   if (rfcMessageId) inFlightMessageIds.add(rfcMessageId);
 
   try {
-    const result = await doProcessInboundEmail(payload, config, now, providerMessageId, rfcMessageId, provider);
+    const senderKey = extractEmail(payload.from) || providerMessageId;
+    const result = await withThreadLock(senderKey, () =>
+      doProcessInboundEmail(payload, config, now, providerMessageId, rfcMessageId, provider)
+    );
     await store.flushPendingWrites();
     return result;
   } catch (err) {
