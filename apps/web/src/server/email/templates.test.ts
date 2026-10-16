@@ -276,6 +276,17 @@ test("Pre-send checker catches all banned phrases", () => {
     "Total Billed Today: ₹87,210",
     "rate of 855 paise per month",
     "📎 PDF attached",
+    "Greetings from our team",
+    "I hope you're doing well",
+    "We can provision your monitors",
+    "Capacity planning overview",
+    "Interactive Proposal attached",
+    "Quick Sizing form",
+    "A tailored solution for you",
+    "Your customized quotation",
+    "th_internal_ref exposed",
+    "qt_abc123 leaked",
+    "unformatted 123456 integer",
   ];
 
   for (const sample of bannedSamples) {
@@ -287,6 +298,28 @@ test("Pre-send checker catches all banned phrases", () => {
   const cleanResult = runPreSendChecks("Hi there, here is your quotation for Site24x7 monitoring.");
   assert.equal(cleanResult.passed, true, "Clean content should pass");
   assert.equal(cleanResult.violations.length, 0);
+});
+
+test("Pre-send checker rejects forbidden HTML in non-quote emails", () => {
+  const imgResult = runPreSendChecks('<img src="logo.png" />');
+  assert.equal(imgResult.passed, false, "Should reject img tag in non-quote email");
+
+  const btnResult = runPreSendChecks("<button>Click</button>");
+  assert.equal(btnResult.passed, false, "Should reject button tag in non-quote email");
+
+  const bgResult = runPreSendChecks("style=\"background-color: red\"");
+  assert.equal(bgResult.passed, false, "Should reject background-color in non-quote email");
+
+  const quoteWithImg = runPreSendChecks('<img src="logo.png" />', { isQuoteEmail: true });
+  assert.equal(quoteWithImg.passed, true, "Quote emails may contain img tags");
+});
+
+test("Pre-send checker allows internal IDs in quote emails but not others", () => {
+  const nonQuote = runPreSendChecks("Reference th_abc123");
+  assert.equal(nonQuote.passed, false, "Non-quote email should reject th_ IDs");
+
+  const quote = runPreSendChecks("Reference th_abc123 and qt_xyz789", { isQuoteEmail: true });
+  assert.equal(quote.passed, true, "Quote email should allow th_/qt_ IDs");
 });
 
 test("Pre-send checker passes on all rendered quote and clarification emails", () => {
@@ -305,7 +338,10 @@ test("Pre-send checker passes on all rendered quote and clarification emails", (
     quote,
     threadId: "th_presend",
   });
-  const quoteCheck = runPreSendChecks(quoteRendered.textContent + "\n" + quoteRendered.htmlContent);
+  const quoteCheck = runPreSendChecks(
+    quoteRendered.textContent + "\n" + quoteRendered.htmlContent,
+    { isQuoteEmail: true }
+  );
   assert.equal(quoteCheck.passed, true, `Quote email should pass pre-send checks. Violations: ${quoteCheck.violations.join(", ")}`);
 
   const clarRendered = renderClarificationEmail({

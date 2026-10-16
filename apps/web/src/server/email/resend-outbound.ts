@@ -8,7 +8,14 @@ import { loadActiveCatalogue } from "../catalogue/loader.ts";
 
 const BANNED_PHRASES = [
   /valued customer/i,
+  /\bdear\b/i,
+  /greetings from/i,
+  /i hope you'?re doing well/i,
   /autonomous/i,
+  /\bprovision\b/i,
+  /\bcapacity\b/i,
+  /interactive proposal/i,
+  /quick sizing/i,
   /sizing clarification/i,
   /sizing questions/i,
   /sales desk/i,
@@ -16,23 +23,56 @@ const BANNED_PHRASES = [
   /enterprise solutions/i,
   /billing cadence/i,
   /total billed today/i,
+  /\btailored\b/i,
+  /customized quotation/i,
   /\bpaise\b/i,
-  /📎/,
 ];
+
+const EMOJI_RE = /\p{Emoji_Presentation}|\p{Extended_Pictographic}/u;
+const INTERNAL_ID_RE = /\b(th_|qt_)\w+/;
+const UNFORMATTED_LARGE_INT_RE = /(?<!₹|INR\s|#)(?<![\d,.])(?<!\.)\b\d{5,}\b(?![\d,])(?!\s*(?:paise|cents))/;
+const NON_QUOTE_HTML_FORBIDDEN = /<img\b|<button\b|background-color\s*:/i;
 
 export interface PreSendCheckResult {
   passed: boolean;
   violations: string[];
 }
 
-export function runPreSendChecks(content: string): PreSendCheckResult {
+export function runPreSendChecks(
+  content: string,
+  options?: { isQuoteEmail?: boolean }
+): PreSendCheckResult {
   const violations: string[] = [];
+
   for (const pattern of BANNED_PHRASES) {
     const match = content.match(pattern);
     if (match) {
-      violations.push(`Banned phrase found: "${match[0]}"`);
+      violations.push(`Banned phrase: "${match[0]}"`);
     }
   }
+
+  const emojiMatch = content.match(EMOJI_RE);
+  if (emojiMatch) {
+    violations.push(`Emoji found: "${emojiMatch[0]}"`);
+  }
+
+  const idMatch = content.match(INTERNAL_ID_RE);
+  if (idMatch && !options?.isQuoteEmail) {
+    violations.push(`Internal ID exposed: "${idMatch[0]}"`);
+  }
+
+  const intMatch = content.match(UNFORMATTED_LARGE_INT_RE);
+  if (intMatch) {
+    violations.push(`Unformatted large integer: "${intMatch[0]}"`);
+  }
+
+  if (!options?.isQuoteEmail) {
+    const htmlForbiddenMatch = content.match(NON_QUOTE_HTML_FORBIDDEN);
+    if (htmlForbiddenMatch) {
+      violations.push(`Forbidden HTML in non-quote email: "${htmlForbiddenMatch[0]}"`);
+    }
+  }
+
   return { passed: violations.length === 0, violations };
 }
 
@@ -46,6 +86,7 @@ interface DispatchInput {
   quoteId?: string | null;
   prefixTag: string;
   fromName?: string;
+  isQuoteEmail?: boolean;
 }
 
 /**
@@ -265,9 +306,47 @@ async function dispatchEmail(input: DispatchInput): Promise<OutboundDispatchResu
     );
   }
 
-  const check = runPreSendChecks(input.textContent + "\n" + (input.htmlContent ?? ""));
-  if (!check.passed) {
-    console.error(`[PRE-SEND] Banned phrase detected in outbound to ${targetRecipient}:`, check.violations);
+  const bodyContent = input.textContent + "\n" + (input.htmlContent ?? "");
+  const check = runPreSendChecks(bodyContent, { isQuoteEmail: input.isQuoteEmail });
+  const subjectCheck = runPreSendChecks(input.subject, { isQuoteEmail: true });
+  if (!check.passed || !subjectCheck.passed) {
+    const allViolations = [...check.violations, ...subjectCheck.violations];
+    const failedRecord: DeliveryRecord = {
+      id: deliveryId,
+      threadId: input.threadId,
+      quoteId: input.quoteId ?? null,
+      provider: "resend",
+      providerMessageId: null,
+      recipient: targetRecipient,
+      subject: input.subject,
+      status: "failed",
+      attemptCount: 0,
+      maxAttempts: 0,
+      lastErrorCode: "FAILED_CHECK",
+      lastErrorMessage: allViolations.join("; "),
+      nextRetryAt: null,
+      retryEligible: false,
+      createdAt: now,
+      updatedAt: now,
+      events: [
+        {
+          at: now,
+          status: "failed",
+          detail: `Pre-send check rejected: ${allViolations.join("; ")}`,
+        },
+      ],
+    };
+    store.saveDelivery(failedRecord);
+
+    return {
+      success: false,
+      providerMessageId: null,
+      deliveryId,
+      status: "failed",
+      mode: "dry_run",
+      error: `Pre-send check failed: ${allViolations.join("; ")}`,
+      dispatchedTo: targetRecipient,
+    };
   }
 
   const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
@@ -438,9 +517,9 @@ export function renderQuoteEmail(input: {
     ...lineItems.map((item) => {
       const isBase = item.ruleId === "RULE-PLAN-BASE";
       const name = isBase ? `${planName} Base Subscription` : item.description;
-      const includedUnits = isBase ? "Base entitlements" : String(item.includedQuantity ?? 0);
-      const purchasedUnits = String(item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1)));
-      const packSize = String(item.packSize ?? 1);
+      const includedUnits = isBase ? "Base entitlements" : (item.includedQuantity ?? 0).toLocaleString("en-IN");
+      const purchasedUnits = (item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1))).toLocaleString("en-IN");
+      const packSize = (item.packSize ?? 1).toLocaleString("en-IN");
       const packCount = String(item.quantity);
       const lineTotal = formatMoney(item.lineTotal, input.quote.currency);
       return `${name} | ${includedUnits} | ${purchasedUnits} | ${packSize} | ${packCount} | ${lineTotal}`;
@@ -467,7 +546,7 @@ export function renderQuoteEmail(input: {
   const textParts = [
     greeting,
     "",
-    "Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, we have prepared a tailored quotation.",
+    "Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your quotation.",
     "",
     "Summary of understood requirements:",
     ...understoodLines,
@@ -496,9 +575,9 @@ export function renderQuoteEmail(input: {
     .map((item) => {
       const isBase = item.ruleId === "RULE-PLAN-BASE";
       const name = isBase ? `${planName} Base Subscription` : item.description;
-      const includedUnits = isBase ? "Base entitlements" : String(item.includedQuantity ?? 0);
-      const purchasedUnits = String(item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1)));
-      const packSize = String(item.packSize ?? 1);
+      const includedUnits = isBase ? "Base entitlements" : (item.includedQuantity ?? 0).toLocaleString("en-IN");
+      const purchasedUnits = (item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1))).toLocaleString("en-IN");
+      const packSize = (item.packSize ?? 1).toLocaleString("en-IN");
       const packCount = String(item.quantity);
       const lineTotal = formatMoney(item.lineTotal, input.quote.currency);
 
@@ -558,7 +637,7 @@ export function renderQuoteEmail(input: {
     </div>
 
     <p>${escapeHtml(greeting)}</p>
-    <p>Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, we have prepared a tailored quotation.</p>
+    <p>Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your quotation.</p>
 
     <div class="requirements-box">
       <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: #1e40af; letter-spacing: 0.5px; margin-bottom: 6px;">Summary of Understood Requirements</div>
@@ -646,6 +725,7 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
     ],
     quoteId: input.quote.id,
     prefixTag: input.quote.id,
+    isQuoteEmail: true,
   });
 }
 
@@ -691,7 +771,7 @@ export function renderClarificationEmail(input: {
     "",
     numberedList,
     "",
-    "Reply directly to this email with your counts, and we will prepare your customized quotation.",
+    "Reply directly to this email with your counts, and we will prepare your quotation.",
     "",
     "Best regards,",
     "Quote24x7 Assistant",
@@ -710,12 +790,11 @@ export function renderClarificationEmail(input: {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; margin: 0; padding: 24px; background-color: #f8fafc; }
-    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; margin: 0; padding: 24px; }
+    .container { max-width: 600px; margin: 0 auto; border-radius: 12px; border: 1px solid #e2e8f0; padding: 32px; }
     .header { border-bottom: 2px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; }
-    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
     .ref { font-size: 12px; color: #64748b; font-family: monospace; margin-top: 4px; }
-    .card { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin: 20px 0; }
+    .card { border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin: 20px 0; }
     .card-title { font-size: 13px; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
     ol { margin: 0; padding-left: 20px; color: #1e293b; }
     .footer { font-size: 11px; color: #64748b; margin-top: 28px; border-top: 1px solid #e2e8f0; padding-top: 16px; }
@@ -724,19 +803,7 @@ export function renderClarificationEmail(input: {
 <body>
   <div class="container">
     <div class="header" style="border-bottom: 2px solid #0070ea; padding-bottom: 16px; margin-bottom: 24px;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0">
-        <tr>
-          <td align="left" valign="middle">
-            <a href="https://quotes.joanathan.in/" target="_blank" style="text-decoration: none; display: inline-block;">
-              <img src="https://quotes.joanathan.in/logo.png" alt="Quote24x7" width="160" height="auto" style="display: block; max-width: 160px; height: auto; border: 0;" />
-            </a>
-          </td>
-          <td align="right" valign="middle">
-            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #0070ea; letter-spacing: 0.5px;">Clarification Needed</div>
-            <div class="ref" style="margin-top: 2px;">Conversation #${escapeHtml(input.threadId)}</div>
-          </td>
-        </tr>
-      </table>
+      <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #0070ea; letter-spacing: 0.5px;">Clarification Needed</div>
     </div>
 
     <p>${escapeHtml(greeting)}</p>
@@ -749,11 +816,11 @@ export function renderClarificationEmail(input: {
     </div>
 
     <p style="font-size: 14px; font-weight: 500; color: #0f172a;">
-      Reply directly to this email with your counts, and we will prepare your customized quotation.
+      Reply directly to this email with your counts, and we will prepare your quotation.
     </p>
 
     <div class="footer">
-      Quote24x7 Assistant • Automated assistant using Site24x7's public India pricing
+      Quote24x7 Assistant &mdash; Automated assistant using Site24x7 public India pricing
     </div>
   </div>
 </body>
@@ -865,8 +932,6 @@ Thank you for contacting Quote24x7 regarding Site24x7 monitoring.
 Our automated pricing engine evaluated your requirements against active Site24x7 plans and add-on packs. However, we are unable to generate an automated quotation for your request due to the following constraint(s):
 
 ${reasonList}
-
-Reference: #${input.thread.id}
 
 What happens next:
 1. Your request has been escalated to our team for manual sizing and custom volume pricing.

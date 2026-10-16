@@ -154,7 +154,7 @@ export default function InboxPage() {
             Quotation Inbox
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Inbound email requests, automated sizing clarification, and deterministic Site24x7 proposals.
+            Inbound email requests, automated clarification, and deterministic Site24x7 proposals.
           </p>
         </div>
         <div className="flex items-center gap-2">
