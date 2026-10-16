@@ -3,7 +3,10 @@ import { store } from "@/server/store/session-store";
 import { getAppConfig } from "@/server/config";
 import type { DeliveryStatus } from "@/types/domain";
 import { verifyWebhookSignature, fetchInboundEmailContent } from "@/server/email/resend-inbound";
-import { processInboundEmail } from "@/server/email/inbound-processor";
+import {
+  processInboundEmail,
+  type InboundAttachmentPayload,
+} from "@/server/email/inbound-processor";
 
 /**
  * Resend Webhook Event Handler.
@@ -70,17 +73,21 @@ export async function POST(request: NextRequest) {
       let subject = typeof eventData.subject === "string" ? eventData.subject : "Quote Request";
       let text = typeof eventData.text === "string" ? eventData.text : "";
       let html = typeof eventData.html === "string" ? eventData.html : undefined;
+      const attachments: InboundAttachmentPayload[] = [];
 
-      // If text is not provided in metadata, retrieve full content from Resend API
-      if (!text && emailId) {
+      // If text is not provided in metadata or emailId exists, retrieve full content & attachments from Resend API
+      if (emailId) {
         const fetched = await fetchInboundEmailContent(emailId);
         if (fetched) {
-          from = fetched.from;
-          fromName = fetched.fromName || null;
-          to = fetched.to;
-          subject = fetched.subject;
-          text = fetched.text;
-          html = fetched.html;
+          if (!from) from = fetched.from;
+          if (!fromName) fromName = fetched.fromName || null;
+          if (to.length === 0) to = fetched.to;
+          if (!subject || subject === "Quote Request") subject = fetched.subject;
+          if (!text) text = fetched.text;
+          if (!html) html = fetched.html;
+          if (fetched.attachments && fetched.attachments.length > 0) {
+            attachments.push(...fetched.attachments);
+          }
         }
       }
 
@@ -88,6 +95,12 @@ export async function POST(request: NextRequest) {
       if (match && match[1] && match[2]) {
         fromName = match[1].trim().replace(/^["']|["']$/g, "");
         from = match[2].trim();
+      }
+
+      // If body text is empty but document attachments exist, supply descriptive placeholder
+      if (!text && attachments.length > 0) {
+        const names = attachments.map((a) => a.filename).join(", ");
+        text = `Please find our infrastructure requirements and monitoring specifications in the attached document(s): ${names}`;
       }
 
       const inboundResult = await processInboundEmail({
@@ -98,6 +111,7 @@ export async function POST(request: NextRequest) {
         subject,
         text,
         html,
+        attachments,
         receivedAt: typeof body.created_at === "string" ? body.created_at : new Date().toISOString(),
       });
 
