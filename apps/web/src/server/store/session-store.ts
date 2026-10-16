@@ -16,8 +16,6 @@ import { getAppConfig } from "../config.ts";
 import { dryRunStore } from "./dryrun-store.ts";
 import {
   fetchFullStateFromSupabase,
-  seedSupabaseFromBaseline,
-  type SupabaseFullState,
   upsertThreadToSupabase,
   insertMessageToSupabase,
   upsertProfileToSupabase,
@@ -264,26 +262,18 @@ class SessionStore {
       this.supabaseSyncing = true;
       try {
         const remoteState = await fetchFullStateFromSupabase();
-        if (remoteState && remoteState.threads.length > 0) {
+        if (remoteState) {
+          // When Supabase is connected, it is the authoritative cloud store.
+          // Reset local memory so deleted records are properly removed.
+          this.threads.clear();
+          this.messages.clear();
+          this.profiles.clear();
+          this.quotes.clear();
+          this.deliveries.clear();
+          this.processedMessageIds.clear();
+          this.aiDecisions.clear();
           this.loadState(remoteState as unknown as PersistedState);
           this.persistToDisk();
-        } else if (remoteState && remoteState.threads.length === 0 && this.threads.size > 0) {
-          // If Supabase is connected but empty, seed it from our baseline snapshot
-          const allMsgs: EmailMessage[] = [];
-          for (const list of this.messages.values()) allMsgs.push(...list);
-          const allDecisions: AiDecisionRecord[] = [];
-          for (const list of this.aiDecisions.values()) allDecisions.push(...list);
-
-          const snapshot: SupabaseFullState = {
-            threads: Array.from(this.threads.values()),
-            messages: allMsgs,
-            profiles: Array.from(this.profiles.entries()),
-            quotes: Array.from(this.quotes.entries()),
-            deliveries: Array.from(this.deliveries.values()),
-            processedMessageIds: Array.from(this.processedMessageIds),
-            aiDecisions: allDecisions,
-          };
-          await seedSupabaseFromBaseline(snapshot);
         }
       } catch (err) {
         console.warn("[session-store] Error syncing with Supabase:", err);

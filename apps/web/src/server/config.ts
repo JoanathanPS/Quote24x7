@@ -56,7 +56,7 @@ export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
  * manual live-integration check.
  */
 export function isTestRuntime(): boolean {
-  return (
+  return Boolean(
     process.env.NODE_ENV === "test" ||
     process.env.npm_lifecycle_event === "test" ||
     process.env.npm_lifecycle_event === "check" ||
