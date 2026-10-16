@@ -10,3 +10,5 @@ Thumbs.db
 .data/
 *.tsbuildinfo
 backups/
+.agents/
+
