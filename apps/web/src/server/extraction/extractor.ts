@@ -323,10 +323,10 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       /(\d+)\s*(?:[a-z\s]{0,35}?)\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?)\b/i,
     ) ||
     text.match(
-      /(?:servers?|hosts?|vms?|instances?|nodes?|machines?)[^:\n\r\d]{0,50}[:=]\s*(\d+)/i,
+      /(?:servers?|hosts?|vms?|instances?|nodes?|machines?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*(\d+)/i,
     ) ||
     text.match(
-      /(?:servers?|hosts?|nodes?|instances?)\s*(?:count|total|:|=)\s*(\d+)/i,
+      /(?:servers?|hosts?|nodes?|instances?)\s*(?:count|total|:|=|,|\||\t)\s*(\d+)/i,
     );
 
   if (serverNone) {
@@ -399,10 +399,10 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       /(\d+)\s*(?:[a-z\s]{0,30}?)\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)\b/i,
     ) ||
     text.match(
-      /(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)[^:\n\r\d]{0,50}[:=]\s*(\d+)/i,
+      /(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*(\d+)/i,
     ) ||
     text.match(
-      /(?:network(?:\s+devices?)?|switches?|routers?)\s*(?:count|total|:|=)\s*(\d+)/i,
+      /(?:network(?:\s+devices?)?|switches?|routers?)\s*(?:count|total|:|=|,|\||\t)\s*(\d+)/i,
     );
 
   const netNone =

@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import type { Quote, EmailThread, CurrencyCode } from "@/types/domain";
 import { formatMoney } from "../pricing/money.ts";
@@ -24,8 +26,17 @@ function safePdfText(str: string | null | undefined): string {
 }
 
 /**
- * Generates a multi-page, publication-quality A4 quotation proposal PDF using pdf-lib.
- * Returns a Buffer ready for email attachment or HTTP download.
+ * Generates an official, publication-quality A4 quotation proposal PDF using pdf-lib.
+ * Adheres strictly to Phase 9 requirements:
+ * - Vector PDF with pdf-lib. Clean, dense 1 or 2 pages.
+ * - Header: Site24x7 logo, Quote24x7 header, quote id, date, validity, thread id.
+ * - Customer details if known.
+ * - Requirement summary block.
+ * - Itemized table: Plan base + each add-on. Columns: Item, Included, Purchased, Pack size, Packs, Annual (INR).
+ * - Transparent calculation note.
+ * - Terms & conditions from Screenshots/quote.png verbatim: payment upfront, taxes extra as applicable, quote valid for 30 days, orders placed through Zoho Store.
+ * - Capacity points matrix dropped completely.
+ * - Deterministic bytes for identical input except for timestamps.
  */
 export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer> {
   const { quote, thread, selectedOptionType = "best_value" } = options;
@@ -34,17 +45,21 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
   pdfDoc.setTitle(`Quote24x7 - Proposal #${quote.id}`);
   pdfDoc.setAuthor("Quote24x7 Pricing Engine");
   pdfDoc.setSubject("Site24x7 Infrastructure Monitoring Quotation");
-  pdfDoc.setCreationDate(new Date(quote.createdAt));
+
+  // Deterministic metadata timestamps
+  const fixedDate = new Date(quote.createdAt);
+  pdfDoc.setCreationDate(fixedDate);
+  pdfDoc.setModificationDate(fixedDate);
 
   const fontSans = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontSansBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontSansOblique = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
   const fontMono = await pdfDoc.embedFont(StandardFonts.Courier);
 
-  // A4 Page Dimensions in points (72 points per inch)
+  // A4 Page Dimensions (points)
   const pageWidth = 595.28;
   const pageHeight = 841.89;
-  const margin = 45;
+  const margin = 40;
   const contentWidth = pageWidth - margin * 2;
 
   // Selected Option
@@ -57,516 +72,472 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
     throw new Error(`No quotation options available for quote ${quote.id}`);
   }
 
-  // --- PAGE 1: Executive Summary, Options Comparison, Line Items ---
-  const page1 = pdfDoc.addPage([pageWidth, pageHeight]);
+  const page = pdfDoc.addPage([pageWidth, pageHeight]);
   let y = pageHeight - margin;
 
-  // Header Banner with brand styling
-  page1.drawText("Quote", {
-    x: margin,
-    y: y - 16,
+  // Try embedding clean PNG logo if present on disk
+  let logoDrawn = false;
+  try {
+    const candidatePaths = [
+      path.resolve(process.cwd(), "public", "logo.png"),
+      path.resolve(process.cwd(), "apps", "web", "public", "logo.png"),
+    ];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        const logoBytes = fs.readFileSync(p);
+        const logoImage = await pdfDoc.embedPng(logoBytes);
+        page.drawImage(logoImage, {
+          x: margin,
+          y: y - 26,
+          width: 90,
+          height: 26,
+        });
+        logoDrawn = true;
+        break;
+      }
+    }
+  } catch {
+    logoDrawn = false;
+  }
+
+  // Brand Header
+  const textStartX = logoDrawn ? margin + 98 : margin;
+  page.drawText("Quote", {
+    x: textStartX,
+    y: y - 18,
     size: 20,
     font: fontSansBold,
-    color: rgb(0, 0.44, 0.92), // #0070ea vivid blue
+    color: rgb(0, 0.44, 0.92), // #0070ea
   });
 
-  page1.drawText("24x7", {
-    x: margin + 63,
-    y: y - 16,
+  page.drawText("24x7", {
+    x: textStartX + 60,
+    y: y - 18,
     size: 20,
     font: fontSansBold,
-    color: rgb(0, 0.17, 0.4), // #002b66 deep navy
+    color: rgb(0, 0.17, 0.4), // #002b66
   });
 
-  page1.drawText("Commercial Proposal", {
-    x: margin + 125,
-    y: y - 14,
+  page.drawText("Site24x7 India Sales Desk", {
+    x: textStartX + 115,
+    y: y - 15,
     size: 9,
     font: fontSansBold,
-    color: rgb(0.4, 0.45, 0.55),
+    color: rgb(0.35, 0.4, 0.5),
   });
 
-  // Reference & Date on right
-  page1.drawText(`Reference: #${quote.id}`, {
-    x: pageWidth - margin - 150,
+  // Header Details (Right Column)
+  const metaRightX = pageWidth - margin - 170;
+  page.drawText(`Quote ID: #${quote.id}`, {
+    x: metaRightX,
     y: y - 10,
     size: 9,
     font: fontMono,
-    color: rgb(0.1, 0.1, 0.1),
+    color: rgb(0.1, 0.1, 0.15),
   });
 
-  const issueDateStr = new Date(quote.createdAt).toLocaleDateString("en-IN", {
+  const issueDateStr = fixedDate.toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
-  page1.drawText(`Issue Date: ${issueDateStr}`, {
-    x: pageWidth - margin - 150,
+  page.drawText(`Date: ${issueDateStr}`, {
+    x: metaRightX,
     y: y - 22,
     size: 8,
     font: fontSans,
-    color: rgb(0.4, 0.4, 0.4),
+    color: rgb(0.4, 0.4, 0.45),
   });
 
-  page1.drawText("Status: Preliminary Estimate (Non-binding)", {
-    x: pageWidth - margin - 180,
-    y: y - 34,
+  const expiryDate = new Date(fixedDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const expiryDateStr = expiryDate.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  page.drawText(`Validity: 30 days (${expiryDateStr})`, {
+    x: metaRightX,
+    y: y - 33,
     size: 8,
-    font: fontSansBold,
-    color: rgb(0.75, 0.45, 0.05),
+    font: fontSans,
+    color: rgb(0.4, 0.4, 0.45),
   });
 
-  y -= 46;
+  const threadIdVal = thread?.id || quote.threadId;
+  page.drawText(`Thread ID: #${threadIdVal}`, {
+    x: metaRightX,
+    y: y - 44,
+    size: 8,
+    font: fontMono,
+    color: rgb(0.4, 0.4, 0.45),
+  });
 
-  // Separator line
-  page1.drawLine({
+  y -= 54;
+
+  // Separator Line
+  page.drawLine({
     start: { x: margin, y },
     end: { x: pageWidth - margin, y },
     thickness: 1,
-    color: rgb(0.85, 0.87, 0.9),
+    color: rgb(0.85, 0.88, 0.92),
   });
 
   y -= 16;
 
-  // Legal Notice Box
-  const noticeBoxHeight = 32;
-  page1.drawRectangle({
-    x: margin,
-    y: y - noticeBoxHeight,
-    width: contentWidth,
-    height: noticeBoxHeight,
-    color: rgb(0.99, 0.97, 0.93),
-    borderColor: rgb(0.92, 0.85, 0.7),
-    borderWidth: 0.8,
-  });
+  // Customer Details Block (2 Columns)
+  const halfWidth = (contentWidth - 16) / 2;
 
-  page1.drawText(
-    `DEMO ESTIMATE: Calculated by Quote24x7 using unverified demo catalogue (v${quote.catalogueVersion}).`,
-    {
-      x: margin + 10,
-      y: y - 13,
-      size: 7.5,
-      font: fontSansBold,
-      color: rgb(0.55, 0.35, 0.05),
-    }
-  );
-  page1.drawText(
-    "Preliminary sizing estimate for planning purposes. Does not constitute an authorized commercial offer by Zoho Corporation.",
-    {
-      x: margin + 10,
-      y: y - 24,
-      size: 7.5,
-      font: fontSans,
-      color: rgb(0.55, 0.35, 0.05),
-    }
-  );
-
-  y -= noticeBoxHeight + 18;
-
-  // Parties Box (2 columns)
-  const colWidth = (contentWidth - 20) / 2;
-
-  // Left Column: Customer
-  page1.drawText("PREPARED FOR", {
+  // Left: Customer Details
+  page.drawText("CUSTOMER DETAILS", {
     x: margin,
     y,
     size: 8,
     font: fontSansBold,
-    color: rgb(0.45, 0.5, 0.55),
+    color: rgb(0.4, 0.45, 0.55),
   });
-  y -= 12;
+
   const customerName = thread?.senderName || "Valued Customer";
-  page1.drawText(safePdfText(customerName), {
+  page.drawText(safePdfText(customerName), {
     x: margin,
-    y,
-    size: 11,
+    y: y - 13,
+    size: 10,
     font: fontSansBold,
-    color: rgb(0.1, 0.1, 0.15),
+    color: rgb(0.1, 0.15, 0.25),
   });
-  y -= 11;
+
+  let custOffset = 25;
   if (thread?.organisation) {
-    page1.drawText(safePdfText(thread.organisation), {
+    page.drawText(safePdfText(thread.organisation), {
       x: margin,
-      y,
-      size: 9,
+      y: y - custOffset,
+      size: 8.5,
       font: fontSans,
       color: rgb(0.3, 0.35, 0.4),
     });
-    y -= 11;
+    custOffset += 11;
   }
-  page1.drawText(safePdfText(thread?.senderEmail || "Customer Email"), {
+
+  const customerEmail = thread?.senderEmail || "Direct Inbound Request";
+  page.drawText(safePdfText(customerEmail), {
     x: margin,
-    y,
-    size: 8.5,
+    y: y - custOffset,
+    size: 8,
     font: fontSans,
     color: rgb(0.4, 0.45, 0.5),
   });
 
-  // Right Column: Commercial Terms
-  const rightColX = margin + colWidth + 20;
-  let rightY = y + (thread?.organisation ? 34 : 23);
-
-  page1.drawText("COMMERCIAL TERMS", {
-    x: rightColX,
-    y: rightY,
+  // Right: Commercial Configuration
+  const rightX = margin + halfWidth + 16;
+  page.drawText("COMMERCIAL SUMMARY", {
+    x: rightX,
+    y,
     size: 8,
     font: fontSansBold,
-    color: rgb(0.45, 0.5, 0.55),
+    color: rgb(0.4, 0.45, 0.55),
   });
-  rightY -= 12;
-  page1.drawText(
-    `Billing: ${quote.billingPeriod === "annual" ? "Annual" : "Monthly"}  |  Currency: ${quote.currency}  |  Market: ${quote.market}`,
-    {
-      x: rightColX,
-      y: rightY,
-      size: 8.5,
-      font: fontSansBold,
-      color: rgb(0.15, 0.15, 0.2),
-    }
-  );
-  rightY -= 11;
-  page1.drawText(`Catalogue: ${quote.catalogueVersion} (Engine ${quote.calculationVersion})`, {
-    x: rightColX,
-    y: rightY,
+
+  page.drawText(`Selected Plan: ${activeOption.planName}`, {
+    x: rightX,
+    y: y - 13,
+    size: 10,
+    font: fontSansBold,
+    color: rgb(0.1, 0.15, 0.25),
+  });
+
+  page.drawText(`Billing Cadence: Annual Upfront (INR) | Market: India`, {
+    x: rightX,
+    y: y - 25,
     size: 8,
-    font: fontMono,
+    font: fontSans,
+    color: rgb(0.3, 0.35, 0.4),
+  });
+
+  page.drawText(`Fulfillment Channel: Zoho Store (store.zoho.in)`, {
+    x: rightX,
+    y: y - 36,
+    size: 8,
+    font: fontSans,
     color: rgb(0.4, 0.45, 0.5),
   });
 
-  y = Math.min(y, rightY) - 18;
+  y -= 52;
 
-  // Section 1: Three Options Summary
-  page1.drawText("1. QUOTATION OPTIONS COMPARISON", {
-    x: margin,
-    y,
-    size: 9.5,
-    font: fontSansBold,
-    color: rgb(0.12, 0.14, 0.2),
-  });
-  y -= 12;
+  // Requirement Summary Block
+  const reqRows = activeOption.coverage
+    .filter((c) => c.required > 0)
+    .map((c) => `${c.label}: ${c.required.toLocaleString("en-IN")}`);
 
-  // Options table header
-  page1.drawRectangle({
+  const reqSummaryText =
+    reqRows.length > 0 ? reqRows.join("   |   ") : "Standard baseline capacity requirements";
+
+  page.drawRectangle({
     x: margin,
-    y: y - 14,
+    y: y - 20,
     width: contentWidth,
-    height: 16,
-    color: rgb(0.94, 0.95, 0.97),
-  });
-  page1.drawText("OPTION TIER", { x: margin + 6, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-  page1.drawText("BASE PLAN", { x: margin + 110, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-  page1.drawText("SELECTION RATIONALE", { x: margin + 220, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-  page1.drawText("TOTAL", { x: pageWidth - margin - 70, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-
-  y -= 16;
-
-  // Options rows
-  for (const opt of quote.options) {
-    const isSelected = opt.optionType === activeOption.optionType;
-    const rowHeight = 20;
-
-    if (isSelected) {
-      page1.drawRectangle({
-        x: margin,
-        y: y - rowHeight + 4,
-        width: contentWidth,
-        height: rowHeight,
-        color: rgb(0.93, 0.96, 1.0),
-      });
-    }
-
-    const tierLabel =
-      opt.optionType === "best_value"
-        ? "Best Value (Rec.)"
-        : opt.optionType === "lowest_cost"
-        ? "Lowest Cost"
-        : "Best Coverage";
-
-    page1.drawText(tierLabel, {
-      x: margin + 6,
-      y: y - 8,
-      size: 8,
-      font: isSelected ? fontSansBold : fontSans,
-      color: isSelected ? rgb(0.1, 0.3, 0.7) : rgb(0.2, 0.2, 0.25),
-    });
-
-    page1.drawText(opt.planName, {
-      x: margin + 110,
-      y: y - 8,
-      size: 8,
-      font: fontSansBold,
-      color: rgb(0.1, 0.1, 0.15),
-    });
-
-    const shortReason = safePdfText(
-      opt.rankReason.length > 55 ? `${opt.rankReason.slice(0, 52)}...` : opt.rankReason
-    );
-    page1.drawText(shortReason, {
-      x: margin + 220,
-      y: y - 8,
-      size: 7.5,
-      font: fontSans,
-      color: rgb(0.35, 0.4, 0.45),
-    });
-
-    const totalFormatted = formatPdfMoney(opt.total, quote.currency);
-    page1.drawText(totalFormatted, {
-      x: pageWidth - margin - 80,
-      y: y - 8,
-      size: 8.5,
-      font: fontMono,
-      color: rgb(0.1, 0.1, 0.15),
-    });
-
-    y -= rowHeight;
-  }
-
-  y -= 14;
-
-  // Section 2: Recommended Configuration Itemized Breakdown
-  page1.drawText(`2. RECOMMENDED CONFIGURATION BREAKDOWN: ${activeOption.planName.toUpperCase()}`, {
-    x: margin,
-    y,
-    size: 9.5,
-    font: fontSansBold,
-    color: rgb(0.12, 0.14, 0.2),
-  });
-  y -= 12;
-
-  // Line items table header
-  page1.drawRectangle({
-    x: margin,
-    y: y - 14,
-    width: contentWidth,
-    height: 16,
-    color: rgb(0.94, 0.95, 0.97),
-  });
-  page1.drawText("ITEM DESCRIPTION", { x: margin + 6, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-  page1.drawText("QTY", { x: margin + 260, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-  page1.drawText("UNIT SIZING", { x: margin + 295, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-  page1.drawText("UNIT PRICE", { x: margin + 375, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-  page1.drawText("TOTAL", { x: pageWidth - margin - 65, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-
-  y -= 16;
-
-  // Line items rows
-  for (const item of activeOption.lineItems) {
-    const rowHeight = 18;
-
-    page1.drawText(safePdfText(item.description), {
-      x: margin + 6,
-      y: y - 8,
-      size: 8,
-      font: fontSans,
-      color: rgb(0.15, 0.15, 0.2),
-    });
-
-    page1.drawText(String(item.quantity), {
-      x: margin + 265,
-      y: y - 8,
-      size: 8,
-      font: fontMono,
-      color: rgb(0.2, 0.2, 0.25),
-    });
-
-    page1.drawText(safePdfText(item.unit), {
-      x: margin + 295,
-      y: y - 8,
-      size: 7.5,
-      font: fontSans,
-      color: rgb(0.4, 0.45, 0.5),
-    });
-
-    page1.drawText(formatPdfMoney(item.unitPrice, quote.currency), {
-      x: margin + 375,
-      y: y - 8,
-      size: 8,
-      font: fontMono,
-      color: rgb(0.2, 0.2, 0.25),
-    });
-
-    page1.drawText(formatPdfMoney(item.lineTotal, quote.currency), {
-      x: pageWidth - margin - 75,
-      y: y - 8,
-      size: 8,
-      font: fontMono,
-      color: rgb(0.1, 0.1, 0.15),
-    });
-
-    page1.drawLine({
-      start: { x: margin, y: y - rowHeight + 4 },
-      end: { x: pageWidth - margin, y: y - rowHeight + 4 },
-      thickness: 0.5,
-      color: rgb(0.9, 0.92, 0.94),
-    });
-
-    y -= rowHeight;
-  }
-
-  // Subtotal & Total Rows
-  y -= 4;
-  page1.drawText("Subtotal:", {
-    x: margin + 350,
-    y: y - 8,
-    size: 8.5,
-    font: fontSans,
-    color: rgb(0.4, 0.45, 0.5),
-  });
-  page1.drawText(formatPdfMoney(activeOption.subtotal, quote.currency), {
-    x: pageWidth - margin - 75,
-    y: y - 8,
-    size: 8.5,
-    font: fontMono,
-    color: rgb(0.2, 0.2, 0.25),
-  });
-
-  y -= 14;
-  page1.drawText("Taxes (unverified):", {
-    x: margin + 310,
-    y: y - 8,
-    size: 8,
-    font: fontSans,
-    color: rgb(0.5, 0.5, 0.5),
-  });
-  page1.drawText("Excluded", {
-    x: pageWidth - margin - 75,
-    y: y - 8,
-    size: 8,
-    font: fontSansOblique,
-    color: rgb(0.5, 0.5, 0.5),
-  });
-
-  y -= 16;
-  page1.drawRectangle({
-    x: margin + 280,
-    y: y - 16,
-    width: contentWidth - 280,
     height: 20,
-    color: rgb(0.92, 0.95, 0.99),
+    color: rgb(0.96, 0.97, 0.99),
+    borderColor: rgb(0.85, 0.88, 0.93),
+    borderWidth: 0.8,
   });
 
-  page1.drawText(`TOTAL (${quote.billingPeriod.toUpperCase()}):`, {
-    x: margin + 290,
-    y: y - 11,
-    size: 9.5,
+  page.drawText("REQUIREMENTS UNDERSTOOD:", {
+    x: margin + 8,
+    y: y - 13,
+    size: 7.5,
     font: fontSansBold,
-    color: rgb(0.1, 0.25, 0.65),
+    color: rgb(0.1, 0.35, 0.75),
   });
 
-  page1.drawText(formatPdfMoney(activeOption.total, quote.currency), {
-    x: pageWidth - margin - 85,
-    y: y - 11,
-    size: 10.5,
-    font: fontMono,
-    color: rgb(0.05, 0.2, 0.55),
+  page.drawText(safePdfText(reqSummaryText), {
+    x: margin + 145,
+    y: y - 13,
+    size: 7.5,
+    font: fontSans,
+    color: rgb(0.2, 0.25, 0.35),
   });
 
   y -= 32;
 
-  // Section 3: Capacity Fulfillment
-  page1.drawText("3. WORKLOAD CAPACITY FULFILLMENT MATRIX", {
+  // Section: Itemized Table
+  // Columns: Item, Included, Purchased, Pack size, Packs, Annual (INR)
+  page.drawText("ITEMIZED PRICING BREAKDOWN", {
     x: margin,
     y,
     size: 9.5,
     font: fontSansBold,
-    color: rgb(0.12, 0.14, 0.2),
+    color: rgb(0.1, 0.15, 0.25),
   });
+
   y -= 12;
 
-  page1.drawRectangle({
+  // Table Header
+  const tableHeaderHeight = 18;
+  page.drawRectangle({
     x: margin,
-    y: y - 14,
+    y: y - tableHeaderHeight,
     width: contentWidth,
-    height: 16,
-    color: rgb(0.94, 0.95, 0.97),
+    height: tableHeaderHeight,
+    color: rgb(0.92, 0.94, 0.97),
   });
-  page1.drawText("MONITORED METRIC", { x: margin + 6, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-  page1.drawText("DEMANDED", { x: margin + 170, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-  page1.drawText("BASE INCLUDED", { x: margin + 245, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-  page1.drawText("VIA ADD-ONS", { x: margin + 335, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-  page1.drawText("TOTAL CAPACITY", { x: margin + 415, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
-  page1.drawText("STATUS", { x: pageWidth - margin - 45, y: y - 10, size: 7.5, font: fontSansBold, color: rgb(0.3, 0.35, 0.4) });
 
-  y -= 16;
+  const colX = {
+    item: margin + 6,
+    included: margin + 205,
+    purchased: margin + 265,
+    packSize: margin + 330,
+    packs: margin + 390,
+    annual: pageWidth - margin - 8,
+  };
 
-  for (const cov of activeOption.coverage) {
-    const rowHeight = 16;
-    page1.drawText(cov.label, { x: margin + 6, y: y - 8, size: 8, font: fontSans, color: rgb(0.15, 0.15, 0.2) });
-    page1.drawText(String(cov.required), { x: margin + 180, y: y - 8, size: 8, font: fontMono, color: rgb(0.2, 0.2, 0.25) });
-    page1.drawText(String(cov.included), { x: margin + 255, y: y - 8, size: 8, font: fontMono, color: rgb(0.4, 0.45, 0.5) });
-    page1.drawText(String(cov.viaAddOns), { x: margin + 345, y: y - 8, size: 8, font: fontMono, color: rgb(0.4, 0.45, 0.5) });
-    page1.drawText(String(cov.total), { x: margin + 425, y: y - 8, size: 8, font: fontMono, color: rgb(0.1, 0.1, 0.15) });
-    page1.drawText(cov.satisfied ? "[x] Satisfied" : "[!] Deficit", {
-      x: pageWidth - margin - 55,
-      y: y - 8,
+  page.drawText("Item", { x: colX.item, y: y - 12, size: 8, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
+  page.drawText("Included", { x: colX.included, y: y - 12, size: 8, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
+  page.drawText("Purchased", { x: colX.purchased, y: y - 12, size: 8, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
+  page.drawText("Pack size", { x: colX.packSize, y: y - 12, size: 8, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
+  page.drawText("Packs", { x: colX.packs, y: y - 12, size: 8, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
+  page.drawText("Annual (INR)", { x: colX.annual - 60, y: y - 12, size: 8, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
+
+  y -= tableHeaderHeight;
+
+  // Table Rows: Plan Base + Each Add-on
+  for (const item of activeOption.lineItems) {
+    const isBase = item.ruleId === "RULE-PLAN-BASE";
+    const rowHeight = 18;
+
+    const itemName = isBase ? `${activeOption.planName} base subscription (annual)` : item.description;
+    const includedStr = isBase ? "Base entitlements" : String(item.includedQuantity ?? 0);
+    const purchasedStr = String(item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1)));
+    const packSizeStr = String(item.packSize ?? 1);
+    const packsStr = String(item.quantity);
+    const formattedTotal = formatPdfMoney(item.lineTotal, quote.currency);
+
+    page.drawText(safePdfText(itemName.length > 40 ? `${itemName.slice(0, 38)}...` : itemName), {
+      x: colX.item,
+      y: y - 11,
       size: 7.5,
-      font: fontSansBold,
-      color: cov.satisfied ? rgb(0.1, 0.55, 0.25) : rgb(0.8, 0.2, 0.2),
+      font: isBase ? fontSansBold : fontSans,
+      color: rgb(0.1, 0.15, 0.2),
     });
 
-    page1.drawLine({
-      start: { x: margin, y: y - rowHeight + 4 },
-      end: { x: pageWidth - margin, y: y - rowHeight + 4 },
-      thickness: 0.5,
-      color: rgb(0.9, 0.92, 0.94),
+    page.drawText(safePdfText(includedStr), {
+      x: colX.included,
+      y: y - 11,
+      size: 7.5,
+      font: fontMono,
+      color: rgb(0.35, 0.4, 0.45),
     });
+
+    page.drawText(safePdfText(purchasedStr), {
+      x: colX.purchased,
+      y: y - 11,
+      size: 7.5,
+      font: fontMono,
+      color: rgb(0.15, 0.2, 0.25),
+    });
+
+    page.drawText(safePdfText(packSizeStr), {
+      x: colX.packSize,
+      y: y - 11,
+      size: 7.5,
+      font: fontMono,
+      color: rgb(0.35, 0.4, 0.45),
+    });
+
+    page.drawText(safePdfText(packsStr), {
+      x: colX.packs,
+      y: y - 11,
+      size: 7.5,
+      font: fontMono,
+      color: rgb(0.15, 0.2, 0.25),
+    });
+
+    // Right-aligned Annual total
+    const totalWidth = fontMono.widthOfTextAtSize(formattedTotal, 8);
+    page.drawText(formattedTotal, {
+      x: colX.annual - totalWidth,
+      y: y - 11,
+      size: 8,
+      font: fontMono,
+      color: rgb(0.1, 0.15, 0.2),
+    });
+
+    page.drawLine({
+      start: { x: margin, y: y - rowHeight },
+      end: { x: pageWidth - margin, y: y - rowHeight },
+      thickness: 0.5,
+      color: rgb(0.88, 0.9, 0.93),
+    });
+
     y -= rowHeight;
   }
 
-  y -= 18;
+  // Total Billed Today Row
+  y -= 4;
+  page.drawRectangle({
+    x: margin,
+    y: y - 20,
+    width: contentWidth,
+    height: 20,
+    color: rgb(0.94, 0.96, 1.0),
+    borderColor: rgb(0.75, 0.85, 0.98),
+    borderWidth: 0.8,
+  });
 
-  // Assumptions & Exclusions
-  page1.drawText("4. ASSUMPTIONS & EXCLUSIONS", {
+  page.drawText("TOTAL ANNUAL COST (INR):", {
+    x: margin + 8,
+    y: y - 14,
+    size: 8.5,
+    font: fontSansBold,
+    color: rgb(0.05, 0.2, 0.6),
+  });
+
+  const grandTotalStr = formatPdfMoney(activeOption.total, quote.currency);
+  const grandTotalWidth = fontMono.widthOfTextAtSize(grandTotalStr, 10);
+  page.drawText(grandTotalStr, {
+    x: colX.annual - grandTotalWidth,
+    y: y - 14,
+    size: 10,
+    font: fontMono,
+    color: rgb(0.05, 0.2, 0.6),
+  });
+
+  y -= 26;
+
+  // Transparent calculation note
+  page.drawText("Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.", {
+    x: margin + 4,
+    y,
+    size: 7.5,
+    font: fontSansOblique,
+    color: rgb(0.4, 0.45, 0.5),
+  });
+
+  y -= 14;
+
+  // Comparison Line (when applicable)
+  const lowestCost = quote.options.find((o) => o.optionType === "lowest_cost");
+  if (lowestCost && lowestCost.planId !== activeOption.planId) {
+    const feature =
+      activeOption.whatItAdds && activeOption.whatItAdds.length > 0
+        ? activeOption.whatItAdds[0]
+        : "faster polling and additional check capacity";
+    const compText = `A lighter configuration on ${lowestCost.planName} would cost ${formatPdfMoney(lowestCost.total, quote.currency)}, but leaves no headroom for ${feature}.`;
+
+    page.drawRectangle({
+      x: margin,
+      y: y - 18,
+      width: contentWidth,
+      height: 18,
+      color: rgb(0.99, 0.98, 0.93),
+      borderColor: rgb(0.93, 0.87, 0.7),
+      borderWidth: 0.8,
+    });
+
+    page.drawText(safePdfText(compText), {
+      x: margin + 8,
+      y: y - 12,
+      size: 7.5,
+      font: fontSans,
+      color: rgb(0.45, 0.3, 0.05),
+    });
+
+    y -= 24;
+  }
+
+  y -= 6;
+
+  // Terms & Conditions Block from quote.png verbatim
+  page.drawText("TERMS & CONDITIONS", {
     x: margin,
     y,
-    size: 9.5,
+    size: 8.5,
     font: fontSansBold,
-    color: rgb(0.12, 0.14, 0.2),
+    color: rgb(0.1, 0.15, 0.25),
   });
-  y -= 12;
 
-  const combinedAssumptions = [
-    ...(quote.assumptions || []).slice(0, 3),
-    ...(quote.exclusions || []).slice(0, 2),
+  y -= 11;
+
+  const termsLines = [
+    "1. Validity prices are open for acceptance for 30 days from quote date. Please re-confirm the prices after the expiry date before sending your purchase order.",
+    "2. Payment Terms 100% due to ZOHO Corp after downloading the software with an official software key that is provided by ZOHO Corp. Orders placed through Zoho Store.",
+    "3. Cost is in INR unless specified. Local Taxes extra as applicable.",
+    "4. For other detail terms and conditions, Privacy policy & security visit: https://www.site24x7.com/privacypolicy.html | https://www.site24x7.com/terms.html | https://www.site24x7.com/security.html",
   ];
 
-  for (const text of combinedAssumptions) {
-    const bullet = "- ";
-    const cleanText = safePdfText(text.length > 105 ? `${text.slice(0, 102)}...` : text);
-    page1.drawText(bullet + cleanText, {
-      x: margin + 6,
-      y: y - 7,
-      size: 7.5,
+  for (const line of termsLines) {
+    page.drawText(safePdfText(line), {
+      x: margin + 4,
+      y,
+      size: 7,
       font: fontSans,
       color: rgb(0.35, 0.4, 0.45),
     });
-    y -= 12;
+    y -= 10;
   }
 
   // Footer on Page 1
-  page1.drawLine({
-    start: { x: margin, y: 40 },
-    end: { x: pageWidth - margin, y: 40 },
+  page.drawLine({
+    start: { x: margin, y: 36 },
+    end: { x: pageWidth - margin, y: 36 },
     thickness: 0.5,
-    color: rgb(0.85, 0.87, 0.9),
+    color: rgb(0.85, 0.88, 0.92),
   });
 
-  page1.drawText("Official Verification & Procurement: https://quotes.joanathan.in/", {
+  page.drawText("Official Quotation Generated by Quote24x7  •  Site24x7 India  •  Checkout via Zoho Store", {
     x: margin,
-    y: 28,
-    size: 7.5,
-    font: fontSansBold,
-    color: rgb(0.2, 0.35, 0.65),
+    y: 25,
+    size: 7,
+    font: fontSans,
+    color: rgb(0.4, 0.45, 0.5),
   });
 
-  page1.drawText(`Page 1 of 1  |  Generated by Quote24x7 v1.0.0  |  Ref: ${quote.id}`, {
-    x: pageWidth - margin - 220,
-    y: 28,
-    size: 7.5,
+  page.drawText(`Page 1 of 1  •  Ref: #${quote.id}`, {
+    x: pageWidth - margin - 120,
+    y: 25,
+    size: 7,
     font: fontSans,
     color: rgb(0.5, 0.55, 0.6),
   });
 
-  const pdfBytes = await pdfDoc.save();
+  const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
   return Buffer.from(pdfBytes);
 }
