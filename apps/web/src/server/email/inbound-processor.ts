@@ -747,10 +747,21 @@ async function doProcessInboundEmail(
     .filter((m) => m.id !== inboundMessage.id);
 
   // The rules engine works from cumulative inbound text so a regex pass never
-  // loses an earlier turn. Gemini receives the structured history instead.
+  // loses an earlier turn, including requirements from earlier turn attachments.
   const previousInboundTexts = priorMessages
     .filter((m) => m.direction === "inbound")
-    .map((m) => stripQuotedEmail(m.bodyText))
+    .map((m) => {
+      const attTexts = (m.attachments || [])
+        .map((a) =>
+          a.extractedText?.trim()
+            ? `\n[Attached ${a.documentKind || "document"}: "${a.name}"]\n${a.extractedText.trim()}`
+            : ""
+        )
+        .filter(Boolean)
+        .join("\n");
+      const fullText = attTexts ? `${m.bodyText}\n${attTexts}` : m.bodyText;
+      return stripQuotedEmail(fullText);
+    })
     .filter((txt) => txt.length > 0)
     .join("\n\n");
 

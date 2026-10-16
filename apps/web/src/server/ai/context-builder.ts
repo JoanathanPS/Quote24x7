@@ -255,7 +255,18 @@ function formatHistory(messages: EmailMessage[]): string {
   for (const message of recent) {
     const who = message.direction === "inbound" ? "CUSTOMER" : "QUOTE24X7";
     lines.push(`--- ${who} (${message.occurredAt}) ---`);
-    lines.push(truncate(message.bodyText, 1_500));
+    let text = message.bodyText;
+    if (message.attachments && message.attachments.length > 0) {
+      const attSnippets = message.attachments
+        .map((a) =>
+          a.extractedText?.trim()
+            ? `[Attached ${a.documentKind || "document"}: "${a.name}"]\n${a.extractedText.trim()}`
+            : `[Attached: "${a.name}"]`
+        )
+        .join("\n\n");
+      text = text ? `${text}\n\n${attSnippets}` : attSnippets;
+    }
+    lines.push(truncate(text, 2_500));
   }
 
   return lines.join("\n");
