@@ -1,36 +1,37 @@
 # Quote24x7
 
-> Autonomous email-based AI quotation agent and monitoring configuration assistant for Site24x7.
+> Salesman-style quotation assistant for Site24x7 India monitoring solutions.
 
-Quote24x7 understands monitoring requirements from natural language buyer emails, automatically seeks sizing clarifications over email when details are missing, deterministically calculates optimal configurations and add-on capacity packs against verified pricing catalogues, generates professional vector PDF proposals, and dispatches them via Resend.
+Quote24x7 answers customer inquiries, asks for missing requirements, and when requirements are sufficient, replies with a priced breakdown plus a PDF quotation.
+
+All prices are integer paise sourced directly from Site24x7 India pricing and Zoho Store rate cards. The system does not invent, estimate, interpolate, or divide prices. Code decides when to ask questions and when to quote; the language model never computes prices or decides workflow state.
 
 ---
 
-## Key Features
+## Capabilities
 
-- **Autonomous Email Ingress & Threading**: Inbound email processing via Resend Svix webhooks with automatic multi-turn thread continuation.
-- **Fail-Closed Sizing Extraction**: Extracts server hosts, network components, synthetic transaction monitors, RUM pageviews, and AppLogs data.
-- **Deterministic AI Pricing Engine**: Integer minor-unit arithmetic with fail-closed integrity checks, headroom estimation, and custom pack calculation.
-- **Vector PDF Proposals**: Pixel-accurate PDF quotation generation with itemized component breakdowns and transparent unit rates.
-- **Interactive Customer Proposal Portal**: Standalone, responsive customer proposal and purchase handoff page (`/proposals/[id]`).
-- **Operational Console**: Split-pane email client inbox with human status tracking (`Needs Reply`, `Configuring`, `Proposal Ready`, `Needs Review`).
+- **Inbound Email Processing**: Ingests emails via Resend webhooks with Svix signature verification, RFC threading (`Message-ID`, `In-Reply-To`, `References`), and replay deduplication.
+- **Loop Prevention & Triage**: Filters auto-replies, postmaster notices, bounces, and bulk mailing lists. Blocks outbound dispatch to internal and Zoho domains.
+- **Requirement Extraction & Clarification**: Tracks 6 monitoring units (hosts, basic monitors, advanced monitors, network components, RUM pageviews, AppLogs). When details are missing, asks at most 3 targeted questions per round (capped at 3 rounds).
+- **Deterministic Pricing Engine**: Knapsack calculation across candidate plans (Lite, Starter, Web Performance, Professional, Classic, Enterprise, MSP). Line items compute as base plan list rate plus plan-specific add-on packs from Zoho Store.
+- **PDF Generation**: Generates vector A4 estimate documents using `pdf-lib` with itemized line items, included allowances, transparent Zoho Store add-on references, and official Zoho quote terms.
+- **Console**: Split-pane interface providing thread views with inbound/outbound message histories, delivery statuses, what was understood (stated/assumed/missing), open questions, quote versions, and operator Send/Edit/Hold controls.
 
 ---
 
 ## Tech Stack
 
 - **Framework**: Next.js 15 (App Router), React 19, TypeScript
-- **Styling**: Tailwind CSS, Phosphor Icons
-- **State Management**: TanStack React Query, Zustand
+- **Database**: Supabase PostgreSQL with Row Level Security (RLS)
 - **PDF Generation**: `pdf-lib`
 - **Email Infrastructure**: Resend SDK, Svix Webhook Verification
-- **Test Suite**: Native Node.js test runner (`node --test`)
+- **Test Runner**: Native Node.js test runner (`node --test`)
 
 ---
 
 ## Getting Started
 
-### 1. Clone & Install
+### 1. Installation
 
 ```bash
 git clone https://github.com/JoanathanPS/Quote24x7.git
@@ -38,62 +39,65 @@ cd Quote24x7/apps/web
 npm install
 ```
 
-### 2. Configure Environment
+### 2. Environment Variables
 
-Copy `.env.example` to `.env.local`:
+Create `.env.local` based on `.env.example`:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Configure your credentials:
+Required environment variables:
 ```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=ey...
 RESEND_API_KEY=re_...
-OUTBOUND_FROM_EMAIL="Quote24x7 <quotes@yourdomain.com>"
 RESEND_WEBHOOK_SECRET=whsec_...
-ALLOW_EXTERNAL_DISPATCH=true
+OUTBOUND_FROM_EMAIL="Quote24x7 <quotes@quotes.yourdomain.com>"
+ALLOW_EXTERNAL_DISPATCH=false
 GEMINI_API_KEY=...
 ```
 
-### 3. Supabase Database Setup & Migrations
+### 3. Database Setup & Migrations
 
-Quote24x7 uses Supabase as its primary persistent runtime database for mail threads, messages, quotations, delivery tracking, knowledge, and pricing catalogues.
+Quote24x7 uses Supabase as its runtime store for catalogue data, threads, messages, requirements, quotes, deliveries, webhook events, and knowledge.
 
 ```bash
-# 1. Authenticate with the Supabase CLI
+# 1. Log in to Supabase CLI
 npx supabase login
 
-# 2. Link your local repository to your remote Supabase project
+# 2. Link repository to your Supabase project
 npx supabase link --project-ref your-project-ref
 
-# 3. Push versioned migrations to your Supabase project
+# 3. Apply schema migrations
 npx supabase db push
 ```
 
-> **Security Note:** All tables have Row Level Security (RLS) enabled with strictly no policies for `anon` or `authenticated` roles. Backend services authenticate with `SUPABASE_SERVICE_ROLE_KEY`.
+> **Security Note:** All runtime tables enforce Row Level Security (RLS) with no policies for `anon` or `authenticated` roles. Backend access requires `SUPABASE_SERVICE_ROLE_KEY`.
 
-### 4. Run Development Server
+### 4. Running Locally
 
 ```bash
+# Start Next.js development server
 npm run dev
 ```
 
-Visit [http://localhost:3000](http://localhost:3000) to open the Quote24x7 console.
+Open [http://localhost:3000](http://localhost:3000) to view the console.
 
 ---
 
-## Quality & Verification
+## Quality & Testing
 
 ```bash
-# Run lint, typecheck, and test suite in one command
+# Run catalogue build, linter, typescript check, and test suite
 npm run check
 
-# Production build
-npm run build
+# Run unit and integration tests only
+npm test
 ```
 
 ---
 
 ## License
 
-MIT License. Quote24x7 is an independent pricing assistant and is not an official Zoho Corporation product.
+MIT License. Quote24x7 is an independent assistant based on Site24x7 public pricing and is not affiliated with Zoho Corporation.

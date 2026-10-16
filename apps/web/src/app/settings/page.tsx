@@ -277,15 +277,12 @@ export default function SettingsPage() {
                 <h3 className="text-base font-semibold text-foreground">
                   Global Outbound Dispatch Kill Switch
                 </h3>
-                {killSwitchPaused ? (
-                  <Badge variant="warning" className="text-xs">
-                    Paused
-                  </Badge>
-                ) : (
-                  <Badge variant="success" className="text-xs">
-                    Active
-                  </Badge>
-                )}
+                <Badge
+                  variant={killSwitchPaused ? "warning" : "success"}
+                  className="text-xs font-bold font-mono"
+                >
+                  {killSwitchPaused ? "Sending: OFF" : "Sending: ON"}
+                </Badge>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 When enabled, generated quotations and clarification emails will be queued in the database but not dispatched to external email providers (e.g. Resend, SMTP). This allows operators to review drafts without buyer exposure.

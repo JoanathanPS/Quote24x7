@@ -201,13 +201,16 @@ export async function processInboundEmail(
   if (rfcMessageId) inFlightMessageIds.add(rfcMessageId);
 
   try {
-    return await doProcessInboundEmail(payload, config, now, providerMessageId, rfcMessageId, provider);
+    const result = await doProcessInboundEmail(payload, config, now, providerMessageId, rfcMessageId, provider);
+    await store.flushPendingWrites();
+    return result;
   } catch (err) {
     // Release the claim so a provider retry can reprocess this message.
     // This only happens on unexpected failure; normal duplicate drops return
     // earlier and keep the claim.
     await store.releaseInboundMessage(providerMessageId);
     if (rfcMessageId) await store.releaseInboundMessage(rfcMessageId);
+    await store.flushPendingWrites();
     throw err;
   } finally {
     inFlightMessageIds.delete(providerMessageId);

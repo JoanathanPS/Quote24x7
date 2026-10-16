@@ -12,10 +12,8 @@ import {
   CaretRight,
 } from "@phosphor-icons/react";
 
-import { useSystemHealth } from "@/hooks/use-api";
 import { useUIStore } from "@/stores/ui-store";
 import { Quote24x7Logo } from "@/components/ui/logo";
-import { cn } from "@/lib/utils";
 
 interface BreadcrumbItem {
   label: string;
@@ -75,7 +73,6 @@ function getBreadcrumbs(pathname: string): BreadcrumbItem[] {
 export function TopBar() {
   const pathname = usePathname();
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
-  const { data: health } = useSystemHealth();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -94,8 +91,6 @@ export function TopBar() {
       setTheme("light");
     }
   };
-
-  const healthLevel = health?.overall ?? "unknown";
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-4 print-hidden">
@@ -147,35 +142,8 @@ export function TopBar() {
         </nav>
       </div>
 
-      {/* Right section: System Status + Theme Toggle */}
+      {/* Right section: Theme Toggle */}
       <div className="flex items-center gap-2.5">
-        {/* System status indicator */}
-        <Link
-          href="/health"
-          className="flex items-center gap-2 rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          title={`System Health: ${healthLevel}`}
-        >
-          <span
-            className={cn(
-              "h-2 w-2 rounded-full shrink-0",
-              healthLevel === "ok" && "bg-success",
-              healthLevel === "degraded" && "bg-warning animate-pulse",
-              healthLevel === "down" && "bg-danger",
-              healthLevel === "unknown" && "bg-subtle-foreground"
-            )}
-            aria-hidden="true"
-          />
-          <span className="hidden sm:inline">
-            {healthLevel === "ok"
-              ? "Operational"
-              : healthLevel === "degraded"
-              ? "Degraded"
-              : healthLevel === "down"
-              ? "Disruption"
-              : "Checking"}
-          </span>
-        </Link>
-
         {/* Theme Toggle Button */}
         <button
           type="button"

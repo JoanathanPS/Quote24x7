@@ -230,6 +230,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    await store.flushPendingWrites();
+
     return NextResponse.json({
       received: true,
       matched: true,

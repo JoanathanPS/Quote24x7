@@ -57,6 +57,21 @@ class SessionStore {
   private webhookEvents: Set<string> = new Set(); // for webhook event idempotency (provider:eventId)
   private outboundSendingPaused = false;
   private initialized = false;
+  private pendingWrites: Promise<unknown>[] = [];
+  private threadSavePromises: Map<string, Promise<unknown>> = new Map();
+
+  public trackWrite(p: Promise<unknown>): void {
+    this.pendingWrites.push(p);
+    p.finally(() => {
+      const idx = this.pendingWrites.indexOf(p);
+      if (idx >= 0) this.pendingWrites.splice(idx, 1);
+    });
+  }
+
+  public async flushPendingWrites(): Promise<void> {
+    if (this.pendingWrites.length === 0) return;
+    await Promise.allSettled([...this.pendingWrites]);
+  }
 
   public getOutboundSendingPaused(): boolean {
     this.ensureInitialized();
@@ -155,7 +170,7 @@ class SessionStore {
     this.ensureInitialized();
   }
 
-  private ensureInitialized() {
+  public ensureInitialized(): void {
     if (this.initialized) return;
     this.initialized = true;
 
@@ -169,10 +184,11 @@ class SessionStore {
     if (this.isTestEnvironment()) return;
 
     // Load bundled baseline store in local development if present
+    const dir = typeof __dirname !== "undefined" ? __dirname : path.dirname(new URL(import.meta.url).pathname);
     const candidateBaselinePaths = [
       path.resolve(process.cwd(), "src", "server", "fixtures", "baseline-store.json"),
       path.resolve(process.cwd(), "apps", "web", "src", "server", "fixtures", "baseline-store.json"),
-      path.resolve(__dirname, "..", "fixtures", "baseline-store.json"),
+      path.resolve(dir, "..", "fixtures", "baseline-store.json"),
     ];
 
     for (const bp of candidateBaselinePaths) {
@@ -240,7 +256,15 @@ class SessionStore {
     this.ensureInitialized();
     this.threads.set(thread.id, { ...thread });
     this.persistToDisk();
-    upsertThreadToSupabase(thread);
+    const p = upsertThreadToSupabase(thread).finally(() => {
+      this.threadSavePromises.delete(thread.id);
+    });
+    this.threadSavePromises.set(thread.id, p);
+    this.trackWrite(p);
+  }
+
+  upsertThread(thread: EmailThread): void {
+    this.saveThread(thread);
   }
 
   updateThread(id: string, updates: Partial<EmailThread>): EmailThread | undefined {
@@ -250,7 +274,11 @@ class SessionStore {
     const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
     this.threads.set(id, updated);
     this.persistToDisk();
-    upsertThreadToSupabase(updated);
+    const p = upsertThreadToSupabase(updated).finally(() => {
+      this.threadSavePromises.delete(id);
+    });
+    this.threadSavePromises.set(id, p);
+    this.trackWrite(p);
     return updated;
   }
 
@@ -310,10 +338,14 @@ class SessionStore {
     this.messages.set(message.threadId, existing);
     if (message.providerMessageId) {
       this.processedMessageIds.add(message.providerMessageId);
-      insertProcessedMessageToSupabase(message.providerMessageId);
+      this.trackWrite(insertProcessedMessageToSupabase(message.providerMessageId));
     }
     this.persistToDisk();
-    insertMessageToSupabase(message);
+    const parentPromise = this.threadSavePromises.get(message.threadId);
+    const writePromise = (parentPromise ? parentPromise.catch(() => {}) : Promise.resolve()).then(() =>
+      insertMessageToSupabase(message)
+    );
+    this.trackWrite(writePromise);
   }
 
   // --- Requirement Profiles ---
@@ -326,7 +358,11 @@ class SessionStore {
     this.ensureInitialized();
     this.profiles.set(profile.threadId, { ...profile });
     this.persistToDisk();
-    upsertProfileToSupabase(profile);
+    const parentPromise = this.threadSavePromises.get(profile.threadId);
+    const writePromise = (parentPromise ? parentPromise.catch(() => {}) : Promise.resolve()).then(() =>
+      upsertProfileToSupabase(profile)
+    );
+    this.trackWrite(writePromise);
   }
 
   // --- Quotes ---
@@ -353,7 +389,11 @@ class SessionStore {
     this.ensureInitialized();
     this.quotes.set(quote.id, { ...quote });
     this.persistToDisk();
-    upsertQuoteToSupabase(quote);
+    const parentPromise = this.threadSavePromises.get(quote.threadId);
+    const writePromise = (parentPromise ? parentPromise.catch(() => {}) : Promise.resolve()).then(() =>
+      upsertQuoteToSupabase(quote)
+    );
+    this.trackWrite(writePromise);
   }
 
   updateQuote(quoteId: string, updates: Partial<Quote>): Quote | undefined {
@@ -363,7 +403,11 @@ class SessionStore {
     const updated = { ...existing, ...updates };
     this.quotes.set(quoteId, updated);
     this.persistToDisk();
-    upsertQuoteToSupabase(updated);
+    const parentPromise = updated.threadId ? this.threadSavePromises.get(updated.threadId) : null;
+    const writePromise = (parentPromise ? parentPromise.catch(() => {}) : Promise.resolve()).then(() =>
+      upsertQuoteToSupabase(updated)
+    );
+    this.trackWrite(writePromise);
     return updated;
   }
 
@@ -403,10 +447,14 @@ class SessionStore {
     this.deliveries.set(delivery.id, { ...delivery });
     if (delivery.providerMessageId) {
       this.processedMessageIds.add(delivery.providerMessageId);
-      insertProcessedMessageToSupabase(delivery.providerMessageId);
+      this.trackWrite(insertProcessedMessageToSupabase(delivery.providerMessageId));
     }
     this.persistToDisk();
-    upsertDeliveryToSupabase(delivery);
+    const parentPromise = delivery.threadId ? this.threadSavePromises.get(delivery.threadId) : null;
+    const writePromise = (parentPromise ? parentPromise.catch(() => {}) : Promise.resolve()).then(() =>
+      upsertDeliveryToSupabase(delivery)
+    );
+    this.trackWrite(writePromise);
   }
 
   updateDelivery(id: string, updates: Partial<DeliveryRecord>): DeliveryRecord | undefined {
@@ -416,7 +464,11 @@ class SessionStore {
       const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
       this.deliveries.set(id, updated);
       this.persistToDisk();
-      upsertDeliveryToSupabase(updated);
+      const parentPromise = updated.threadId ? this.threadSavePromises.get(updated.threadId) : null;
+      const writePromise = (parentPromise ? parentPromise.catch(() => {}) : Promise.resolve()).then(() =>
+        upsertDeliveryToSupabase(updated)
+      );
+      this.trackWrite(writePromise);
       return updated;
     }
     return dryRunStore.updateDelivery(id, updates);
@@ -454,7 +506,11 @@ class SessionStore {
     existing.push({ ...decision });
     this.aiDecisions.set(decision.threadId, existing);
     this.persistToDisk();
-    insertAiDecisionToSupabase(decision);
+    const parentPromise = this.threadSavePromises.get(decision.threadId);
+    const writePromise = (parentPromise ? parentPromise.catch(() => {}) : Promise.resolve()).then(() =>
+      insertAiDecisionToSupabase(decision)
+    );
+    this.trackWrite(writePromise);
   }
 
   // --- Idempotency ---
@@ -467,7 +523,7 @@ class SessionStore {
     this.ensureInitialized();
     this.processedMessageIds.add(providerMessageId);
     this.persistToDisk();
-    insertProcessedMessageToSupabase(providerMessageId);
+    this.trackWrite(insertProcessedMessageToSupabase(providerMessageId));
   }
 
   /**
@@ -653,9 +709,9 @@ class SessionStore {
       },
       {
         id: "pdf-renderer",
-        name: "Vector PDF Proposal Renderer",
+        name: "PDF Quotation Generator",
         level: "ok",
-        detail: "Multi-page A4 PDF rendering engine operational (pdf-lib, local execution)",
+        detail: "A4 PDF rendering engine operational (pdf-lib, local execution)",
         latencyMs: null,
       },
       {
@@ -672,12 +728,50 @@ class SessionStore {
     const hasDegraded = components.some((c) => c.level === "degraded");
     const hasDown = components.some((c) => c.level === "down");
 
+    // 1. Counts by thread state
+    const countsByThreadState: Record<string, number> = {};
+    for (const t of threads) {
+      countsByThreadState[t.status] = (countsByThreadState[t.status] || 0) + 1;
+    }
+
+    // 2. Queue depth
+    const queuedDeliveries = deliveries.filter(
+      (d) => d.status === "queued"
+    );
+    const queueDepth = queuedDeliveries.length;
+
+    // 3. Messages stuck over 10 minutes
+    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+    const stuckMessagesOver10m = queuedDeliveries.filter((d) => {
+      const created = new Date(d.createdAt).getTime();
+      return created < tenMinutesAgo;
+    }).length;
+
+    // 4. Last webhook time
+    let lastWebhookAt: string | null = null;
+    const allMessages = Array.from(this.messages.values()).flat();
+    const inboundMessages = allMessages.filter((m) => m.direction === "inbound");
+    if (inboundMessages.length > 0) {
+      const sorted = [...inboundMessages].sort(
+        (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+      );
+      lastWebhookAt = sorted[0]?.occurredAt ?? null;
+    }
+
+    const sendingEnabled = !this.outboundSendingPaused && Boolean(config.isLiveDispatchEnabled);
+
     return {
       overall: hasDown ? "down" : hasDegraded ? "degraded" : "ok",
       checkedAt: new Date().toISOString(),
       components,
       outboundSendingPaused: this.getOutboundSendingPaused(),
+      sendingEnabled,
       environment: "local",
+      countsByThreadState,
+      queueDepth,
+      stuckMessagesOver10m,
+      lastWebhookAt,
+      liveLatencyMs: aiLatency,
     };
   }
 

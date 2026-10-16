@@ -236,6 +236,7 @@ export async function POST(request: NextRequest) {
     };
 
     const result = await processInboundEmail(payload);
+    await store.flushPendingWrites();
 
     return NextResponse.json({
       status: "processed",

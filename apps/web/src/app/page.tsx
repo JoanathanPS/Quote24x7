@@ -151,10 +151,10 @@ export default function InboxPage() {
         <div>
           <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <Tray className="h-5 w-5 text-primary" />
-            Autonomous Quotation Inbox
+            Quotation Inbox
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Real-time inbound email requests, autonomous sizing clarification, and AI-configured Site24x7 proposals.
+            Inbound email requests, automated sizing clarification, and deterministic Site24x7 proposals.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -563,7 +563,7 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
                     </div>
                     <div>
                       <span className="font-semibold text-xs text-foreground">
-                        {isInbound ? msg.fromName || msg.fromAddress : "Quote24x7 AI Assistant"}
+                        {isInbound ? msg.fromName || msg.fromAddress : "Quote24x7 Assistant"}
                       </span>
                       {" "}
                       <span className="text-[11px] text-muted-foreground ml-1">

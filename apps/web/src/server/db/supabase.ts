@@ -452,32 +452,32 @@ export async function seedSupabaseFromBaseline(state: SupabaseFullState): Promis
     console.info(`[supabase] Seeding empty database with ${state.threads.length} baseline threads...`);
 
     if (state.threads.length > 0) {
-      const rows = state.threads.map(threadToRow);
+      const rows = await Promise.all(state.threads.map(async (t) => sanitizeRowForTable("email_threads", threadToRow(t))));
       await supabase.from("email_threads").upsert(rows);
     }
 
     if (state.profiles.length > 0) {
-      const rows = state.profiles.map(([, p]) => profileToRow(p));
+      const rows = await Promise.all(state.profiles.map(async ([, p]) => sanitizeRowForTable("requirement_profiles", profileToRow(p))));
       await supabase.from("requirement_profiles").upsert(rows);
     }
 
     if (state.quotes.length > 0) {
-      const rows = state.quotes.map(([, q]) => quoteToRow(q));
+      const rows = await Promise.all(state.quotes.map(async ([, q]) => sanitizeRowForTable("quotes", quoteToRow(q))));
       await supabase.from("quotes").upsert(rows);
     }
 
     if (state.messages.length > 0) {
-      const rows = state.messages.map(messageToRow);
+      const rows = await Promise.all(state.messages.map(async (m) => sanitizeRowForTable("email_messages", messageToRow(m))));
       await supabase.from("email_messages").upsert(rows);
     }
 
     if (state.deliveries.length > 0) {
-      const rows = state.deliveries.map(deliveryToRow);
+      const rows = await Promise.all(state.deliveries.map(async (d) => sanitizeRowForTable("deliveries", deliveryToRow(d))));
       await supabase.from("deliveries").upsert(rows);
     }
 
     if (state.aiDecisions.length > 0) {
-      const rows = state.aiDecisions.map(aiDecisionToRow);
+      const rows = await Promise.all(state.aiDecisions.map(async (a) => sanitizeRowForTable("ai_decisions", aiDecisionToRow(a))));
       await supabase.from("ai_decisions").upsert(rows);
     }
 
@@ -495,6 +495,70 @@ export async function seedSupabaseFromBaseline(state: SupabaseFullState): Promis
 }
 
 // ---------------------------------------------------------------------------
+// Schema Introspection and Sanitization Helpers
+// ---------------------------------------------------------------------------
+
+let cachedTableProperties: Record<string, Set<string>> | null = null;
+let schemaFetchPromise: Promise<Record<string, Set<string>> | null> | null = null;
+
+export async function getTableAllowedColumns(tableName: string): Promise<Set<string> | null> {
+  if (isTestRuntime()) return null;
+  if (cachedTableProperties) {
+    return cachedTableProperties[tableName] || null;
+  }
+  if (!schemaFetchPromise) {
+    schemaFetchPromise = (async () => {
+      const config = getAppConfig();
+      if (!config.supabaseUrl || !config.supabaseKey) return null;
+      try {
+        const res = await fetch(`${config.supabaseUrl}/rest/v1/`, {
+          headers: {
+            apikey: config.supabaseKey,
+            Authorization: `Bearer ${config.supabaseKey}`,
+          },
+        });
+        if (!res.ok) return null;
+        const spec = (await res.json()) as { definitions?: Record<string, { properties?: Record<string, unknown> }> };
+        const result: Record<string, Set<string>> = {};
+        if (spec.definitions) {
+          for (const [table, def] of Object.entries(spec.definitions)) {
+            if (def.properties) {
+              result[table] = new Set(Object.keys(def.properties));
+            }
+          }
+        }
+        cachedTableProperties = result;
+        return result;
+      } catch (e) {
+        console.warn("[supabase] Failed to fetch schema definitions from Supabase:", e);
+        return null;
+      } finally {
+        schemaFetchPromise = null;
+      }
+    })();
+  }
+  const allTables = await schemaFetchPromise;
+  return allTables?.[tableName] || null;
+}
+
+export async function sanitizeRowForTable<T extends Record<string, unknown>>(
+  tableName: string,
+  row: T
+): Promise<Partial<T>> {
+  const allowed = await getTableAllowedColumns(tableName);
+  if (!allowed) {
+    return row;
+  }
+  const filtered: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (allowed.has(k)) {
+      filtered[k] = v;
+    }
+  }
+  return filtered as Partial<T>;
+}
+
+// ---------------------------------------------------------------------------
 // Fire-and-forget background mutations for write paths
 // ---------------------------------------------------------------------------
 
@@ -502,7 +566,11 @@ export async function upsertThreadToSupabase(thread: EmailThread): Promise<void>
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {
-    await supabase.from("email_threads").upsert(threadToRow(thread));
+    const payload = await sanitizeRowForTable("email_threads", threadToRow(thread));
+    const { error } = await supabase.from("email_threads").upsert(payload);
+    if (error) {
+      console.warn(`[supabase] Failed to upsert thread ${thread.id}:`, error);
+    }
   } catch (err) {
     console.warn(`[supabase] Failed to upsert thread ${thread.id}:`, err);
   }
@@ -512,7 +580,11 @@ export async function insertMessageToSupabase(message: EmailMessage): Promise<vo
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {
-    await supabase.from("email_messages").upsert(messageToRow(message));
+    const payload = await sanitizeRowForTable("email_messages", messageToRow(message));
+    const { error } = await supabase.from("email_messages").upsert(payload);
+    if (error) {
+      console.warn(`[supabase] Failed to insert message ${message.id}:`, error);
+    }
   } catch (err) {
     console.warn(`[supabase] Failed to insert message ${message.id}:`, err);
   }
@@ -522,7 +594,11 @@ export async function upsertProfileToSupabase(profile: RequirementProfile): Prom
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {
-    await supabase.from("requirement_profiles").upsert(profileToRow(profile));
+    const payload = await sanitizeRowForTable("requirement_profiles", profileToRow(profile));
+    const { error } = await supabase.from("requirement_profiles").upsert(payload);
+    if (error) {
+      console.warn(`[supabase] Failed to upsert profile ${profile.id}:`, error);
+    }
   } catch (err) {
     console.warn(`[supabase] Failed to upsert profile ${profile.id}:`, err);
   }
@@ -532,7 +608,11 @@ export async function upsertQuoteToSupabase(quote: Quote): Promise<void> {
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {
-    await supabase.from("quotes").upsert(quoteToRow(quote));
+    const payload = await sanitizeRowForTable("quotes", quoteToRow(quote));
+    const { error } = await supabase.from("quotes").upsert(payload);
+    if (error) {
+      console.warn(`[supabase] Failed to upsert quote ${quote.id}:`, error);
+    }
   } catch (err) {
     console.warn(`[supabase] Failed to upsert quote ${quote.id}:`, err);
   }
@@ -542,7 +622,11 @@ export async function upsertDeliveryToSupabase(delivery: DeliveryRecord): Promis
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {
-    await supabase.from("deliveries").upsert(deliveryToRow(delivery));
+    const payload = await sanitizeRowForTable("deliveries", deliveryToRow(delivery));
+    const { error } = await supabase.from("deliveries").upsert(payload);
+    if (error) {
+      console.warn(`[supabase] Failed to upsert delivery ${delivery.id}:`, error);
+    }
   } catch (err) {
     console.warn(`[supabase] Failed to upsert delivery ${delivery.id}:`, err);
   }
@@ -552,7 +636,11 @@ export async function insertAiDecisionToSupabase(decision: AiDecisionRecord): Pr
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {
-    await supabase.from("ai_decisions").upsert(aiDecisionToRow(decision));
+    const payload = await sanitizeRowForTable("ai_decisions", aiDecisionToRow(decision));
+    const { error } = await supabase.from("ai_decisions").upsert(payload);
+    if (error) {
+      console.warn(`[supabase] Failed to insert AI decision ${decision.id}:`, error);
+    }
   } catch (err) {
     console.warn(`[supabase] Failed to insert AI decision ${decision.id}:`, err);
   }
@@ -562,7 +650,10 @@ export async function insertProcessedMessageToSupabase(providerMessageId: string
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {
-    await supabase.from("processed_messages").upsert({ provider_message_id: providerMessageId });
+    const { error } = await supabase.from("processed_messages").upsert({ provider_message_id: providerMessageId });
+    if (error) {
+      console.warn(`[supabase] Failed to record processed message ${providerMessageId}:`, error);
+    }
   } catch (err) {
     console.warn(`[supabase] Failed to record processed message ${providerMessageId}:`, err);
   }
@@ -594,7 +685,10 @@ export async function deleteProcessedMessageFromSupabase(providerMessageId: stri
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {
-    await supabase.from("processed_messages").delete().eq("provider_message_id", providerMessageId);
+    const { error } = await supabase.from("processed_messages").delete().eq("provider_message_id", providerMessageId);
+    if (error) {
+      console.warn(`[supabase] Failed to release processed message ${providerMessageId}:`, error);
+    }
   } catch (err) {
     console.warn(`[supabase] Failed to release processed message ${providerMessageId}:`, err);
   }
@@ -608,6 +702,14 @@ export async function insertWebhookEventToSupabase(
 ): Promise<{ isDuplicate: boolean }> {
   const supabase = getSupabaseClient();
   if (!supabase) return { isDuplicate: false };
+
+  const allowed = await getTableAllowedColumns("webhook_events");
+  // If OpenAPI definitions are available and webhook_events table does not exist in Supabase,
+  // skip trying to query it to prevent PGRST205 errors.
+  if (cachedTableProperties && !allowed) {
+    return { isDuplicate: false };
+  }
+
   try {
     const { error } = await supabase.from("webhook_events").insert({
       provider,
@@ -619,6 +721,9 @@ export async function insertWebhookEventToSupabase(
     if (error.code === "23505") {
       return { isDuplicate: true };
     }
+    if (error.code === "PGRST205") {
+      return { isDuplicate: false };
+    }
     console.warn(`[supabase] Could not insert webhook_event ${eventId}:`, error);
     return { isDuplicate: false };
   } catch (err) {
@@ -626,4 +731,5 @@ export async function insertWebhookEventToSupabase(
     return { isDuplicate: false };
   }
 }
+
 

@@ -105,7 +105,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
     year: "numeric",
   });
 
-  const subscriptionType = quote.billingPeriod === "month" ? "Monthly" : "Yearly";
+  const subscriptionType = quote.billingPeriod === "monthly" ? "Monthly" : "Yearly";
 
   page.drawText(`Estimate #: ${quote.id}`, {
     x: metaRightX,

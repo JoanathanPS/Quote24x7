@@ -15,11 +15,9 @@ import {
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 
-import { useSystemHealth, useCatalogues } from "@/hooks/use-api";
 import { useUIStore } from "@/stores/ui-store";
 import { Quote24x7Logo } from "@/components/ui/logo";
 import { cn } from "@/lib/utils";
-import type { HealthLevel, VerificationStatus } from "@/types/domain";
 
 interface NavItem {
   name: string;
@@ -36,10 +34,10 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
     isActive: (pathname) => pathname === "/" || pathname.startsWith("/threads"),
   },
   {
-    name: "Configurations",
-    href: "/configurations",
+    name: "Quotes",
+    href: "/quotes",
     icon: Receipt,
-    isActive: (pathname) => pathname.startsWith("/configurations") || pathname.startsWith("/quotes"),
+    isActive: (pathname) => pathname.startsWith("/quotes") || pathname.startsWith("/configurations"),
   },
   {
     name: "Catalogue",
@@ -70,53 +68,6 @@ const SECONDARY_NAV_ITEMS: NavItem[] = [
   },
 ];
 
-function getHealthBadge(level: HealthLevel) {
-  switch (level) {
-    case "ok":
-      return {
-        label: "Online",
-        dotClass: "bg-success",
-      };
-    case "degraded":
-      return {
-        label: "Degraded",
-        dotClass: "bg-warning animate-pulse",
-      };
-    case "down":
-      return {
-        label: "Disrupted",
-        dotClass: "bg-danger",
-      };
-    case "unknown":
-    default:
-      return {
-        label: "Checking...",
-        dotClass: "bg-subtle-foreground",
-      };
-  }
-}
-
-function getVerificationBadge(status?: VerificationStatus) {
-  switch (status) {
-    case "company_authorized":
-      return {
-        label: "Authorized",
-        className: "bg-success-soft text-success-soft-foreground border-success/30",
-      };
-    case "public_verified":
-      return {
-        label: "Verified",
-        className: "bg-info-soft text-info-soft-foreground border-info/30",
-      };
-    case "screenshot_derived":
-    default:
-      return {
-        label: "Active",
-        className: "bg-muted text-muted-foreground border-border text-[10px]",
-      };
-  }
-}
-
 interface SidebarContentProps {
   onItemClick?: () => void;
   isMobile?: boolean;
@@ -124,15 +75,6 @@ interface SidebarContentProps {
 
 function SidebarContent({ onItemClick, isMobile }: SidebarContentProps) {
   const pathname = usePathname();
-  const { data: health } = useSystemHealth();
-  const { data: catalogues } = useCatalogues();
-
-  const activeCatalogue =
-    catalogues?.find((c) => c.status === "active") ?? catalogues?.[0];
-
-  const healthLevel: HealthLevel = health?.overall ?? "unknown";
-  const healthBadge = getHealthBadge(healthLevel);
-  const verificationBadge = getVerificationBadge(activeCatalogue?.verificationStatus);
 
   return (
     <div className="flex h-full w-full flex-col justify-between">
@@ -231,46 +173,6 @@ function SidebarContent({ onItemClick, isMobile }: SidebarContentProps) {
             );
           })}
         </nav>
-      </div>
-
-      {/* Footer section: Health & Catalogue */}
-      <div className="border-t border-border bg-surface p-3 space-y-2">
-        {/* System Health Status */}
-        <Link
-          href="/health"
-          onClick={onItemClick}
-          className="group flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <span
-              className={cn("h-2 w-2 shrink-0 rounded-full", healthBadge.dotClass)}
-              aria-hidden="true"
-            />
-            <span className="truncate font-medium">{healthBadge.label}</span>
-          </div>
-        </Link>
-
-        {/* Catalogue Status */}
-        <Link
-          href="/catalogue"
-          onClick={onItemClick}
-          className="group flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <div className="flex items-center gap-1.5 min-w-0">
-            <Database className="h-3.5 w-3.5 shrink-0 text-subtle-foreground group-hover:text-foreground" />
-            <span className="truncate font-mono text-[11px]">
-              {activeCatalogue?.version ?? "Catalogue"}
-            </span>
-          </div>
-          <span
-            className={cn(
-              "rounded border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider",
-              verificationBadge.className
-            )}
-          >
-            {verificationBadge.label}
-          </span>
-        </Link>
       </div>
     </div>
   );

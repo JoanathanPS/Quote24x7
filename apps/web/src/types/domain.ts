@@ -538,7 +538,13 @@ export interface SystemHealth {
   components: HealthComponent[];
   /** Global pause on automated outbound sending. */
   outboundSendingPaused: boolean;
+  sendingEnabled?: boolean;
   environment: "local" | "staging" | "production";
+  countsByThreadState?: Record<string, number>;
+  queueDepth?: number;
+  stuckMessagesOver10m?: number;
+  lastWebhookAt?: string | null;
+  liveLatencyMs?: number | null;
 }
 
 export interface HealthComponent {
