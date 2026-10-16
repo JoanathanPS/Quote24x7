@@ -1,6 +1,7 @@
 import zlib from "node:zlib";
 import * as mammoth from "mammoth";
 import * as XLSX from "xlsx";
+import { PDFDocument, PDFName, PDFArray } from "pdf-lib";
 // @ts-expect-error pdf-parse subpath import avoids the index.js debug execution bug
 import pdfParse from "pdf-parse/lib/pdf-parse.js";
 import type { DocumentFormatKind } from "@/types/domain";
@@ -82,20 +83,166 @@ function decodePdfHexString(hex: string): string {
 }
 
 /**
- * Decompresses and extracts readable text directly from PDF flate and text streams.
- * Supports both literal text (Tj) and hex-encoded font vectors (<...> Tj / TJ).
+ * Decodes Adobe ASCII85 (Base85) stream data commonly produced by ReportLab and Ghostscript.
+ */
+function decodeAscii85(bytes: Uint8Array | Buffer): Buffer<ArrayBufferLike> {
+  const str = Buffer.from(bytes).toString("latin1").replace(/\s+/g, "");
+  const clean = str.replace(/^<~/, "").replace(/~>.*$/, "");
+  const out: number[] = [];
+  for (let i = 0; i < clean.length; ) {
+    if (clean[i] === "z") {
+      out.push(0, 0, 0, 0);
+      i++;
+      continue;
+    }
+    let chunk = clean.slice(i, i + 5);
+    i += 5;
+    const pad = 5 - chunk.length;
+    while (chunk.length < 5) chunk += "u";
+    let val = 0;
+    for (let j = 0; j < 5; j++) {
+      val = val * 85 + (chunk.charCodeAt(j) - 33);
+    }
+    for (let j = 0; j < 4 - pad; j++) {
+      out.push((val >> (24 - j * 8)) & 0xff);
+    }
+  }
+  return Buffer.from(out);
+}
+
+/**
+ * Decodes standard PDF escape sequences in literal strings.
+ */
+function decodePdfString(s: string): string {
+  return s
+    .replace(/\\([0-7]{1,3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)))
+    .replace(/\\r/g, "\r")
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .replace(/\\b/g, "\b")
+    .replace(/\\f/g, "\f")
+    .replace(/\\(.)/g, "$1");
+}
+
+/**
+ * Extracts readable lines of text from a decoded PDF content stream.
+ * Parses text blocks (BT ... ET) and text operators (Tj, ', ", and TJ arrays).
+ */
+function extractTextFromPdfStream(streamText: string): string {
+  const lines: string[] = [];
+  const btRegex = /BT[\s\S]*?ET/g;
+  const blocks = streamText.match(btRegex) || [streamText];
+
+  for (const block of blocks) {
+    let currentLine = "";
+    const opRegex = /(?:(?:\((?:[^()\\]|\\.)*\)|<[0-9a-fA-F\s]+>)\s*(?:Tj|'|")|\[(?:[^\[\]\\]|\\.)*\]\s*TJ)/g;
+    const ops = block.match(opRegex) || [];
+    for (const op of ops) {
+      if (op.includes("TJ")) {
+        const inner = op.slice(op.indexOf("[") + 1, op.lastIndexOf("]"));
+        const parts = inner.match(/\((?:[^()\\]|\\.)*\)|<[0-9a-fA-F]+>|-?\d+(?:\.\d+)?/g) || [];
+        for (const p of parts) {
+          if (p.startsWith("(")) {
+            currentLine += decodePdfString(p.slice(1, -1));
+          } else if (p.startsWith("<")) {
+            const h = p.slice(1, -1).replace(/\s+/g, "");
+            currentLine += decodePdfHexString(h);
+          } else if (parseFloat(p) < -150) {
+            currentLine += " ";
+          }
+        }
+      } else {
+        const parenMatch = op.match(/\(([\s\S]*?)\)\s*(?:Tj|'|")/);
+        const hexMatch = op.match(/<([0-9a-fA-F\s]+)>\s*(?:Tj|'|")/);
+        if (parenMatch && parenMatch[1] !== undefined) {
+          currentLine += decodePdfString(parenMatch[1]);
+        } else if (hexMatch && hexMatch[1] !== undefined) {
+          const h = hexMatch[1].replace(/\s+/g, "");
+          currentLine += decodePdfHexString(h);
+        }
+      }
+      currentLine += " ";
+    }
+    if (currentLine.trim()) {
+      lines.push(currentLine.trim());
+    }
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Decodes a raw stream buffer based on its PDF filter specifications.
+ */
+function decodePdfStream(bytes: Uint8Array, filterObj?: unknown): string {
+  let cur: Buffer<ArrayBufferLike> = Buffer.from(bytes);
+  let filters: string[] = [];
+  if (filterObj instanceof PDFArray) {
+    filters = filterObj.asArray().map((f) => f.toString());
+  } else if (filterObj) {
+    filters = [filterObj.toString()];
+  }
+  for (const f of filters) {
+    if (f === "/ASCII85Decode" || f === "ASCII85Decode") {
+      cur = decodeAscii85(cur);
+    } else if (f === "/FlateDecode" || f === "FlateDecode") {
+      try {
+        cur = zlib.inflateSync(cur);
+      } catch {
+        try {
+          cur = zlib.inflateRawSync(cur);
+        } catch {
+          // ignore decompression failure
+        }
+      }
+    }
+  }
+  return cur.toString("latin1");
+}
+
+/**
+ * Traverses PDF indirect objects using pdf-lib to decode streams and extract text.
+ */
+async function extractPdfWithPdfLib(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
+  const doc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+  const pageCount = doc.getPageCount();
+  const allText: string[] = [];
+
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const streamObj = obj as any;
+    if (typeof streamObj.getContents === "function") {
+      const filter = streamObj.dict?.get(PDFName.of("Filter"));
+      const textStream = decodePdfStream(streamObj.getContents(), filter);
+      const extracted = extractTextFromPdfStream(textStream);
+      if (extracted) allText.push(extracted);
+    }
+  }
+
+  return {
+    text: allText.join("\n").replace(/[^\x20-\x7E\n]/g, " ").replace(/ +/g, " ").trim(),
+    pageCount,
+  };
+}
+
+/**
+ * Decompresses and extracts readable text directly from PDF flate and text streams as a raw fallback.
+ * Supports ASCII85, Flate, literal text (Tj) and hex-encoded font vectors (<...> Tj / TJ).
  */
 function extractPdfStreamText(buffer: Buffer): string {
   const content = buffer.toString("latin1");
   const texts: string[] = [];
 
-  const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g;
+  const streamRegex = /stream[\r\n]+([\s\S]*?)(?:[\r\n]+endstream|~>endstream|endstream)/g;
   let match: RegExpExecArray | null;
 
   while ((match = streamRegex.exec(content)) !== null) {
     const rawData = match[1];
     if (!rawData) continue;
-    const streamData = Buffer.from(rawData, "latin1");
+    let streamData: Buffer<ArrayBufferLike> = Buffer.from(rawData, "latin1");
+
+    if (rawData.startsWith("<~") || rawData.includes("~>")) {
+      streamData = decodeAscii85(streamData);
+    }
 
     let decompressed = "";
     try {
@@ -109,36 +256,9 @@ function extractPdfStreamText(buffer: Buffer): string {
     }
 
     if (decompressed) {
-      // 1. Literal strings: (Text) Tj
-      const tjMatches = decompressed.match(/\((.*?)\)\s*Tj/g) || [];
-      for (const tj of tjMatches) {
-        const clean = tj.replace(/^\(|\)\s*Tj$/g, "");
-        if (clean.trim()) texts.push(clean);
-      }
-
-      // 2. Hex-encoded strings: <3235...> Tj
-      const hexTjMatches = decompressed.match(/<([0-9a-fA-F]+)>\s*Tj/g) || [];
-      for (const htj of hexTjMatches) {
-        const hex = htj.replace(/[<>\s]|Tj/g, "");
-        const decoded = decodePdfHexString(hex);
-        if (decoded.trim()) texts.push(decoded.trim());
-      }
-
-      // 3. Array text: [(Text) 20 <Hex>] TJ
-      const arrayTjMatches = decompressed.match(/\[(.*?)\]\s*TJ/g) || [];
-      for (const atj of arrayTjMatches) {
-        const inside = atj.slice(1, atj.lastIndexOf("]"));
-        const tokens = inside.match(/\(.*?\)|<[0-9a-fA-F]+>/g) || [];
-        const lineParts: string[] = [];
-        for (const token of tokens) {
-          if (token.startsWith("(")) {
-            lineParts.push(token.slice(1, -1));
-          } else if (token.startsWith("<")) {
-            lineParts.push(decodePdfHexString(token.slice(1, -1)));
-          }
-        }
-        const combined = lineParts.join("").trim();
-        if (combined) texts.push(combined);
+      const extracted = extractTextFromPdfStream(decompressed);
+      if (extracted) {
+        texts.push(extracted);
       }
     }
   }
@@ -169,26 +289,45 @@ export async function parseInboundDocument(
     switch (kind) {
       case "pdf": {
         let pdfText = "";
-        try {
-          const parser =
-            typeof pdfParse === "function"
-              ? pdfParse
-              : (pdfParse as unknown as { default: typeof pdfParse }).default;
+        let pageCount = 1;
 
-          const data = await parser(buffer);
-          if (data && data.text && data.text.trim()) {
-            pdfText = data.text.replace(/\r\n/g, "\n").trim();
-            metadata.pageCount = data.numpages || 1;
+        // 1. Try pdf-lib stream traversal (handles modern PDFs, multi-filter ASCII85 + Flate, ReportLab)
+        try {
+          const pdfLibResult = await extractPdfWithPdfLib(buffer);
+          if (pdfLibResult.text.trim()) {
+            pdfText = pdfLibResult.text.trim();
+          }
+          if (pdfLibResult.pageCount > 0) {
+            pageCount = pdfLibResult.pageCount;
           }
         } catch {
-          // pdf-parse threw or could not decompress; fallback to native stream extraction
+          // pdf-lib traversal failed or was encrypted; fallback to pdfParse
         }
 
+        // 2. Fallback to pdfParse if pdf-lib yielded no text
+        if (!pdfText) {
+          try {
+            const parser =
+              typeof pdfParse === "function"
+                ? pdfParse
+                : (pdfParse as unknown as { default: typeof pdfParse }).default;
+
+            const data = await parser(buffer);
+            if (data && data.text && data.text.trim()) {
+              pdfText = data.text.replace(/\r\n/g, "\n").trim();
+              pageCount = data.numpages || pageCount;
+            }
+          } catch {
+            // pdfParse threw
+          }
+        }
+
+        // 3. Fallback to raw stream regex if both failed
         if (!pdfText) {
           pdfText = extractPdfStreamText(buffer);
-          metadata.pageCount = 1;
         }
 
+        metadata.pageCount = pageCount;
         text = pdfText;
         break;
       }

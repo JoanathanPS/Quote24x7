@@ -87,12 +87,13 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   let networkCount = 0;
   let networkEvidence: string | null = null;
   const netMentioned =
-    /\b(?:network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?))?|switches?|routers?|firewalls?)\b/i.test(text);
+    /\b(?:network\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?|hardware|equipment|appliances?)|switches?|routers?|firewalls?)\b/i.test(text) ||
+    (/\bnetwork\s+monitoring\b/i.test(text) && !/\b(?:cpu|memory|disk|processes?)\b/i.test(text));
 
   const netMatch =
-    text.match(/(\d+)\s*(?:[a-z\s]{0,30}?)\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)\b/i) ||
-    text.match(/(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*(\d+)/i) ||
-    text.match(/(?:network(?:\s+devices?)?|switches?|routers?)\s*(?:count|total|:|=|,|\||\t)\s*(\d+)/i);
+    text.match(/(\d+)\s*(?:[a-z\s]{0,30}?)\b(?:network(?:\s+devices?|\s+interfaces?|\s+components?)?|switches?|routers?|firewalls?|interfaces?)\b/i) ||
+    text.match(/(?:network(?:\s+devices?|\s+interfaces?|\s+components?)?|switches?|routers?|firewalls?|interfaces?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*(\d+)/i) ||
+    text.match(/(?:network(?:\s+devices?|\s+interfaces?|\s+components?)?|switches?|routers?)\s*(?:count|total|:|=|,|\||\t)\s*(\d+)/i);
 
   if (netMatch && netMatch[1]) {
     networkCount = parseInt(netMatch[1], 10);
@@ -141,7 +142,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     text.match(/(?:advanced|synthetic|transaction)\s*(?:monitors?|endpoints?|checks?)\s*(?:count|total|:|=|,|\||\t)\s*(\d+)/i);
 
   const appApmMatch =
-    text.match(/(\d+)\s*(?:[a-z\s]{0,15}?)\b(?:java|node(?:\.js)?|python|\.net|php|ruby|go)?\s*(?:apps?|applications?|apm(?:\s+instances?|\s+monitors?)?)\b/i) ||
+    text.match(/(\d+)\s*(?:(?!gb|tb|mb)[a-z\s]){0,15}\b(?:java|node(?:\.js)?|python|\.net|php|ruby|go)?\s*(?:apps?|applications?|apm(?:\s+instances?|\s+monitors?)?)\b(?!\s*(?:logs?|logging|data))/i) ||
     text.match(/(?:java|node(?:\.js)?|python|\.net|php|ruby|go|apm)\s*(?:apps?|applications?|instances?)\s*(?:count|total|:|=|,|\||\t)\s*(\d+)/i);
 
   if (advMatch && advMatch[1]) {
@@ -521,7 +522,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   if (orgMatch && orgMatch[1]) {
     organization = orgMatch[1].trim();
-  } else if (input.senderEmail.includes("@") && !input.senderEmail.endsWith("@gmail.com") && !input.senderEmail.endsWith("@yahoo.com")) {
+  } else if (input?.senderEmail && input.senderEmail.includes("@") && !input.senderEmail.endsWith("@gmail.com") && !input.senderEmail.endsWith("@yahoo.com")) {
     const domainPart = input.senderEmail.split("@")[1]?.split(".")[0];
     if (domainPart) {
       organization = domainPart.charAt(0).toUpperCase() + domainPart.slice(1);

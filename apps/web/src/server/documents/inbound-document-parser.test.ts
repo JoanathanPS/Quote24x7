@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import zlib from "node:zlib";
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
 import { PDFDocument, StandardFonts } from "pdf-lib";
@@ -80,6 +81,66 @@ describe("Inbound Document Parser (Word, PDF, Excel)", () => {
     assert.ok(parsed.text.includes("25 Linux and Windows server hosts"));
     assert.ok(parsed.text.includes("5 website uptime checks"));
     assert.equal(parsed.metadata.pageCount, 1);
+  });
+
+  it("extracts text from multi-filter (ASCII85Decode + FlateDecode / ReportLab) PDFs", async () => {
+    // Construct a minimal valid PDF containing an ASCII85 + Flate compressed stream
+    const rawText = "BT /F1 12 Tf (Servers / Virtual hosts to monitor: 35) Tj T* (Basic ping / port checks: 15) Tj ET";
+    const compressed = zlib.deflateSync(Buffer.from(rawText, "latin1"));
+    let a85 = "";
+    for (let i = 0; i < compressed.length; i += 4) {
+      const chunk = compressed.subarray(i, i + 4);
+      let val = 0;
+      for (let j = 0; j < 4; j++) {
+        val = val * 256 + (j < chunk.length ? (chunk[j] ?? 0) : 0);
+      }
+      const chars: string[] = [];
+      for (let j = 0; j < 5; j++) {
+        chars.unshift(String.fromCharCode((val % 85) + 33));
+        val = Math.floor(val / 85);
+      }
+      a85 += chars.join("").slice(0, chunk.length + 1);
+    }
+    const streamContent = `<~${a85}~>`;
+    const pdfData = [
+      "%PDF-1.4",
+      "1 0 obj",
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "endobj",
+      "2 0 obj",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "endobj",
+      "3 0 obj",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>",
+      "endobj",
+      "4 0 obj",
+      `<< /Length ${streamContent.length} /Filter [ /ASCII85Decode /FlateDecode ] >>`,
+      "stream",
+      `${streamContent}endstream`,
+      "endobj",
+      "xref",
+      "0 5",
+      "0000000000 65535 f ",
+      "0000000009 00000 n ",
+      "0000000058 00000 n ",
+      "0000000115 00000 n ",
+      "0000000282 00000 n ",
+      "trailer",
+      "<< /Size 5 /Root 1 0 R >>",
+      "startxref",
+      "450",
+      "%%EOF",
+    ].join("\n");
+
+    const parsed = await parseInboundDocument({
+      filename: "reportlab_requirements.pdf",
+      contentType: "application/pdf",
+      buffer: Buffer.from(pdfData, "latin1"),
+    });
+
+    assert.equal(parsed.documentKind, "pdf");
+    assert.ok(parsed.text.includes("Servers / Virtual hosts to monitor: 35"));
+    assert.ok(parsed.text.includes("Basic ping / port checks: 15"));
   });
 
   it("extracts text from genuine Word (.docx) documents", async () => {
