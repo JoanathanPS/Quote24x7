@@ -5,6 +5,7 @@ import {
   renderClarificationEmail,
   renderQuoteEmail,
   extractClarificationQuestions,
+  runPreSendChecks,
 } from "./resend-outbound.ts";
 import { loadActiveCatalogue } from "../catalogue/loader.ts";
 import { buildQuote } from "../pricing/quote-builder.ts";
@@ -260,4 +261,58 @@ test("Phase 8 - No hallucinated text: Only verified parameters and catalogue rat
   // No invented discounts or capacity points
   assert.equal(textContent.includes("Capacity Points"), false);
   assert.equal(textContent.includes("special discount"), false);
+});
+
+test("Pre-send checker catches all banned phrases", () => {
+  const bannedSamples = [
+    "Dear Valued Customer",
+    "Autonomous Sales Desk",
+    "Sizing Clarification Required",
+    "SIZING QUESTIONS below",
+    "Quote24x7 Sales Desk",
+    "Operations & Solutions Team",
+    "Enterprise Solutions team",
+    "Billing Cadence: annual",
+    "Total Billed Today: ₹87,210",
+    "rate of 855 paise per month",
+    "📎 PDF attached",
+  ];
+
+  for (const sample of bannedSamples) {
+    const result = runPreSendChecks(sample);
+    assert.equal(result.passed, false, `Should reject: "${sample}"`);
+    assert.ok(result.violations.length > 0, `Should have violations for: "${sample}"`);
+  }
+
+  const cleanResult = runPreSendChecks("Hi there, here is your quotation for Site24x7 monitoring.");
+  assert.equal(cleanResult.passed, true, "Clean content should pass");
+  assert.equal(cleanResult.violations.length, 0);
+});
+
+test("Pre-send checker passes on all rendered quote and clarification emails", () => {
+  const demand = { ...emptyDemand(), host_monitor: 25 };
+  const { quote } = buildQuote({
+    quoteId: "qt_presend",
+    threadId: "th_presend",
+    profile: makeProfile(),
+    demand,
+    catalogue,
+    createdAt: new Date().toISOString(),
+  });
+
+  const quoteRendered = renderQuoteEmail({
+    recipientName: "Test User",
+    quote,
+    threadId: "th_presend",
+  });
+  const quoteCheck = runPreSendChecks(quoteRendered.textContent + "\n" + quoteRendered.htmlContent);
+  assert.equal(quoteCheck.passed, true, `Quote email should pass pre-send checks. Violations: ${quoteCheck.violations.join(", ")}`);
+
+  const clarRendered = renderClarificationEmail({
+    recipientName: "Test User",
+    questionText: "How many servers do you need monitored?",
+    threadId: "th_presend",
+  });
+  const clarCheck = runPreSendChecks(clarRendered.textContent + "\n" + clarRendered.htmlContent);
+  assert.equal(clarCheck.passed, true, `Clarification email should pass pre-send checks. Violations: ${clarCheck.violations.join(", ")}`);
 });
