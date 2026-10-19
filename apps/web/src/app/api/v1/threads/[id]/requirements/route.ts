@@ -17,10 +17,7 @@ export async function GET(
 
   const profile = store.getProfile(id);
   if (!profile) {
-    return NextResponse.json(
-      { error: `No requirement profile found for thread: ${id}` },
-      { status: 404 },
-    );
+    return NextResponse.json(null);
   }
 
   return NextResponse.json(profile);

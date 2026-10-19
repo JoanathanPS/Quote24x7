@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   AiDecisionRecord,
   DeliveryRecord,
@@ -184,7 +185,7 @@ class SessionStore {
     if (this.isTestEnvironment()) return;
 
     // Load bundled baseline store in local development if present
-    const dir = typeof __dirname !== "undefined" ? __dirname : path.dirname(new URL(import.meta.url).pathname);
+    const dir = path.dirname(fileURLToPath(import.meta.url));
     const candidateBaselinePaths = [
       path.resolve(process.cwd(), "src", "server", "fixtures", "baseline-store.json"),
       path.resolve(process.cwd(), "apps", "web", "src", "server", "fixtures", "baseline-store.json"),

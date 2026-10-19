@@ -23,6 +23,7 @@ export function useThreads(params?: Record<string, string | undefined>) {
   return useQuery({
     queryKey: ["threads", params],
     queryFn: () => apiGet<EmailThread[]>("/api/v1/threads", params),
+    refetchInterval: 4000,
   });
 }
 
@@ -31,6 +32,7 @@ export function useThread(id: string) {
     queryKey: ["threads", id],
     queryFn: () => apiGet<EmailThread>(`/api/v1/threads/${id}`),
     enabled: !!id,
+    refetchInterval: 4000,
   });
 }
 
@@ -39,6 +41,7 @@ export function useThreadMessages(threadId: string) {
     queryKey: ["threads", threadId, "messages"],
     queryFn: () => apiGet<EmailMessage[]>(`/api/v1/threads/${threadId}/messages`),
     enabled: !!threadId,
+    refetchInterval: 4000,
   });
 }
 
@@ -47,6 +50,7 @@ export function useThreadRequirements(threadId: string) {
     queryKey: ["threads", threadId, "requirements"],
     queryFn: () => apiGet<RequirementProfile>(`/api/v1/threads/${threadId}/requirements`),
     enabled: !!threadId,
+    refetchInterval: 4000,
   });
 }
 

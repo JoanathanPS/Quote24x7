@@ -5,6 +5,7 @@ import { store } from "../store/session-store.ts";
 import { dryRunStore } from "../store/dryrun-store.ts";
 import { formatMoney } from "../pricing/money.ts";
 import { loadActiveCatalogue } from "../catalogue/loader.ts";
+import { buildComparisonLine } from "../pricing/engine.ts";
 
 const BANNED_PHRASES = [
   /valued customer/i,
@@ -152,6 +153,23 @@ export interface OutboundDispatchResult {
   mode: "live" | "dry_run";
   error?: string;
   dispatchedTo: string;
+}
+
+/**
+ * The single subject every outbound in a thread must carry.
+ *
+ * Email clients (Gmail in particular) group messages by subject. Any suffix
+ * added here — a ref, a "Clarification Needed" tag, a quote id — splits the
+ * reply into a brand-new thread, which is exactly the failure this guards
+ * against. Every outbound in a thread therefore uses exactly:
+ *
+ *     Re: <original subject>
+ *
+ * with a single "Re:" and nothing else.
+ */
+export function resolveThreadSubject(originalSubject: string): string {
+  const cleaned = originalSubject.replace(/^(?:re|fwd):\s*/gi, "").trim();
+  return `Re: ${cleaned}`;
 }
 
 /**
@@ -471,7 +489,9 @@ async function dispatchEmail(input: DispatchInput): Promise<OutboundDispatchResu
 }
 
 /**
- * Deterministically renders the plain text and responsive HTML quotation email.
+ * Deterministically renders the plain text and plain HTML quotation email.
+ * Table columns: Item | Qty | What it covers | Per year.
+ * HTML uses only p, br, ul, ol, li, strong, a, table — no logo, banner or coloured boxes.
  */
 export function renderQuoteEmail(input: {
   recipientName?: string | null;
@@ -498,52 +518,45 @@ export function renderQuoteEmail(input: {
 
   const catalogue = loadActiveCatalogue();
   const plan = catalogue.plans.find((p) => p.id === bestValue?.planId);
-  const planMonthlyRate =
-    plan?.priceMonthlyAnnualBilled ??
-    plan?.basePrice ??
-    (bestValue?.lineItems?.[0]?.lineTotal
-      ? Math.floor(bestValue.lineItems[0].lineTotal / 12)
-      : 0);
-  const totalAmount = formatMoney(bestValue?.total ?? 0, input.quote.currency);
-
   const planName = bestValue?.planName ?? "Recommended Plan";
-  const cadenceString = `annual upfront, quoted as equivalent per-month rate of ${formatMoney(planMonthlyRate, input.quote.currency)} plus add-ons; total amount is ${totalAmount}`;
-
+  const totalAmount = formatMoney(bestValue?.total ?? 0, input.quote.currency);
   const lineItems = bestValue?.lineItems ?? [];
+
+  const rows = lineItems.map((item) => {
+    const isBase = item.ruleId === "RULE-BASE-PRICE";
+    const monthlyRate =
+      plan?.priceMonthlyAnnualBilled ??
+      plan?.basePrice ??
+      (item.lineTotal ? Math.floor(item.lineTotal / 12) : 0);
+    const name = isBase
+      ? `${planName} plan (${formatMoney(monthlyRate, input.quote.currency)}/mo x 12months)`
+      : item.description;
+    const purchased = item.purchasedUnits ?? item.quantity * (item.packSize ?? 1);
+    const qty = isBase ? "1" : purchased.toLocaleString("en-IN");
+    const packSize = item.packSize ?? 1;
+    const covers = isBase
+      ? "Base entitlements"
+      : `${packSize.toLocaleString("en-IN")} per pack x ${item.quantity}`;
+    return { name, qty, covers, total: formatMoney(item.lineTotal, input.quote.currency) };
+  });
+
+  const sep = "--------------------------------------------------------------------------------";
   const textTableLines = [
-    "Itemized Pricing Table:",
-    "Item | Included | Purchased | Pack Size | Packs | Annual (INR)",
-    "--------------------------------------------------------------------------------",
-    ...lineItems.map((item) => {
-      const isBase = item.ruleId === "RULE-PLAN-BASE";
-      const name = isBase ? `${planName} Base Subscription` : item.description;
-      const includedUnits = isBase ? "Base entitlements" : (item.includedQuantity ?? 0).toLocaleString("en-IN");
-      const purchasedUnits = (item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1))).toLocaleString("en-IN");
-      const packSize = (item.packSize ?? 1).toLocaleString("en-IN");
-      const packCount = String(item.quantity);
-      const lineTotal = formatMoney(item.lineTotal, input.quote.currency);
-      return `${name} | ${includedUnits} | ${purchasedUnits} | ${packSize} | ${packCount} | ${lineTotal}`;
-    }),
-    "--------------------------------------------------------------------------------",
-    `Total: ${totalAmount}`,
+    "Item | Qty | What it covers | Per year",
+    sep,
+    ...rows.map((r) => `${r.name} | ${r.qty} | ${r.covers} | ${r.total}`),
+    sep,
+    `Total | | | ${totalAmount}`,
   ];
 
-  const calculationNote = "Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.";
-
   let comparisonLine: string | null = null;
-  if (lowestCost && lowestCost.planId !== bestValue?.planId) {
-    const feature =
-      bestValue?.whatItAdds && bestValue.whatItAdds.length > 0
-        ? bestValue.whatItAdds[0]
-        : "additional monitor headroom";
-    comparisonLine = `A lighter configuration on ${lowestCost.planName} would cost ${formatMoney(lowestCost.total, input.quote.currency)}, but leaves no headroom for ${feature}.`;
+  if (lowestCost && bestValue && lowestCost.planId !== bestValue.planId) {
+    comparisonLine = buildComparisonLine(lowestCost, bestValue);
   }
 
-  const pdfNotice = `Your official quotation document (PDF) is attached: Quote24x7-Proposal-${input.quote.id}.pdf`;
-  const disclaimer = "Disclaimer: quotes generated against current Site24x7 India pricing and final checkout occurs via Zoho Store.";
-  const prompt = "Reply to this email if you'd like to adjust counts, add capabilities, or change billing frequency.";
+  const pdfFilename = `Site24x7-estimate-${input.quote.id}.pdf`;
 
-  const textParts = [
+  const textContent = [
     greeting,
     "",
     "Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your quotation.",
@@ -551,158 +564,74 @@ export function renderQuoteEmail(input: {
     "Summary of understood requirements:",
     ...understoodLines,
     "",
-    `Selected plan: ${planName}`,
-    `Billing: ${cadenceString}`,
+    `For your setup, the lowest-priced option is ${planName} at ${totalAmount} per year.`,
     "",
     textTableLines.join("\n"),
     "",
-    calculationNote,
+    "Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.",
     ...(comparisonLine ? ["", comparisonLine] : []),
     "",
-    pdfNotice,
+    `Your official quotation document (PDF) is attached: ${pdfFilename}`,
     "",
-    disclaimer,
+    "Estimate valid 30 days. Costs in INR; local taxes extra; final price confirmed by Site24x7 at purchase.",
     "",
-    prompt,
+    "Reply to this email if you'd like to adjust counts, add capabilities, or change billing frequency.",
     "",
-    "Best regards,",
     "Quote24x7 Assistant",
-  ];
+    `Ref ${input.quote.id}`,
+  ].join("\n").trim();
 
-  const textContent = textParts.join("\n").trim();
-
-  const htmlTableRows = lineItems
-    .map((item) => {
-      const isBase = item.ruleId === "RULE-PLAN-BASE";
-      const name = isBase ? `${planName} Base Subscription` : item.description;
-      const includedUnits = isBase ? "Base entitlements" : (item.includedQuantity ?? 0).toLocaleString("en-IN");
-      const purchasedUnits = (item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1))).toLocaleString("en-IN");
-      const packSize = (item.packSize ?? 1).toLocaleString("en-IN");
-      const packCount = String(item.quantity);
-      const lineTotal = formatMoney(item.lineTotal, input.quote.currency);
-
-      return `      <tr style="border-bottom: 1px solid #e2e8f0;">
-        <td style="padding: 10px; color: #0f172a; font-weight: ${isBase ? "600" : "normal"};">${escapeHtml(name)}</td>
-        <td style="padding: 10px; color: #64748b; text-align: right;">${escapeHtml(includedUnits)}</td>
-        <td style="padding: 10px; color: #0f172a; text-align: right;">${escapeHtml(purchasedUnits)}</td>
-        <td style="padding: 10px; color: #64748b; text-align: right;">${escapeHtml(packSize)}</td>
-        <td style="padding: 10px; color: #0f172a; text-align: right;">${escapeHtml(packCount)}</td>
-        <td style="padding: 10px; color: #0f172a; text-align: right; font-weight: 600;">${escapeHtml(lineTotal)}</td>
-      </tr>`;
-    })
+  const htmlRows = rows
+    .map(
+      (r) =>
+        `<tr><td>${escapeHtml(r.name)}</td><td style="text-align:right;">${escapeHtml(r.qty)}</td><td>${escapeHtml(r.covers)}</td><td style="text-align:right;">${escapeHtml(r.total)}</td></tr>`,
+    )
     .join("\n");
 
   const htmlUnderstoodList = understoodLines
-    .map((l) => `<li style="margin-bottom: 4px;">${escapeHtml(l.replace(/^•\s*/, ""))}</li>`)
-    .join("\n");
+    .map((l) => `<li>${escapeHtml(l.replace(/^•\s*/, ""))}</li>`)
+    .join("");
 
-  const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; margin: 0; padding: 24px; background-color: #f8fafc; }
-    .container { max-width: 680px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    .header { border-bottom: 2px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; }
-    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
-    .ref { font-size: 12px; color: #64748b; font-family: monospace; margin-top: 4px; }
-    .requirements-box { background: #f8fafc; border-left: 4px solid #2563eb; border-radius: 4px; padding: 14px 18px; margin: 18px 0; }
-    .table-container { margin: 20px 0; overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th { background-color: #f1f5f9; padding: 10px; color: #334155; font-weight: 600; border-bottom: 2px solid #cbd5e1; }
-    .note { font-size: 12px; color: #64748b; margin-top: 8px; font-style: italic; }
-    .comparison-box { background: #fefce8; border-left: 4px solid #eab308; border-radius: 4px; padding: 12px 16px; margin: 18px 0; font-size: 13px; color: #713f12; }
-    .attachment-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #1e40af; margin: 20px 0; }
-    .disclaimer { font-size: 11px; color: #64748b; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 16px; line-height: 1.5; }
-    .reply-prompt { font-size: 14px; font-weight: 500; color: #0f172a; margin: 20px 0; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header" style="border-bottom: 2px solid #0070ea; padding-bottom: 16px; margin-bottom: 24px;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0">
-        <tr>
-          <td align="left" valign="middle">
-            <a href="https://quotes.joanathan.in/" target="_blank" style="text-decoration: none; display: inline-block;">
-              <img src="https://quotes.joanathan.in/logo.png" alt="Quote24x7" width="160" height="auto" style="display: block; max-width: 160px; height: auto; border: 0;" />
-            </a>
-          </td>
-          <td align="right" valign="middle">
-            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #0070ea; letter-spacing: 0.5px;">Commercial Proposal</div>
-            <div class="ref" style="margin-top: 2px;">Proposal #${escapeHtml(input.quote.id)}</div>
-          </td>
-        </tr>
-      </table>
-    </div>
-
-    <p>${escapeHtml(greeting)}</p>
-    <p>Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your quotation.</p>
-
-    <div class="requirements-box">
-      <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: #1e40af; letter-spacing: 0.5px; margin-bottom: 6px;">Summary of Understood Requirements</div>
-      <ul style="margin: 0; padding-left: 18px; color: #334155; font-size: 13px;">
-${htmlUnderstoodList}
-      </ul>
-    </div>
-
-    <div style="margin: 18px 0;">
-      <div style="font-size: 15px; font-weight: 700; color: #0f172a;">Selected Plan: ${escapeHtml(planName)}</div>
-      <div style="font-size: 13px; color: #475569; margin-top: 4px;"><strong>Billing:</strong> ${escapeHtml(cadenceString)}</div>
-    </div>
-
-    <div class="table-container">
-      <table>
-        <thead>
-          <tr>
-            <th style="text-align: left;">Item</th>
-            <th style="text-align: right;">Included</th>
-            <th style="text-align: right;">Purchased</th>
-            <th style="text-align: right;">Pack Size</th>
-            <th style="text-align: right;">Packs</th>
-            <th style="text-align: right;">Annual (INR)</th>
-          </tr>
-        </thead>
-        <tbody>
-${htmlTableRows}
-          <tr style="border-top: 2px solid #0f172a; font-weight: 700; background-color: #f8fafc;">
-            <td colspan="5" style="padding: 12px 10px;">Total</td>
-            <td style="padding: 12px 10px; text-align: right; color: #2563eb; font-size: 15px;">${escapeHtml(totalAmount)}</td>
-          </tr>
-        </tbody>
-      </table>
-      <div class="note">${escapeHtml(calculationNote)}</div>
-    </div>
-
-${
-  comparisonLine
-    ? `    <div class="comparison-box">
-      <strong>Alternative Comparison:</strong> ${escapeHtml(comparisonLine)}
-    </div>`
-    : ""
-}
-
-    <div class="attachment-box">
-      <strong>PDF Attached:</strong> ${escapeHtml(pdfNotice)}
-    </div>
-
-    <div class="reply-prompt">
-      ${escapeHtml(prompt)}
-    </div>
-
-    <div class="disclaimer">
-      ${escapeHtml(disclaimer)}
-    </div>
-  </div>
-</body>
-</html>`.trim();
+  const htmlContent = [
+    "<!DOCTYPE html>",
+    "<html>",
+    '<meta charset="utf-8">',
+    '<body style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;max-width:600px;margin:0 auto;padding:16px;">',
+    `<p>${escapeHtml(greeting)}</p>`,
+    "<p>Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your quotation.</p>",
+    "<p><strong>Summary of understood requirements:</strong></p>",
+    `<ul>${htmlUnderstoodList}</ul>`,
+    `<p>For your setup, the lowest-priced option is <strong>${escapeHtml(planName)}</strong> at <strong>${escapeHtml(totalAmount)}</strong> per year.</p>`,
+    '<table style="width:100%;border-collapse:collapse;">',
+    '<thead><tr style="border-bottom:1px solid #999;">',
+    '<th style="text-align:left;padding:6px 4px;">Item</th>',
+    '<th style="text-align:right;padding:6px 4px;">Qty</th>',
+    '<th style="text-align:left;padding:6px 4px;">What it covers</th>',
+    '<th style="text-align:right;padding:6px 4px;">Per year</th>',
+    "</tr></thead>",
+    "<tbody>",
+    htmlRows,
+    '<tr style="border-top:1px solid #333;font-weight:bold;">',
+    '<td colspan="3" style="padding:8px 4px;">Total</td>',
+    `<td style="text-align:right;padding:8px 4px;">${escapeHtml(totalAmount)}</td>`,
+    "</tr></tbody>",
+    "</table>",
+    "<p>Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.</p>",
+    ...(comparisonLine ? [`<p><strong>Alternative:</strong> ${escapeHtml(comparisonLine)}</p>`] : []),
+    `<p>Your official quotation document (PDF) is attached: <em>${escapeHtml(pdfFilename)}</em></p>`,
+    "<p>Estimate valid 30 days. Costs in INR; local taxes extra; final price confirmed by Site24x7 at purchase.</p>",
+    "<p>Reply to this email if you'd like to adjust counts, add capabilities, or change billing frequency.</p>",
+    "<hr>",
+    `<p style="font-size:12px;color:#666;">Quote24x7 Assistant<br>Ref ${escapeHtml(input.quote.id)}</p>`,
+    "</body>",
+    "</html>",
+  ].join("\n");
 
   return { textContent, htmlContent };
 }
 
 export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<OutboundDispatchResult> {
-  const cleanSub = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
-  const subject = `Re: ${cleanSub} - Proposal Ref #${input.quote.id} [Ref: #${input.thread.id}]`;
+  const subject = resolveThreadSubject(input.thread.subject);
 
   const { textContent, htmlContent } = renderQuoteEmail({
     recipientName: input.recipientName,
@@ -719,7 +648,7 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
     htmlContent,
     attachments: [
       {
-        filename: `Quote24x7-Proposal-${input.quote.id}.pdf`,
+        filename: `Site24x7-estimate-${input.quote.id}.pdf`,
         content: input.pdfBuffer,
       },
     ],
@@ -832,8 +761,7 @@ export function renderClarificationEmail(input: {
 export async function sendClarificationEmail(
   input: SendClarificationEmailInput
 ): Promise<OutboundDispatchResult> {
-  const cleanSubject = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
-  const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Clarification Needed`;
+  const subject = resolveThreadSubject(input.thread.subject);
 
   const { textContent, htmlContent } = renderClarificationEmail({
     recipientName: input.recipientName,
@@ -855,8 +783,7 @@ export async function sendClarificationEmail(
 export async function sendNonSubstantiveReplyEmail(
   input: SendNonSubstantiveReplyEmailInput
 ): Promise<OutboundDispatchResult> {
-  const cleanSubject = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
-  const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}]`;
+  const subject = resolveThreadSubject(input.thread.subject);
 
   const textContent = `
 Hi ${input.recipientName || "there"},
@@ -882,8 +809,7 @@ https://quotes.joanathan.in/
 export async function sendFinalYieldEmail(
   input: SendFinalYieldEmailInput
 ): Promise<OutboundDispatchResult> {
-  const cleanSubject = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
-  const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Information Needed`;
+  const subject = resolveThreadSubject(input.thread.subject);
 
   const missingList = input.missingUnits.length > 0
     ? input.missingUnits.map((u) => `• ${u}`).join("\n")
@@ -894,13 +820,13 @@ Hi ${input.recipientName || "there"},
 
 Thank you for contacting us regarding Site24x7 monitoring.
 
-To provide an accurate quotation without gaps, our team still needs your specific requirements for:
+To provide an accurate quotation without gaps, I still need your specific requirements for:
 ${missingList}
 
 You can also explore plans and calculate custom configurations directly on the Site24x7 pricing calculator:
 https://www.site24x7.in/pricing.html
 
-We have parked this inquiry for sales engineering review. If your requirements change or you have these counts available, simply reply to this email and we will be happy to assist.
+If you reply with those counts I'll continue right away. You can also use Site24x7's price calculator or contact Site24x7 sales at sales@site24x7.com.
 
 Best regards,
 Quote24x7 Assistant
@@ -919,8 +845,7 @@ https://quotes.joanathan.in/
 export async function sendUnpriceableNotificationEmail(
   input: SendUnpriceableNotificationEmailInput
 ): Promise<OutboundDispatchResult> {
-  const cleanSubject = input.thread.subject.replace(/^(?:re|fwd):\s*/i, "").trim();
-  const subject = `Re: ${cleanSubject} [Ref: #${input.thread.id}] - Custom Pricing Notice`;
+  const subject = resolveThreadSubject(input.thread.subject);
 
   const reasonList = input.rejectionReasons.map((r) => `• ${r}`).join("\n");
 
@@ -929,13 +854,11 @@ Hi ${input.recipientName || "there"},
 
 Thank you for contacting Quote24x7 regarding Site24x7 monitoring.
 
-Our automated pricing engine evaluated your requirements against active Site24x7 plans and add-on packs. However, we are unable to generate an automated quotation for your request due to the following constraint(s):
+Our automated pricing system evaluated your requirements against active Site24x7 plans and add-on packs. However, we are unable to generate an automated quotation for your request due to the following:
 
 ${reasonList}
 
-What happens next:
-1. Your request has been escalated to our team for manual sizing and custom volume pricing.
-2. If your requirements can be adjusted or clarified, you may reply directly to this email to trigger an updated calculation.
+If your requirements can be adjusted or clarified, reply to this email and I will recalculate. You can also contact Site24x7 sales at sales@site24x7.com or use their price calculator.
 
 We appreciate your patience and look forward to assisting you.
 

@@ -3,6 +3,7 @@ import { processInboundEmail, type InboundEmailPayload } from "@/server/email/in
 import { verifyWebhookSignature, fetchInboundEmailContent } from "@/server/email/resend-inbound";
 import { getAppConfig } from "@/server/config";
 import { store } from "@/server/store/session-store";
+import { handleDeliveryTrackingEvent } from "@/server/email/delivery-tracker";
 
 /**
  * Inbound Email Webhook & Simulator API.
@@ -86,6 +87,11 @@ export async function POST(request: NextRequest) {
           { status: 200 }
         );
       }
+    }
+
+    // If delivery event (e.g. email.delivered, email.bounced, email.sent), process via delivery tracker
+    if (eventType && eventType !== "email.received" && eventType.startsWith("email.")) {
+      return handleDeliveryTrackingEvent(eventType, body, eventData);
     }
 
     // Early idempotency check for Resend email_id before fetching full email content

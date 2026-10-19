@@ -1,6 +1,7 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import type { Quote, EmailThread, CurrencyCode } from "@/types/domain";
 import { formatMoney } from "../pricing/money.ts";
+import { buildComparisonLine } from "../pricing/engine.ts";
 
 export interface RenderPdfOptions {
   quote: Quote;
@@ -420,11 +421,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
   // One Alternative Line (if available)
   const lowestCost = quote.options.find((o) => o.optionType === "lowest_cost");
   if (lowestCost && lowestCost.planId !== activeOption.planId) {
-    const feature =
-      activeOption.whatItAdds && activeOption.whatItAdds.length > 0
-        ? activeOption.whatItAdds[0]
-        : "additional monitor headroom";
-    const compText = `Alternative: A lighter configuration on ${lowestCost.planName} costs ${formatPdfMoney(lowestCost.total, quote.currency)}, but leaves no headroom for ${feature}.`;
+    const compText = `Alternative: ${buildComparisonLine(lowestCost, activeOption)}`;
 
     page.drawText(safePdfText(compText), {
       x: margin + 4,

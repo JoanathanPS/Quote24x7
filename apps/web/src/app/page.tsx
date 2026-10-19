@@ -103,10 +103,10 @@ export default function InboxPage() {
       }
       if (search.trim()) {
         const q = search.toLowerCase();
-        const matchesSender = t.senderEmail.toLowerCase().includes(q);
+        const matchesSender = t.senderEmail?.toLowerCase().includes(q) ?? false;
         const matchesName = t.senderName?.toLowerCase().includes(q) ?? false;
         const matchesOrg = t.organisation?.toLowerCase().includes(q) ?? false;
-        const matchesSubject = t.subject.toLowerCase().includes(q);
+        const matchesSubject = t.subject?.toLowerCase().includes(q) ?? false;
         return matchesSender || matchesName || matchesOrg || matchesSubject;
       }
       return true;
@@ -362,13 +362,19 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
 
   const statusInfo = getHumanStatus(thread.status);
 
-  // Format extracted parameters helper
-  const extractedHosts = requirements?.fields.find((f) => f.key === "host_count")?.value;
-  const extractedNetwork = requirements?.fields.find((f) => f.key === "network_device_count")?.value;
-  const extractedSynthetic = requirements?.fields.find((f) => f.key === "synthetic_monitors_count")?.value;
-  const extractedRum = requirements?.fields.find((f) => f.key === "rum_pageviews_monthly")?.value;
-  const extractedLogs = requirements?.fields.find((f) => f.key === "applogs_gb_monthly")?.value;
-  const extractedBilling = requirements?.fields.find((f) => f.key === "billing_cycle")?.value;
+  // Format extracted parameters helper with support for domain keys and legacy keys
+  const getFieldVal = (keys: string[]) => {
+    const f = requirements?.fields.find((item) => keys.includes(item.key));
+    return f && f.state !== "missing" ? f.value : null;
+  };
+
+  const extractedHosts = getFieldVal(["servers", "host_count"]);
+  const extractedNetwork = getFieldVal(["network_devices", "network_device_count"]);
+  const extractedSynthetic = getFieldVal(["advanced_monitors", "synthetic_monitors_count"]);
+  const extractedBasic = getFieldVal(["basic_monitors"]);
+  const extractedRum = getFieldVal(["rum_pageviews", "rum_pageviews_monthly"]);
+  const extractedLogs = getFieldVal(["applogs_volume", "applogs_gb_monthly"]);
+  const extractedBilling = getFieldVal(["billing_period", "billing_cycle"]);
 
   const missingFields = requirements?.fields.filter((f) => f.state === "missing") ?? [];
 
@@ -472,6 +478,12 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
               <span className="inline-flex items-center gap-1 rounded bg-muted/60 border border-border px-2 py-0.5 text-[11px] text-foreground font-mono">
                 <Globe className="h-3 w-3 text-primary" />
                 {String(extractedSynthetic)} Synthetic
+              </span>
+            )}
+            {extractedBasic != null && (
+              <span className="inline-flex items-center gap-1 rounded bg-muted/60 border border-border px-2 py-0.5 text-[11px] text-foreground font-mono">
+                <Globe className="h-3 w-3 text-primary" />
+                {String(extractedBasic)} Basic Monitors
               </span>
             )}
             {extractedRum != null && (
