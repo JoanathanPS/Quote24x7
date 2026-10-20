@@ -3,13 +3,8 @@
 import * as React from "react";
 import {
   Database,
-  Warning,
   XCircle,
-  FileText,
-  ShieldCheck,
   ArrowsClockwise,
-  ArrowSquareOut,
-  Info,
   Package,
   Stack,
   MagnifyingGlass,
@@ -17,14 +12,11 @@ import {
 
 import { useCatalogues } from "@/hooks/use-api";
 import { formatMoney } from "@/server/pricing/money";
-import { formatDateTime, cn } from "@/lib/utils";
 import type {
   CatalogueVersion,
   Plan,
   AddOnPack,
-  SourceReference,
   UnitKind,
-  VerificationStatus,
 } from "@/types/domain";
 
 import {
@@ -48,24 +40,6 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-
-function getVerificationBadge(status: VerificationStatus): {
-  label: string;
-  variant: "default" | "primary" | "success" | "warning" | "danger" | "info" | "neutral";
-} {
-  switch (status) {
-    case "company_authorized":
-      return { label: "Company Authorized", variant: "success" };
-    case "public_verified":
-      return { label: "Public Verified", variant: "info" };
-    case "screenshot_derived":
-      return { label: "Verified", variant: "info" };
-    case "synthetic_test":
-      return { label: "Synthetic Test", variant: "neutral" };
-    default:
-      return { label: status, variant: "default" };
-  }
-}
 
 function formatUnitKind(unit: UnitKind): string {
   switch (unit) {
@@ -181,7 +155,7 @@ export default function CataloguePage() {
 
       {/* Tabbed Navigation */}
       <Tabs defaultValue="plans" className="w-full space-y-4">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-5 h-auto p-1 bg-muted/70 gap-1 rounded-lg">
+        <TabsList className="grid grid-cols-2 w-full sm:w-[380px] h-auto p-1 bg-muted/70 gap-1 rounded-lg">
           <TabsTrigger value="plans" className="py-2 text-xs">
             <Package className="h-3.5 w-3.5 mr-1.5" />
             Plans ({catalogue.plans.length})
@@ -189,18 +163,6 @@ export default function CataloguePage() {
           <TabsTrigger value="addons" className="py-2 text-xs">
             <Stack className="h-3.5 w-3.5 mr-1.5" />
             Add-On Packs ({catalogue.addOns.length})
-          </TabsTrigger>
-          <TabsTrigger value="sources" className="py-2 text-xs">
-            <FileText className="h-3.5 w-3.5 mr-1.5" />
-            Sources ({catalogue.sources.length})
-          </TabsTrigger>
-          <TabsTrigger value="validation" className="py-2 text-xs">
-            <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />
-            Validation Report
-          </TabsTrigger>
-          <TabsTrigger value="notes" className="py-2 text-xs">
-            <Info className="h-3.5 w-3.5 mr-1.5" />
-            Notes ({catalogue.notes.length})
           </TabsTrigger>
         </TabsList>
 
@@ -449,200 +411,6 @@ export default function CataloguePage() {
               </TableBody>
             </Table>
           </Card>
-        </TabsContent>
-
-        {/* Tab 3: Source Register */}
-        <TabsContent value="sources" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {catalogue.sources.map((source: SourceReference) => {
-              const v = getVerificationBadge(source.verificationStatus);
-              return (
-                <Card key={source.id} className="border-border bg-surface shadow-xs">
-                  <CardHeader className="pb-3 border-b border-border/40">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <CardTitle className="text-sm font-semibold">{source.title}</CardTitle>
-                        </div>
-                        <div className="font-mono text-[11px] text-muted-foreground">
-                          {source.id}
-                        </div>
-                      </div>
-                      <Badge variant={v.variant} className="text-[11px] shrink-0">
-                        {v.label}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-3 space-y-3 text-xs">
-                    <div>
-                      <span className="text-muted-foreground block text-[11px]">Artifact Locator:</span>
-                      <span className="font-mono text-foreground break-all">{source.locator}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 pt-1">
-                      <div>
-                        <span className="text-muted-foreground block text-[11px]">Retrieved At:</span>
-                        <span className="text-foreground">{formatDateTime(source.retrievedAt)}</span>
-                      </div>
-                      {source.url && (
-                        <a
-                          href={source.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-primary hover:underline font-medium text-xs"
-                        >
-                          <span>Visit Source</span>
-                          <ArrowSquareOut className="h-3.5 w-3.5" />
-                        </a>
-                      )}
-                    </div>
-
-                    {source.caveats.length > 0 && (
-                      <div className="pt-2 border-t border-border/30">
-                        <span className="text-muted-foreground font-medium block mb-1.5 flex items-center gap-1">
-                          <Warning className="h-3.5 w-3.5 text-warning" weight="fill" />
-                          Recorded Caveats ({source.caveats.length}):
-                        </span>
-                        <ul className="space-y-1 list-disc list-inside text-muted-foreground pl-1">
-                          {source.caveats.map((c, i) => (
-                            <li key={i} className="leading-relaxed">
-                              {c}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </TabsContent>
-
-        {/* Tab 4: Validation Report */}
-        <TabsContent value="validation" className="space-y-4">
-          <Card className="border-border bg-surface shadow-xs">
-            <CardHeader className="border-b border-border/40 pb-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="h-5 w-5 text-primary" weight="duotone" />
-                    <CardTitle className="text-base">Domain Validation Report</CardTitle>
-                  </div>
-                  <CardDescription className="text-xs mt-1">
-                    Evaluated during catalogue import. Integrity checks enforce provenance and pricing discipline.
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge
-                    variant={catalogue.validation.passed ? "success" : "danger"}
-                    className="text-xs px-2.5 py-1 font-semibold"
-                  >
-                    {catalogue.validation.passed ? "Validation Passed" : "Validation Failed"}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    Checked {formatDateTime(catalogue.validation.checkedAt)}
-                  </span>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-5 space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-                <div className="p-3 rounded-lg bg-muted/40 border border-border/40">
-                  <span className="text-xs text-muted-foreground block">Overall Status</span>
-                  <span className={cn("text-base font-bold", catalogue.validation.passed ? "text-success" : "text-danger")}>
-                    {catalogue.validation.passed ? "PASSED" : "FAILED"}
-                  </span>
-                </div>
-                <div className="p-3 rounded-lg bg-muted/40 border border-border/40">
-                  <span className="text-xs text-muted-foreground block">Errors</span>
-                  <span className={cn("text-base font-bold", catalogue.validation.errors.length === 0 ? "text-muted-foreground" : "text-danger")}>
-                    {catalogue.validation.errors.length}
-                  </span>
-                </div>
-                <div className="p-3 rounded-lg bg-muted/40 border border-border/40">
-                  <span className="text-xs text-muted-foreground block">Warnings</span>
-                  <span className={cn("text-base font-bold", catalogue.validation.warnings.length > 0 ? "text-warning" : "text-muted-foreground")}>
-                    {catalogue.validation.warnings.length}
-                  </span>
-                </div>
-              </div>
-
-              {/* Errors List */}
-              {catalogue.validation.errors.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-xs font-semibold text-danger flex items-center gap-1.5 uppercase tracking-wider">
-                    <XCircle className="h-4 w-4" weight="fill" />
-                    Validation Errors ({catalogue.validation.errors.length})
-                  </h4>
-                  <div className="space-y-2">
-                    {catalogue.validation.errors.map((finding, idx) => (
-                      <div
-                        key={idx}
-                        className="p-3 rounded-md border border-danger/30 bg-danger-soft/40 text-xs space-y-1"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Badge variant="danger" className="font-mono text-[10px]">
-                            {finding.code}
-                          </Badge>
-                          {finding.subject && (
-                            <Badge variant="neutral" className="font-mono text-[10px]">
-                              {finding.subject}
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-foreground">{finding.message}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Warnings List */}
-              {catalogue.validation.warnings.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-xs font-semibold text-warning flex items-center gap-1.5 uppercase tracking-wider">
-                    <Warning className="h-4 w-4" weight="fill" />
-                    Validation Findings & Warnings ({catalogue.validation.warnings.length})
-                  </h4>
-                  <div className="space-y-2">
-                    {catalogue.validation.warnings.map((finding, idx) => (
-                      <div
-                        key={idx}
-                        className="p-3 rounded-md border border-warning/30 bg-warning-soft/30 text-xs space-y-1"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Badge variant="warning" className="font-mono text-[10px]">
-                            {finding.code}
-                          </Badge>
-                          {finding.subject && (
-                            <Badge variant="neutral" className="font-mono text-[10px]">
-                              {finding.subject}
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-foreground leading-relaxed">{finding.message}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab 5: Catalogue Notes */}
-        <TabsContent value="notes" className="space-y-3">
-          {catalogue.notes.map((note: string, idx: number) => (
-            <Card key={idx} className="border-border bg-surface shadow-xs">
-              <CardContent className="p-4 flex items-start gap-3 text-xs leading-relaxed">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary font-bold text-[11px]">
-                  {idx + 1}
-                </span>
-                <p className="text-foreground">{note}</p>
-              </CardContent>
-            </Card>
-          ))}
         </TabsContent>
       </Tabs>
     </div>
