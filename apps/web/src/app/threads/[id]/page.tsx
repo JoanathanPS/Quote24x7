@@ -55,6 +55,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EmailBody } from "@/components/email-body";
+import { MessageAttachmentsList } from "@/components/inbox/message-attachments";
 import {
   Table,
   TableHeader,
@@ -482,25 +483,10 @@ export default function ThreadDetailPage() {
 
                         {/* Attachments */}
                         {msg.attachments && msg.attachments.length > 0 && (
-                          <div className="pt-2 border-t border-border/40 flex flex-wrap gap-2">
-                            {msg.attachments.map((att, attIdx) => (
-                              <div
-                                key={attIdx}
-                                className="inline-flex items-center gap-1.5 rounded border border-border bg-surface px-2.5 py-1 text-xs"
-                              >
-                                <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span className="font-medium text-[11px]">{att.name}</span>
-                                <span className="text-[10px] text-muted-foreground font-mono">
-                                  ({(att.sizeBytes / 1024).toFixed(0)} KB)
-                                </span>
-                                {att.scanned && (
-                                  <span className="text-[9px] text-emerald-400 bg-emerald-500/10 px-1 rounded font-mono">
-                                    SAFE
-                                  </span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
+                          <MessageAttachmentsList
+                            attachments={msg.attachments}
+                            quoteId={thread.quoteId}
+                          />
                         )}
 
                         {/* RFC Trace Accordion Toggle */}

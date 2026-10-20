@@ -133,22 +133,37 @@ export async function fetchInboundEmailContent(
     // Fetch and download any email attachments from signed download URLs
     const fetchedAttachments: RetrievedAttachment[] = [];
     try {
-      const attListRes = await resend.emails.receiving.attachments.list({ emailId });
-      const rawData = attListRes.data;
-      const attItems: Array<{ id?: string; filename?: string; content_type?: string; size?: number; download_url?: string }> =
-        Array.isArray(rawData)
-          ? rawData
-          : rawData && typeof rawData === "object" && "data" in rawData && Array.isArray((rawData as { data: unknown }).data)
-            ? ((rawData as { data: unknown[] }).data as Array<{ id?: string; filename?: string; content_type?: string; size?: number; download_url?: string }>)
-            : [];
+      let attItems: Array<{ id?: string; filename?: string; content_type?: string; size?: number; download_url?: string }> = [];
+      if (Array.isArray(data.attachments) && data.attachments.length > 0) {
+        attItems = data.attachments as typeof attItems;
+      } else {
+        const attListRes = await resend.emails.receiving.attachments.list({ emailId });
+        const rawData = attListRes.data;
+        attItems =
+          Array.isArray(rawData)
+            ? rawData
+            : rawData && typeof rawData === "object" && "data" in rawData && Array.isArray((rawData as { data: unknown }).data)
+              ? ((rawData as { data: unknown[] }).data as typeof attItems)
+              : [];
+      }
+
       for (const item of attItems) {
-        if (item.download_url) {
+        let downloadUrl = item.download_url;
+        if (!downloadUrl && item.id) {
           try {
-            const fileRes = await fetch(item.download_url, { signal: AbortSignal.timeout(10_000) });
+            const attGet = await resend.emails.receiving.attachments.get({ emailId, id: item.id });
+            downloadUrl = attGet.data?.download_url;
+          } catch {
+            // ignore
+          }
+        }
+        if (downloadUrl) {
+          try {
+            const fileRes = await fetch(downloadUrl, { signal: AbortSignal.timeout(10_000) });
             if (fileRes.ok) {
               const arrayBuf = await fileRes.arrayBuffer();
               fetchedAttachments.push({
-                filename: item.filename || `attachment_${item.id}`,
+                filename: item.filename || `attachment_${item.id || Date.now()}`,
                 contentType: item.content_type || "application/octet-stream",
                 sizeBytes: item.size || arrayBuf.byteLength,
                 buffer: Buffer.from(arrayBuf),

@@ -106,6 +106,20 @@ export async function POST(request: NextRequest) {
         from = match[2].trim();
       }
 
+      const attachments =
+        fetched?.attachments?.map((a) => ({
+          filename: a.filename,
+          contentType: a.contentType,
+          sizeBytes: a.sizeBytes,
+          content: a.buffer,
+        })) || [];
+
+      // If body text is empty but document attachments exist, supply descriptive placeholder
+      if (!text && attachments.length > 0) {
+        const names = attachments.map((a) => a.filename).join(", ");
+        text = `Please find our infrastructure requirements and monitoring specifications in the attached document(s): ${names}`;
+      }
+
       const inboundResult = await processInboundEmail({
         providerMessageId: emailId || `in_${Date.now()}`,
         messageId: fetched?.messageId || null,
@@ -116,12 +130,7 @@ export async function POST(request: NextRequest) {
         text,
         html,
         headers: fetched?.headers || null,
-        attachments: fetched?.attachments?.map((a) => ({
-          filename: a.filename,
-          contentType: a.contentType,
-          sizeBytes: a.sizeBytes,
-          content: a.buffer,
-        })),
+        attachments,
         receivedAt: typeof body.created_at === "string" ? body.created_at : new Date().toISOString(),
       });
 
