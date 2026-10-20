@@ -351,13 +351,13 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const serverMatch =
     text.match(
-      /(\d+)\s*(?:[a-z\s]{0,35}?)\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?)\b/i,
+      /(\d+)[^\S\r\n]*(?:[a-z \t]{0,35}?)\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?)\b/i,
     ) ||
     text.match(
-      /(?:servers?|hosts?|vms?|instances?|nodes?|machines?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*(\d+)/i,
+      /(?:servers?|hosts?|vms?|instances?|nodes?|machines?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
     ) ||
     text.match(
-      /(?:servers?|hosts?|nodes?|instances?)\s*(?:count|total|:|=|,|\||\t)\s*(\d+)/i,
+      /(?:servers?|hosts?|nodes?|instances?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
     );
 
   if (serverNone) {
@@ -427,13 +427,13 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const netMatch =
     text.match(
-      /(\d+)\s*(?:[a-z\s]{0,30}?)\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)\b/i,
+      /(\d+)[^\S\r\n]*(?:[a-z \t]{0,30}?)\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)\b/i,
     ) ||
     text.match(
-      /(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*(\d+)/i,
+      /(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
     ) ||
     text.match(
-      /(?:network(?:\s+devices?)?|switches?|routers?)\s*(?:count|total|:|=|,|\||\t)\s*(\d+)/i,
+      /(?:network(?:\s+devices?)?|switches?|routers?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
     );
 
   const netNone =
@@ -505,13 +505,13 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const basicCountMatch =
     text.match(
-      /(\d+)\s*(?:basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?)?|standard(?:\s+monitors?)?|websites?|urls?|web\s+sites?|apis?|api\s+endpoints?|rest\s+apis?|endpoints?|website(?:\s+uptime|\s+availability)?(?:\s+monitors?|\s+checks?)?)\b/i,
+      /(\d+)[^\S\r\n]*(?:basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?)?|standard(?:\s+monitors?)?|websites?|urls?|web\s+sites?|apis?|api\s+endpoints?|rest\s+apis?|endpoints?|website(?:\s+uptime|\s+availability)?(?:\s+monitors?|\s+checks?)?)\b/i,
     ) ||
     text.match(
-      /(?:basic|ping|port|website\s+uptime|uptime\s+checks?|websites?|urls?|apis?)[^:\n\r\d]{0,50}[:=]\s*(\d+)/i,
+      /(?:basic|ping|port|website\s+uptime|uptime\s+checks?|websites?|urls?|apis?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
     ) ||
     text.match(
-      /(?:basic|ping|port|standard|websites?|urls?|web\s+sites?|apis?|website(?:\s+uptime)?)\s*(?:monitors?|checks?)\s*(?:count|total|:|=)\s*(\d+)/i,
+      /(?:basic|ping|port|standard|websites?|urls?|web\s+sites?|apis?|website(?:\s+uptime)?)\s*(?:monitors?|checks?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
     );
 
   const websiteAvailabilityMentioned =
@@ -632,16 +632,16 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const advMatch =
     text.match(
-      /(\d+)\s*(?:[a-z\s]{0,35}?)\b(?:synthetic(?:\s+(?:transaction|web|browser))?|advanced(?:\s+web)?|transaction|critical\s+web)\s*(?:monitors?|endpoints?|urls?|checks?|apis?)\b/i,
+      /(\d+)[^\S\r\n]*(?:[a-z \t]{0,35}?)\b(?:synthetic(?:\s+(?:transaction|web|browser))?|advanced(?:\s+web)?|transaction|critical\s+web)\s*(?:monitors?|endpoints?|urls?|checks?|apis?)\b/i,
     ) ||
     text.match(
-      /(?:synthetic(?:\s+transaction|\s+web|\s+browser)?|advanced(?:\s+web)?|transaction)[^:\n\r\d]{0,50}[:=]\s*(\d+)/i,
+      /(?:synthetic(?:\s+transaction|\s+web|\s+browser)?|advanced(?:\s+web)?|transaction)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
     ) ||
     text.match(
-      /(\d+)\s*(?:synthetic|advanced|transaction)\s*(?:(?:transaction|web|browser)\s+)?(?:monitors?|endpoints?|checks?|urls?|apis?)/i,
+      /(\d+)[^\S\r\n]*(?:synthetic|advanced|transaction)\s*(?:(?:transaction|web|browser)\s+)?(?:monitors?|endpoints?|checks?|urls?|apis?)/i,
     ) ||
     text.match(
-      /(?:advanced|synthetic|transaction)\s*(?:monitors?|endpoints?|checks?)\s*(?:count|total|:|=)\s*(\d+)/i,
+      /(?:advanced|synthetic|transaction)\s*(?:monitors?|endpoints?|checks?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
     );
 
   const appApmMatch =
@@ -777,7 +777,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     /(\d+(?:[.,]\d+)?)\s*(?:thousand\b|k\b)\s*(?:[a-z\s/]{0,25}?)\b(?:pageviews?|views?|rum)\b/i,
   );
   const rumColonMatch = text.match(
-    /(?:rum|real\s+user\s+monitoring|pageviews?)[^:\n\r\d]{0,50}[:=]\s*(\d[\d,.]*)\s*(million|m|k|thousand)?/i,
+    /(?:rum|real\s+user\s+monitoring|pageviews?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d[\d,.]*)"?\s*(million|m|k|thousand)?/i,
   );
   const rumRawMatch = text.match(
     /(\d{1,3}(?:,\d{3})+|\d{5,})\s*(?:[a-z\s/]{0,25}?)\b(?:pageviews?|views?|rum)\b/i,
@@ -921,13 +921,13 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   );
   const logMatch =
     text.match(
-      /(\d+)\s*(?:gb|gigabytes?|tb|terabytes?)\s*(?:[a-z\s/]{0,20}?)\b(?:applogs?|logs?)\b/i,
+      /(\d+)[^\S\r\n]*(?:gb|gigabytes?|tb|terabytes?)[^\S\r\n]*(?:[a-z \t/]{0,20}?)\b(?:applogs?|logs?)\b/i,
     ) ||
     text.match(
-      /(?:applogs?|logs?|log\s+management)[^:\n\r\d]{0,50}[:=]\s*(\d+)\s*(?:gb|gigabytes?|tb|terabytes?)?/i,
+      /(?:applogs?|logs?|log\s+management)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?\s*(?:gb|gigabytes?|tb|terabytes?)?/i,
     ) ||
     text.match(
-      /(?:applogs?|logs?)\s*(?:volume|storage|size|retention)?\s*(?:of|:|=)?\s*(\d+)\s*(?:gb|gigabytes?|tb|terabytes?)/i,
+      /(?:applogs?|logs?)\s*(?:volume|storage|size|retention)?\s*(?:of|:|=|,|\||\t)?\s*"?(\d+)"?\s*(?:gb|gigabytes?|tb|terabytes?)/i,
     );
 
   const logNone =

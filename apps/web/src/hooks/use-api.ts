@@ -13,6 +13,7 @@ import type {
   RequirementProfile,
   SystemHealth,
   IntegrationStatus,
+  AiDecisionRecord,
 } from "@/types/domain";
 
 // ---------------------------------------------------------------------------
@@ -126,5 +127,17 @@ export function useIntegrations() {
   return useQuery({
     queryKey: ["integrations"],
     queryFn: () => apiGet<IntegrationStatus[]>("/api/v1/integrations"),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// AI Decisions
+// ---------------------------------------------------------------------------
+
+export function useThreadAiDecisions(threadId: string) {
+  return useQuery({
+    queryKey: ["threads", threadId, "decisions"],
+    queryFn: () => apiGet<AiDecisionRecord[]>(`/api/v1/threads/${threadId}/decisions`),
+    enabled: !!threadId,
   });
 }

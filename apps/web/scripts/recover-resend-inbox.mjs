@@ -44,6 +44,7 @@ async function main() {
         toStr.includes("quotes@quotes.joanathan.in") ||
         fromStr.includes("mrmousingh1@gmail.com") ||
         fromStr.includes("joanathanps2006@gmail.com") ||
+        fromStr.includes("deepakram") ||
         fromStr.includes("kdeepakramk@gmail.com");
 
       // Exclude DMARC / bounce / automated reports

@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { store } from "@/server/store/session-store";
 import type { DeliveryStatus } from "@/types/domain";
+import {
+  upsertMessageIdAliasToSupabase,
+  updateMessageRfcIdInSupabase,
+} from "@/server/db/supabase";
+import { normalizeRfcMessageId } from "./rfc-message-id";
 
 /**
  * Handles Resend delivery webhook events (email.delivered, email.bounced, email.sent, etc.)
@@ -115,6 +120,27 @@ export function handleDeliveryTrackingEvent(
         statusDetail: `Delivery failed: ${detail}`,
       });
     }
+  }
+
+  // Idempotent persistence of Resend's real RFC Message-ID (and any client-echoed
+  // alias we want to register) on every status event, not just email.sent.
+  // Doing it here means the durable record lands as soon as Resend tells us,
+  // independent of whether the post-send GET /emails/:id call also succeeded.
+  const rfcMessageIdRaw = typeof eventData.message_id === "string" ? eventData.message_id : null;
+  const rfcMessageId = rfcMessageIdRaw ? normalizeRfcMessageId(rfcMessageIdRaw) : null;
+  if (providerMessageId && rfcMessageId) {
+    store.bindMessageIdToProviderId(rfcMessageId, providerMessageId, delivery.threadId);
+    updateMessageRfcIdInSupabase({
+      providerMessageId,
+      rfcMessageId,
+      threadId: delivery.threadId,
+    }).catch((err) => console.warn(`[email.sent] could not persist rfc id:`, err));
+    upsertMessageIdAliasToSupabase({
+      aliasMessageId: rfcMessageId,
+      canonicalMessageId: rfcMessageId,
+      threadId: delivery.threadId,
+      source: "auto",
+    }).catch((err) => console.warn(`[email.sent] could not upsert alias:`, err));
   }
 
   return NextResponse.json({

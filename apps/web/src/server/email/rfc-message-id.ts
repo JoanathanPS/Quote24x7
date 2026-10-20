@@ -45,8 +45,18 @@ export function normalizeRfcMessageId(value: unknown): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
 
+  // If the value already contains an RFC token, prefer the first one.
   const tokens = extractMessageIds(trimmed);
-  return tokens.length > 0 ? tokens[0]! : null;
+  if (tokens.length > 0) return tokens[0]!;
+
+  // Otherwise, see if the trimmed value is a bare `local@domain` (no angle
+  // brackets) and wrap it. A provider UUID has no `@` and is rejected here.
+  const bare = trimmed.replace(/^[<>\s]+|[<>\s]+$/g, "");
+  const bareMatch = bare.match(/^([^<>\s]+)@([^<>\s]+)$/);
+  if (bareMatch && bareMatch[1] && bareMatch[2]) {
+    return `<${bareMatch[1]}@${bareMatch[2]}>`;
+  }
+  return null;
 }
 
 /**

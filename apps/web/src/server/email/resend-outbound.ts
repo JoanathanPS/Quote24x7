@@ -1,4 +1,3 @@
-import { Resend } from "resend";
 import type { DeliveryRecord, EmailMessage, EmailThread, Quote } from "@/types/domain";
 import { getAppConfig, isTestRuntime, formatFromEmail } from "../config.ts";
 import { store } from "../store/session-store.ts";
@@ -7,6 +6,7 @@ import { formatMoney } from "../pricing/money.ts";
 import { loadActiveCatalogue } from "../catalogue/loader.ts";
 import { buildComparisonLine } from "../pricing/engine.ts";
 import { dedupe, extractMessageIds, normalizeRfcMessageId } from "./rfc-message-id.ts";
+import { getResendClient, isFakeResendActive } from "./fake-resend-provider.ts";
 
 const BANNED_PHRASES = [
   /valued customer/i,
@@ -169,7 +169,20 @@ export interface OutboundDispatchResult {
  * with a single "Re:" and nothing else.
  */
 export function resolveThreadSubject(originalSubject: string): string {
-  const cleaned = originalSubject.replace(/^(?:re|fwd):\s*/gi, "").trim();
+  // Strip every leading Re:/Fwd: (case-insensitive), including stacked ones.
+  let cleaned = originalSubject.trim();
+  let prev: string | null = null;
+  while (prev !== cleaned) {
+    prev = cleaned;
+    cleaned = cleaned.replace(/^\s*(?:re|fwd)\s*:\s*/i, "");
+  }
+  cleaned = cleaned.trim();
+  cleaned = cleaned
+    .replace(/\s*\[ref:\s*#(?:th_|qt_)\w+\]\s*/gi, "")
+    .replace(/\s*\[ref:\s*#\w+\]\s*/gi, "")
+    .replace(/\s*[-–—]\s*(?:sizing\s+(?:information|&\s*custom\s*pricing)\s+needed|quick\s+sizing\s+clarification|clarification\s+needed|quote\s+sent)\s*/gi, "")
+    .replace(/\s*(?:re|fwd)\s*:\s*$/i, "")
+    .trim();
   return `Re: ${cleaned}`;
 }
 
@@ -408,9 +421,9 @@ async function dispatchEmail(input: DispatchInput): Promise<OutboundDispatchResu
     mode = "dry_run";
     providerMessageId = `paused_${Date.now()}`;
     errorMessage = "Automated outbound dispatch paused by operator kill switch";
-  } else if (config.isLiveDispatchEnabled && config.resendApiKey) {
+  } else if ((config.isLiveDispatchEnabled && config.resendApiKey) || isFakeResendActive()) {
     try {
-      const resend = new Resend(config.resendApiKey);
+      const resend = getResendClient(config.resendApiKey ?? "");
       const res = await resend.emails.send({
         from: formatFromEmail(config.outboundFromEmail),
         to: targetRecipient,

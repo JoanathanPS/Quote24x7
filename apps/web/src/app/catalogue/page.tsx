@@ -372,7 +372,15 @@ export default function CataloguePage() {
               </TableHeader>
               <TableBody>
                 {filteredAddOns.map((addOn: AddOnPack) => {
-                  const isUnpriced = addOn.packPrice === null;
+                  const gridPrices = catalogue.planAddOnPrices
+                    ? Object.values(catalogue.planAddOnPrices)
+                        .map((p) => p[addOn.id])
+                        .filter((p): p is number => p !== undefined)
+                    : [];
+                  const isPricedInGrid = gridPrices.length > 0;
+                  const minGridPrice = isPricedInGrid ? Math.min(...gridPrices) : null;
+                  const maxGridPrice = isPricedInGrid ? Math.max(...gridPrices) : null;
+
                   return (
                     <TableRow key={addOn.id} className="hover:bg-muted/40">
                       <TableCell>
@@ -391,17 +399,30 @@ export default function CataloguePage() {
                         <span className="text-xs text-muted-foreground">units/pack</span>
                       </TableCell>
                       <TableCell numeric>
-                        {isUnpriced ? (
-                          <Badge variant="warning" className="text-[11px] font-normal">
-                            Unpriced / Reject if demanded
-                          </Badge>
-                        ) : (
+                        {addOn.packPrice !== null ? (
                           <div className="font-mono font-semibold text-foreground text-sm">
-                            {formatMoney(addOn.packPrice!, catalogue.currency)}
+                            {formatMoney(addOn.packPrice, catalogue.currency)}
                             <span className="text-[10px] text-muted-foreground font-normal ml-1">
                               /{addOn.billingPeriod}
                             </span>
                           </div>
+                        ) : isPricedInGrid ? (
+                          <div className="font-mono font-semibold text-foreground text-xs text-right">
+                            {minGridPrice === maxGridPrice ? (
+                              <span>{formatMoney(minGridPrice!, catalogue.currency)}/yr</span>
+                            ) : (
+                              <span>
+                                {formatMoney(minGridPrice!, catalogue.currency)} – {formatMoney(maxGridPrice!, catalogue.currency)}/yr
+                              </span>
+                            )}
+                            <span className="block text-[10px] text-primary/80 font-sans font-normal">
+                              Tiered in Store grid
+                            </span>
+                          </div>
+                        ) : (
+                          <Badge variant="neutral" className="text-[11px] font-normal">
+                            Custom / Contact Sales
+                          </Badge>
                         )}
                       </TableCell>
                       <TableCell>

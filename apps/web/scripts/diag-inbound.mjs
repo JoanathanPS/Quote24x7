@@ -1,128 +1,159 @@
 /**
- * Diagnostic script — reads a Resend inbound payload JSON (as fetched by fetchInboundEmailContent)
- * and prints ONLY the header key names and values of Message-ID, In-Reply-To, References.
- * It never reads env values and prints no other headers.
+ * Diagnostic for inbound email headers — read-only.
+ *
+ * Prints ONLY the header key names and the values of Message-ID, In-Reply-To,
+ * and References, then prints SQL the user can run in Supabase to inspect the
+ * stored rows and aliases. Never reads env values, never prints other headers,
+ * writes nothing.
  *
  * Usage:
- *   node diag-inbound.mjs --payload ./fixtures/resend_sample.json
- *   # or, without --payload, falls back to ./fixtures/resend_sample.json
+ *   # Live mode — pulls a real Resend inbound id
+ *   npm run diag:inbound -- <resend_email_id>
+ *   # Fixture mode (offline) — pass --payload <path>
+ *   npm run diag:inbound -- --payload ./fixtures/resend_sample.json
  *
- * Output format (printed to stdout, nothing else):
- *   Message-ID: <value or "(not present)" >
- *   In-Reply-To: <value or "(not present)" >
- *   References: <value or "(not present)" >
- *
- * Then prints SQL to view message IDs and headers in Supabase.
+ * Output:
+ *   Header key names that are allowed for this diagnostic (one per line).
+ *   Message-ID:  <value or "(none)">
+ *   In-Reply-To: <value or "(none)">
+ *   References:  <value or "(none)">
+ *   normalized Message-ID, then all RFC 2822 tokens deduped.
+ *   SQL blocks that list stored inbound rows and aliases.
  */
 
 import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { existsSync } from "node:fs";
+import { fetchInboundEmailContent } from "../src/server/email/resend-inbound.ts";
+import { extractMessageIds, normalizeRfcMessageId } from "../src/server/email/rfc-message-id.ts";
 
-const ARGS = process.argv.slice(2);
+// Header keys we are allowed to read or display. Anything else is filtered.
+const PRINTABLE_HEADER_KEYS = [
+  "message-id",
+  "in-reply-to",
+  "references",
+  "from",
+  "to",
+  "subject",
+  "date",
+];
 
-// Determine payload file path
-let payloadPath = ARGS.find((a, i) => a === "--payload" && ARGS[i + 1])
-  ? ARGS[ARGS.indexOf("--payload") + 1]
-  : null;
+function escapeSqlString(value) {
+  return String(value).replace(/'/g, "''");
+}
 
-if (!payloadPath || !existsSync(payloadPath)) {
-  // Default fallback fixture path relative to this script's directory
-  const scriptDir = new URL(".", import.meta.url).pathname;
-  payloadPath = path.join(scriptDir, "../fixtures/resend_sample.json").replace(/^\\.\./, "");
-  if (!existsSync(payloadPath)) {
-    console.error(`No payload file found at "${payloadPath}" and no default fixture exists.`);
-    process.exit(1);
+async function loadFixtureHeaders(payloadPath) {
+  const raw = await readFile(payloadPath, "utf-8");
+  const payload = JSON.parse(raw);
+  const headers = payload.headers ?? {};
+  return Object.fromEntries(
+    Object.entries(headers).map(([k, v]) => [String(k).trim().toLowerCase(), v])
+  );
+}
+
+async function loadLiveHeaders(emailId) {
+  const fetched = await fetchInboundEmailContent(emailId);
+  if (!fetched) {
+    throw new Error(`No inbound fetched for id: ${emailId}`);
   }
+  const headers = fetched.headers ?? {};
+  return Object.fromEntries(
+    Object.entries(headers).map(([k, v]) => [String(k).trim().toLowerCase(), v])
+  );
 }
 
-// Read and parse JSON
-let raw;
-try {
-  raw = await readFile(payloadPath, "utf-8");
-} catch (e) {
-  console.error(`Failed to read payload file: ${e instanceof Error ? e.message : e}`);
-  process.exit(1);
-}
+async function main() {
+  const ARGS = process.argv.slice(2);
+  let mode = "live";
+  let arg = "";
 
-let payload;
-try {
-  payload = JSON.parse(raw);
-} catch (e) {
-  console.error(`Invalid JSON in payload file: ${e instanceof Error ? e.message : e}`);
-  process.exit(1);
-}
-
-// The payload shape after fetchInboundEmailContent is a Record<string, any>;
-// we only care about the top-level headers key.
-const headers = payload.headers || {};
-
-// Helper: find a header by its normalized key (case-insensitive)
-function findHeader(headers, ...possibleKeys) {
-  for (const key of Object.keys(headers)) {
-    const kl = key.toLowerCase();
-    for (const pk of possibleKeys) {
-      if (kl === pk.toLowerCase()) return headers[key];
+  if (ARGS[0] === "--payload") {
+    mode = "fixture";
+    arg = ARGS[1] ?? "";
+    if (!arg || !existsSync(arg)) {
+      console.error("Usage: npm run diag:inbound -- --payload <path-to-resend-payload.json>");
+      process.exit(2);
+    }
+  } else {
+    arg = String(ARGS[0] ?? "").trim();
+    if (!arg) {
+      console.error("Usage: npm run diag:inbound -- <resend_email_id>");
+      console.error("   or: npm run diag:inbound -- --payload <path>");
+      process.exit(2);
     }
   }
-  return undefined;
+
+  const headers = mode === "fixture"
+    ? await loadFixtureHeaders(arg)
+    : await loadLiveHeaders(arg);
+
+  console.log("[diag:inbound] header keys seen (allowed only):");
+  for (const key of PRINTABLE_HEADER_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(headers, key)) {
+      console.log(`  ${key}`);
+    }
+  }
+
+  const messageIdRaw = headers["message-id"] ?? "";
+  const inReplyToRaw = headers["in-reply-to"] ?? "";
+  const referencesRaw = headers["references"] ?? "";
+
+  console.log("");
+  console.log(`[diag:inbound] Message-ID:  ${messageIdRaw || "(none)"}`);
+  console.log(`[diag:inbound] In-Reply-To: ${inReplyToRaw || "(none)"}`);
+  console.log(`[diag:inbound] References:  ${referencesRaw || "(none)"}`);
+
+  const normalizedMessageId = normalizeRfcMessageId(messageIdRaw);
+  const tokens = [
+    ...extractMessageIds(messageIdRaw),
+    ...extractMessageIds(inReplyToRaw),
+    ...extractMessageIds(referencesRaw),
+  ];
+
+  console.log("");
+  console.log(`[diag:inbound] normalized Message-ID: ${normalizedMessageId ?? "(none)"}`);
+  console.log(`[diag:inbound] chain tokens (deduped, ordered):`);
+  if (tokens.length === 0) {
+    console.log("  (none)");
+  } else {
+    const seen = new Set();
+    for (const t of tokens) {
+      if (seen.has(t)) continue;
+      seen.add(t);
+      console.log(`  ${t}`);
+    }
+  }
+
+  // SQL the user can paste into Supabase to inspect the stored message ids
+  // and inbound headers for the latest thread, plus any aliases.
+  const tokenList = Array.from(
+    new Set([normalizedMessageId, ...tokens].filter(Boolean))
+  );
+  const idLiterals = tokenList.length > 0
+    ? tokenList.map((t) => `'${escapeSqlString(t)}'`).join(", ")
+    : "''";
+
+  console.log("");
+  console.log("[diag:inbound] Run this SQL in Supabase to inspect stored state:");
+  console.log("");
+  console.log("  -- last 10 inbound messages with their headers + match method");
+  console.log("  select id, thread_id, occurred_at, direction,");
+  console.log("         thread_match_method,");
+  console.log("         message_id_header, in_reply_to, references");
+  console.log("    from public.email_messages");
+  console.log("   where direction = 'inbound'");
+  console.log("   order by occurred_at desc nulls last");
+  console.log("   limit 10;");
+  console.log("");
+  console.log("  -- aliases recorded for the message-ids we just observed");
+  console.log("  select alias_message_id, canonical_message_id, thread_id,");
+  console.log("         source, registered_at, last_seen_at, seen_count");
+  console.log("    from public.message_id_aliases");
+  console.log(`   where alias_message_id in (${idLiterals})`);
+  console.log("   order by registered_at desc;");
+  console.log("");
 }
 
-// Extract RFC 2822 Message-ID value. The stored value may be
-// a bare string "<msg_xxx@domain>" — that's what we want to display.
-// If it's already wrapped, just output as-is.
-function extractMessageId(value) {
-  if (value === undefined) return "(not present)";
-  // It may already be a Message-ID wrapped string like "<abc@def.com>"
-  // or a bare id. We output whatever is stored.
-  return String(value);
-}
-
-// Print ONLY the three header names and their exact stored values
-// (nothing else — no body, no other headers, no env vars).
-console.log("=== Header extraction (inbound payload JSON) ===");
-
-// Message-ID
-console.log(`Message-ID: ${extractMessageId(findHeader(headers, "message-id", "message_id"))}`);
-
-// In-Reply-To
-console.log(`In-Reply-To: ${extractMessageId(findHeader(headers, "in-reply-to", "In-Reply-To", "references"))}`);
-
-// References (can be a string or array of strings)
-const refsVal = findHeader(headers, "references", "References", "ref");
-if (refsVal !== undefined) {
-  const refsStr = Array.isArray(refsVal) ? refsVal.join(", ") : String(refsVal);
-  console.log(`References: ${refsStr}`);
-} else {
-  console.log("References: (not present)");
-}
-
-// ----- SQL to view stored message IDs and headers in Supabase -----
-// Run these queries once your migration 20261016160000_add_missing_columns.sql is pushed:
-console.log("\n=== SQL to view stored message IDs & headers in Supabase ===");
-console.log("-- last 10 email messages with headers");
-console.log(`select id, occurred_at, direction, subject, provider_message_id, message_id_header, in_reply_to, references`);
-console.log(`from public.email_messages`);
-console.log(`order by occurred_at desc`);
-console.log(`limit 10;`);
-
-// Also show the threads that reference these messages
-console.log(`\n-- last 5 threads with summary`);
-console.log(`select id, provider_thread_id, subject, status, message_count, rounds_used, state, last_inbound_at, subject_canonical`);
-console.log(`from public.email_threads`);
-console.log(`order by last_inbound_at desc`);
-console.log(`limit 5;`);
-
-// If you need to see which aliases exist (for the new message_id_aliases table, see item 6):
-console.log(`\n-- if message_id_aliases table exists`);
-console.log(`select * from public.message_id_aliases limit 20;`);
-
-// The column names below exist after migration 20261016160000_add_missing_columns.sql
-// is pushed to your Supabase project:
-console.log(`
-\set VERBOSITY verbose
--- Verify the new columns are present:
-select column_name from information_schema.columns
-where table_name = 'email_messages'
-order by ordinal_position;
-`);
+main().catch((err) => {
+  console.error(`[diag:inbound] failed:`, err);
+  process.exit(1);
+});

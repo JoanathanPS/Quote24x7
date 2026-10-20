@@ -137,6 +137,7 @@ export function messageToRow(m: EmailMessage) {
     message_id_header: m.messageIdHeader ?? null,
     in_reply_to: m.inReplyTo ?? null,
     references: m.references ?? null,
+    thread_match_method: m.threadMatchMethod ?? null,
   };
 }
 
@@ -158,6 +159,9 @@ export function rowToMessage(r: Record<string, unknown>): EmailMessage {
     messageIdHeader: r.message_id_header ? String(r.message_id_header) : null,
     inReplyTo: r.in_reply_to ? String(r.in_reply_to) : null,
     references: r.references ? String(r.references) : null,
+    threadMatchMethod: r.thread_match_method
+      ? (r.thread_match_method as EmailMessage["threadMatchMethod"])
+      : null,
   };
 }
 
@@ -729,6 +733,137 @@ export async function insertWebhookEventToSupabase(
   } catch (err) {
     console.warn(`[supabase] Exception inserting webhook_event ${eventId}:`, err);
     return { isDuplicate: false };
+  }
+}
+
+/**
+ * Record a Message-ID alias: any id the buyer (or their mail client) echoes
+ * back, mapped to the canonical outbound RFC id and the thread it belongs to.
+ *
+ * Idempotent: when the alias already exists for this thread, we bump
+ * last_seen_at and seen_count instead of failing. A unique index on
+ * alias_message_id enforces one canonical target per alias across the system.
+ *
+ * Used by the inbound processor (subject-fallback path) and the email.sent
+ * webhook (provider-confirmed message-id always wins over a guess).
+ */
+export async function upsertMessageIdAliasToSupabase(args: {
+  aliasMessageId: string;
+  canonicalMessageId: string;
+  threadId: string;
+  source?: "auto" | "manual";
+}): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+
+  const { aliasMessageId, canonicalMessageId, threadId, source = "auto" } = args;
+  if (!aliasMessageId || !canonicalMessageId || !threadId) return;
+
+  try {
+    // First, try an insert. If the alias already exists, fall back to bumping
+    // last_seen_at + seen_count so retries do not change the canonical target.
+    const insertPayload = await sanitizeRowForTable("message_id_aliases", {
+      alias_message_id: aliasMessageId,
+      canonical_message_id: canonicalMessageId,
+      thread_id: threadId,
+      source,
+      seen_count: 1,
+    });
+    const { error: insertErr } = await supabase
+      .from("message_id_aliases")
+      .insert(insertPayload);
+    if (!insertErr) return;
+    if (insertErr.code !== "23505") {
+      console.warn(`[supabase] Could not insert message_id_aliases ${aliasMessageId}:`, insertErr);
+      return;
+    }
+    // Duplicate — bump counters, do NOT overwrite the canonical target.
+    const { error: updateErr } = await supabase
+      .from("message_id_aliases")
+      .update({
+        last_seen_at: new Date().toISOString(),
+      })
+      .eq("alias_message_id", aliasMessageId);
+    if (updateErr && updateErr.code !== "PGRST116") {
+      console.warn(`[supabase] Could not bump message_id_aliases ${aliasMessageId}:`, updateErr);
+      return;
+    }
+    // Counter bump via raw RPC isn't required: seen_count reads are advisory.
+    const { error: rpcErr } = await supabase.rpc("bump_message_id_alias_seen", {
+      p_alias_message_id: aliasMessageId,
+    });
+    if (rpcErr && rpcErr.code !== "PGRST202") {
+      // 42883 (function not found) is acceptable when the helper RPC isn't installed.
+    }
+  } catch (err) {
+    console.warn(`[supabase] Failed to upsert message_id_aliases ${aliasMessageId}:`, err);
+  }
+}
+
+/** Resolve a previously-registered alias to its canonical RFC id and thread. */
+export async function lookupMessageIdAliasInSupabase(
+  aliasMessageId: string
+): Promise<{ canonicalMessageId: string; threadId: string } | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  if (!aliasMessageId) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from("message_id_aliases")
+      .select("canonical_message_id, thread_id")
+      .eq("alias_message_id", aliasMessageId)
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      if (error.code !== "PGRST116" && error.code !== "PGRST205") {
+        console.warn(`[supabase] lookupMessageIdAliasInSupabase(${aliasMessageId}) failed:`, error);
+      }
+      return null;
+    }
+    if (!data) return null;
+    const canonical = (data as { canonical_message_id?: string }).canonical_message_id;
+    const thread = (data as { thread_id?: string }).thread_id;
+    if (!canonical || !thread) return null;
+    return { canonicalMessageId: String(canonical), threadId: String(thread) };
+  } catch (err) {
+    console.warn(`[supabase] lookupMessageIdAliasInSupabase exception:`, err);
+    return null;
+  }
+}
+
+/**
+ * Update the rfc_message_id stored on an outbound email_messages row.
+ *
+ * Resend's `email.sent` webhook carries `data.email_id` and `data.message_id`
+ * (the latter is the real RFC token). We bind the Resend id to the rfc id so
+ * later inbound In-Reply-To / References lookups by RFC id resolve to the
+ * right outbound and therefore the right thread.
+ *
+ * Idempotent by provider_message_id: writing the same rfc id twice is a no-op.
+ */
+export async function updateMessageRfcIdInSupabase(args: {
+  providerMessageId: string;
+  rfcMessageId: string;
+  threadId?: string | null;
+}): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  const { providerMessageId, rfcMessageId, threadId } = args;
+  if (!providerMessageId || !rfcMessageId) return;
+
+  try {
+    const patch: Record<string, string> = { message_id_header: rfcMessageId };
+    if (threadId) patch.thread_id = threadId;
+    const { error } = await supabase
+      .from("email_messages")
+      .update(patch)
+      .eq("provider_message_id", providerMessageId);
+    if (error) {
+      console.warn(`[supabase] Could not store rfc_message_id for ${providerMessageId}:`, error);
+    }
+  } catch (err) {
+    console.warn(`[supabase] updateMessageRfcIdInSupabase exception:`, err);
   }
 }
 

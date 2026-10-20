@@ -354,6 +354,21 @@ class SessionStore {
     return matched ? matched.threadId : null;
   }
 
+  /**
+   * Bind a real RFC Message-ID returned by Resend (via webhook or GET) to the
+   * provider id for the same outbound, so future inbound lookups on either
+   * side resolve to the same anchor + thread. This is the in-process shadow
+   * of `message_id_aliases` and should be called on every email.sent event.
+   */
+  bindMessageIdToProviderId(messageId: string, providerId: string, threadId: string): void {
+    const key = messageId.replace(/[<>]/g, "").trim().toLowerCase();
+    if (!key || !providerId || !threadId) return;
+    this.messageIdAliases.set(key, providerId);
+    // Record a self-alias for the provider id too so a future lookup hits the
+    // same registerMessageIdAlias code path regardless of which form arrives.
+    this.processedMessageIds.add(providerId);
+  }
+
   addMessage(message: EmailMessage): void {
     this.ensureInitialized();
     const existing = this.messages.get(message.threadId) ?? [];

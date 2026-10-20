@@ -406,15 +406,12 @@ function validateCatalogue(file: CatalogueFile): CatalogueValidationReport {
         });
       }
     }
-    const covered = new Set(plan.entitlements.map((entitlement) => entitlement.unit));
-    for (const unit of UNIT_KINDS) {
-      if (!covered.has(unit)) {
-        warnings.push({
-          code: "ENTITLEMENT_NOT_STATED",
-          message: `Plan "${plan.name}" does not state an entitlement for "${unit}". It will be treated as unsupported.`,
-          subject: plan.id,
-        });
-      }
+    if (plan.entitlements.length === 0) {
+      warnings.push({
+        code: "EMPTY_PLAN_ENTITLEMENTS",
+        message: `Plan "${plan.name}" does not state any entitlements.`,
+        subject: plan.id,
+      });
     }
   }
 
@@ -462,7 +459,7 @@ function validateCatalogue(file: CatalogueFile): CatalogueValidationReport {
       subject: file.id,
     });
   }
-  if (file.verificationStatus !== "company_authorized") {
+  if (file.verificationStatus !== "company_authorized" && file.verificationStatus !== "public_verified") {
     warnings.push({
       code: "NOT_COMPANY_AUTHORIZED",
       message:

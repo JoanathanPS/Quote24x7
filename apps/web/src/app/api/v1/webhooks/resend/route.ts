@@ -86,16 +86,17 @@ export async function POST(request: NextRequest) {
       let text = typeof eventData.text === "string" ? eventData.text : "";
       let html = typeof eventData.html === "string" ? eventData.html : undefined;
 
-      // If text is not provided in metadata, retrieve full content from Resend API
-      if (!text && emailId) {
-        const fetched = await fetchInboundEmailContent(emailId);
+      // Retrieve full email content from Resend API to obtain attachments, headers, and full body
+      let fetched: Awaited<ReturnType<typeof fetchInboundEmailContent>> = null;
+      if (emailId && config.resendApiKey) {
+        fetched = await fetchInboundEmailContent(emailId);
         if (fetched) {
-          from = fetched.from;
-          fromName = fetched.fromName || null;
-          to = fetched.to;
-          subject = fetched.subject;
-          text = fetched.text;
-          html = fetched.html;
+          if (!from || from === "unknown@inbound.resend.dev") from = fetched.from;
+          if (!fromName) fromName = fetched.fromName || null;
+          if (!to || to.length === 0) to = fetched.to;
+          if (!subject || subject === "Quote Request") subject = fetched.subject;
+          if (!text) text = fetched.text;
+          if (!html) html = fetched.html;
         }
       }
 
@@ -107,12 +108,20 @@ export async function POST(request: NextRequest) {
 
       const inboundResult = await processInboundEmail({
         providerMessageId: emailId || `in_${Date.now()}`,
+        messageId: fetched?.messageId || null,
         from: from || "unknown@inbound.resend.dev",
         fromName,
         to,
         subject,
         text,
         html,
+        headers: fetched?.headers || null,
+        attachments: fetched?.attachments?.map((a) => ({
+          filename: a.filename,
+          contentType: a.contentType,
+          sizeBytes: a.sizeBytes,
+          content: a.buffer,
+        })),
         receivedAt: typeof body.created_at === "string" ? body.created_at : new Date().toISOString(),
       });
 

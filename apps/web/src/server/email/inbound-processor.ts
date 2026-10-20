@@ -17,6 +17,7 @@ import {
   normalizeRfcMessageId,
 } from "./rfc-message-id.ts";
 import { loadActiveCatalogue } from "../catalogue/loader.ts";
+import { upsertMessageIdAliasToSupabase } from "../db/supabase.ts";
 import { buildQuote } from "../pricing/quote-builder.ts";
 import { renderQuotePdf } from "../documents/pdf-renderer.ts";
 import { parseInboundDocument } from "../documents/inbound-document-parser.ts";
@@ -54,7 +55,7 @@ export interface InboundEmailPayload {
   subject: string;
   text: string;
   html?: string;
-  headers?: Record<string, string> | null;
+  headers?: Record<string, string | string[]> | null;
   receivedAt?: string;
   /** Optional email attachments (PDF, Excel, CSV, text, images, Word) */
   attachments?: InboundAttachmentPayload[];
@@ -646,6 +647,14 @@ async function doProcessInboundEmail(
             !store.getThreadIdByMessageIdAlias(unknownId)
           ) {
             store.registerMessageIdAlias(unknownId, anchor);
+            // Persist durably so the alias survives a restart or hits another
+            // region; supabase helper is a no-op when no client is configured.
+            void upsertMessageIdAliasToSupabase({
+              aliasMessageId: unknownId,
+              canonicalMessageId: anchor,
+              threadId: matchedThread.id,
+              source: "auto",
+            });
           }
         }
       }
@@ -773,15 +782,16 @@ async function doProcessInboundEmail(
   if (payload.attachments && payload.attachments.length > 0) {
     for (const att of payload.attachments) {
       try {
+        const rawContent = att.content ?? (att as { buffer?: Buffer }).buffer;
         let buffer: Buffer;
-        if (Buffer.isBuffer(att.content)) {
-          buffer = att.content;
-        } else if (att.content instanceof Uint8Array) {
-          buffer = Buffer.from(att.content);
-        } else if (typeof att.content === "string") {
-          const base64Data = att.content.includes(";base64,")
-            ? att.content.split(";base64,")[1] || ""
-            : att.content;
+        if (Buffer.isBuffer(rawContent)) {
+          buffer = rawContent;
+        } else if (rawContent instanceof Uint8Array) {
+          buffer = Buffer.from(rawContent);
+        } else if (typeof rawContent === "string") {
+          const base64Data = rawContent.includes(";base64,")
+            ? rawContent.split(";base64,")[1] || ""
+            : rawContent;
           buffer = Buffer.from(base64Data, "base64");
         } else {
           buffer = Buffer.alloc(0);
@@ -869,11 +879,12 @@ async function doProcessInboundEmail(
   });
 
   // 5. Inbound Triage (Phase 6) & Combined Text
+  const cleanBodyText = stripQuotedEmail(payload.text);
   const combinedInboundText =
     attachmentTextSections.length > 0
-      ? `${payload.text}\n\n${attachmentTextSections.join("\n\n")}`
-      : payload.text;
-  const cleanReplyText = stripQuotedEmail(combinedInboundText);
+      ? `${cleanBodyText}\n\n${attachmentTextSections.join("\n\n")}`
+      : cleanBodyText;
+  const cleanReplyText = combinedInboundText;
   const triage = triageInboundEmail(payload.subject, cleanReplyText, payload.from);
 
   // 5a. Unsupported Inbound
@@ -945,8 +956,8 @@ async function doProcessInboundEmail(
         )
         .filter(Boolean)
         .join("\n");
-      const fullText = attTexts ? `${m.bodyText}\n${attTexts}` : m.bodyText;
-      return stripQuotedEmail(fullText);
+      const cleanBody = stripQuotedEmail(m.bodyText);
+      return attTexts ? `${cleanBody}\n${attTexts}` : cleanBody;
     })
     .filter((txt) => txt.length > 0)
     .join("\n\n");
