@@ -195,8 +195,9 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
   const margin = 38;
   const contentWidth = pageWidth - margin * 2;
 
-  // Selected Option
+  // Selected Option: Single source of truth reads recommendedOptionId
   const activeOption =
+    (quote.recommendedOptionId ? quote.options.find((o) => o.id === quote.recommendedOptionId) : undefined) ??
     quote.options.find((o) => o.optionType === selectedOptionType) ??
     quote.options.find((o) => o.optionType === "best_value") ??
     quote.options[0];

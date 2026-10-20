@@ -40,12 +40,12 @@ export const FIELD_KEY_TO_UNIT: Record<string, IntakeUnit> = {
 };
 
 export const UNIT_KEYWORDS: Record<IntakeUnit, string[]> = {
-  host_monitor: ["server", "servers", "host", "hosts", "vm", "vms", "node", "nodes", "machine", "machines", "instance", "instances"],
+  host_monitor: ["server", "servers", "host", "hosts", "vm", "vms", "node", "nodes", "machine", "machines", "instance", "instances", "server count"],
   basic_monitor: ["website", "websites", "url", "urls", "endpoint", "endpoints", "api", "apis", "uptime", "website check", "website checks", "web check", "web checks", "uptime check", "uptime checks", "basic monitor", "basic monitors"],
   network_component: ["network", "switch", "switches", "router", "routers", "firewall", "firewalls", "network device", "network devices", "network component", "network components", "network gear"],
-  advanced_monitor: ["synthetic", "synthetics", "synthetic check", "synthetic checks", "browser transaction", "browser transactions", "advanced monitor", "advanced monitors", "journey", "journeys", "critical web", "synthetic monitor", "synthetic monitors"],
+  advanced_monitor: ["synthetic", "synthetics", "synthetic check", "synthetic checks", "browser transaction", "browser transactions", "advanced monitor", "advanced monitors", "journey", "journeys", "critical web", "synthetic monitor", "synthetic monitors", "synthetic transaction", "synthetic transactions", "real browser", "browser synthetic"],
   rum_pageview: ["rum", "real user", "pageview", "pageviews", "page view", "page views"],
-  applog_gb: ["log", "logs", "applog", "applogs", "gb/day", "gb per day", "log ingestion", "log management", "log aggregation", "retention"],
+  applog_gb: ["log", "logs", "applog", "applogs", "gb/day", "gb per day", "log ingestion", "log management", "log aggregation", "retention", "gb/mo", "gb per month", "gb monthly", "logs monthly"],
 };
 
 export interface ExtractionInput {
@@ -193,8 +193,23 @@ export function isSufficientToQuote(
  * Combines missing intake units into at most 3 clear, numbered questions.
  * Never mentions any prices, estimates, or ranges.
  */
-export function buildClarificationQuestions(unknownUnits: IntakeUnit[]): string[] {
+export function buildClarificationQuestions(unknownUnits: IntakeUnit[], isFollowup = false): string[] {
   if (unknownUnits.length === 0) return [];
+
+  if (isFollowup) {
+    const unitNames = unknownUnits.map((u) => {
+      if (u === "host_monitor") return "server count";
+      if (u === "network_component") return "network device count";
+      if (u === "basic_monitor") return "website or API endpoint count";
+      if (u === "advanced_monitor") return "synthetic transaction requirements";
+      if (u === "rum_pageview") return "estimated RUM pageview volume";
+      if (u === "applog_gb") return "monthly log ingestion volume";
+      return u;
+    });
+    return [
+      `I still need your ${unitNames.join(" and ")} to complete the sizing.`,
+    ];
+  }
 
   const questions: string[] = [];
 
@@ -313,6 +328,21 @@ export function isSubstantiveEmail(
 }
 
 /**
+ * Masks hardware and OS model numbers (e.g. Catalyst 9300, FortiGate 100F,
+ * Windows Server 2022, Ubuntu 22.04, c5.2xlarge, m5.xlarge) so their model
+ * numbers are never parsed as quantities.
+ */
+export function maskModelTokens(text: string): string {
+  return text
+    .replace(/\bCatalyst\s+\d+\b/gi, "Catalyst_SWITCH")
+    .replace(/\bFortiGate\s+\d+[a-zA-Z]*\b/gi, "FortiGate_FIREWALL")
+    .replace(/\b(?:Windows\s+Server|Windows)\s+\d+\b/gi, "Windows_Server_OS")
+    .replace(/\bUbuntu\s+\d+(?:\.\d+)?\b/gi, "Ubuntu_OS")
+    .replace(/\b[cmr]\d+\.[a-zA-Z0-9]+\b/gi, "CLOUD_INSTANCE")
+    .replace(/\b(?:c5|m5|r5|t3|t4g)\.[a-zA-Z0-9]+\b/gi, "CLOUD_INSTANCE");
+}
+
+/**
  * Robust requirement extractor for Site24x7 monitoring inquiries.
  * Tracks the 6 billable intake units in state: stated, none, or unknown.
  */
@@ -327,7 +357,8 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     });
   }
 
-  const text = `${input.subject}\n${input.bodyText}`;
+  const rawText = `${input.subject}\n${input.bodyText}`;
+  const text = maskModelTokens(rawText);
   const lower = text.toLowerCase();
 
   const triageCategory = triageInboundEmail(input.subject, input.bodyText, input.senderEmail, input.headers);
@@ -355,6 +386,23 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   let serverCount: number | null = null;
   let serverEvidence: string | null = null;
   let serverState: IntakeUnitState = "unknown";
+
+  const authoritativeHostMatch =
+    rawText.match(/Total\s+(?:Host\s+Server|Host|Server)\s+Requirement\s*[:=]\s*(\d+)/i) ||
+    rawText.match(/Total\s+Requirement\s*[:=]\s*(\d+)\s*(?:Host|Server)/i);
+
+  const serverChangeMatch =
+    text.match(/(?:reduce|lower|increase|change|adjust)\s*(?:servers?|hosts?|vms?)\s*to\s*(\d+)/i) ||
+    text.match(/(\d+)\s*(?:servers?|hosts?|vms?)?\s*instead\s+of\s*(\d+)/i) ||
+    text.match(/make\s+it\s+(\d+)\s*(?:servers?|hosts?|vms?)/i);
+
+  const itemLineServerMatches = [...text.matchAll(/(?:^|\n)[^\S\r\n]*[•\-\*]?\s*(\d+)\s+([^\n\r]*?\b(?:Linux|Windows|Ubuntu|Database|Active\s+Directory|Hosts?|Servers?|Nodes?|VMs?)\b[^\n\r]*)/gi)];
+  let itemLineHostSum = 0;
+  if (!authoritativeHostMatch && itemLineServerMatches.length > 1) {
+    for (const m of itemLineServerMatches) {
+      itemLineHostSum += parseInt(m[1]!, 10);
+    }
+  }
 
   const serverNoneMatch = text.match(
     /\b(?:no\s+servers?|without\s+servers?|zero\s+servers?|0\s+servers?|don'?t\s+need\s+servers?|servers?\s*:\s*(?:none|0|no)|no\s+vms?|without\s+vms?)\b/i,
@@ -389,6 +437,60 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       state: "provided",
       intakeState: "none",
       confidence: 0.99,
+      evidence: serverEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
+  } else if (authoritativeHostMatch && authoritativeHostMatch[1]) {
+    serverCount = parseInt(authoritativeHostMatch[1], 10);
+    serverState = "stated";
+    serverEvidence = authoritativeHostMatch[0].trim();
+    fields.push({
+      key: "servers",
+      label: "Server / Host Monitors",
+      group: "infrastructure",
+      value: serverCount,
+      unit: "servers",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.99,
+      evidence: serverEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
+  } else if (serverChangeMatch && serverChangeMatch[1]) {
+    serverCount = parseInt(serverChangeMatch[1], 10);
+    serverState = "stated";
+    serverEvidence = serverChangeMatch[0].trim();
+    fields.push({
+      key: "servers",
+      label: "Server / Host Monitors",
+      group: "infrastructure",
+      value: serverCount,
+      unit: "servers",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.98,
+      evidence: serverEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
+  } else if (itemLineHostSum > 0) {
+    serverCount = itemLineHostSum;
+    serverState = "stated";
+    serverEvidence = itemLineServerMatches.map((m) => m[0].trim()).join("; ");
+    fields.push({
+      key: "servers",
+      label: "Server / Host Monitors",
+      group: "infrastructure",
+      value: serverCount,
+      unit: "servers",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.95,
       evidence: serverEvidence,
       conflictWith: null,
       previousValue: null,
@@ -436,6 +538,23 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   let networkEvidence: string | null = null;
   let networkState: IntakeUnitState = "unknown";
 
+  const authoritativeNetMatch =
+    rawText.match(/Total\s+Network\s+(?:Component|Device)\s+Requirement\s*[:=]\s*(\d+)/i) ||
+    rawText.match(/Total\s+(?:Network\s+)?Component\s+Requirement\s*[:=]\s*(\d+)/i);
+
+  const netChangeMatch =
+    text.match(/(?:reduce|lower|increase|change|adjust)\s*(?:network|switches?|devices?)\s*to\s*(\d+)/i) ||
+    text.match(/(\d+)\s*(?:network\s+devices?|switches?|routers?)?\s*instead\s+of\s*(\d+)/i) ||
+    text.match(/make\s+it\s+(\d+)\s*(?:network\s+devices?|switches?)/i);
+
+  const itemLineNetMatches = [...text.matchAll(/(?:^|\n)[^\S\r\n]*[•\-\*]?\s*(\d+)\s+([^\n\r]*?\b(?:Catalyst|FortiGate|Switches?|Routers?|Firewalls?|Network\s+Devices?)\b[^\n\r]*)/gi)];
+  let itemLineNetSum = 0;
+  if (!authoritativeNetMatch && itemLineNetMatches.length > 1) {
+    for (const m of itemLineNetMatches) {
+      itemLineNetSum += parseInt(m[1]!, 10);
+    }
+  }
+
   const netMentioned =
     /\b(?:network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?))?|switches?|routers?|firewalls?)\b/i.test(
       text,
@@ -475,6 +594,60 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       state: "provided",
       intakeState: "none",
       confidence: 0.99,
+      evidence: networkEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
+  } else if (authoritativeNetMatch && authoritativeNetMatch[1]) {
+    networkCount = parseInt(authoritativeNetMatch[1], 10);
+    networkState = "stated";
+    networkEvidence = authoritativeNetMatch[0].trim();
+    fields.push({
+      key: "network_devices",
+      label: "Network Devices",
+      group: "infrastructure",
+      value: networkCount,
+      unit: "devices",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.99,
+      evidence: networkEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
+  } else if (netChangeMatch && netChangeMatch[1]) {
+    networkCount = parseInt(netChangeMatch[1], 10);
+    networkState = "stated";
+    networkEvidence = netChangeMatch[0].trim();
+    fields.push({
+      key: "network_devices",
+      label: "Network Devices",
+      group: "infrastructure",
+      value: networkCount,
+      unit: "devices",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.98,
+      evidence: networkEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
+  } else if (itemLineNetSum > 0) {
+    networkCount = itemLineNetSum;
+    networkState = "stated";
+    networkEvidence = itemLineNetMatches.map((m) => m[0].trim()).join("; ");
+    fields.push({
+      key: "network_devices",
+      label: "Network Devices",
+      group: "infrastructure",
+      value: networkCount,
+      unit: "devices",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.95,
       evidence: networkEvidence,
       conflictWith: null,
       previousValue: null,
@@ -524,7 +697,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const basicCountMatch =
     text.match(
-      /(\d+)[^\S\r\n]*(?:[a-z \t]{0,25}?)\b(?:basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?)?|standard(?:\s+monitors?)?|websites?|urls?|web\s+sites?|apis?|api\s+endpoints?|rest\s+apis?|web\s+endpoints?|endpoints?|website(?:\s+uptime|\s+availability)?(?:\s+monitors?|\s+checks?)?)\b/i,
+      /(\d+)[^\S\r\n]*(?:[a-z0-9 \t/-]{0,35}?)\b(?:basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?)?|standard(?:\s+monitors?)?|websites?|urls?|web\s+sites?|apis?|api\s+endpoints?|rest\s+apis?|web\s+endpoints?|endpoints?|website(?:\s+uptime|\s+availability)?(?:\s+monitors?|\s+checks?)?)\b/i,
     ) ||
     text.match(
       /(?:basic|ping|port|website\s+uptime|uptime\s+checks?|websites?|urls?|apis?|endpoints?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
@@ -654,7 +827,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const advMatch =
     text.match(
-      /(\d+)[^\S\r\n]*(?:[a-z \t]{0,35}?)\b(?:synthetic(?:\s+(?:transaction|web|browser))?|advanced(?:\s+web)?|transaction|browser\s+transaction|critical\s+web)\s*(?:monitors?|endpoints?|urls?|checks?|apis?|transactions?|flows?)\b/i,
+      /(\d+)[^\S\r\n]*(?:(?:multi-step|real\s+browser)\s+){0,2}\b(?:synthetic(?:\s+(?:transaction|web|browser))?|advanced(?:\s+web)?|transaction|browser\s+transaction|critical\s+web)\s*(?:monitors?|endpoints?|urls?|checks?|apis?|transactions?|flows?)?\b/i,
     ) ||
     text.match(
       /(?:synthetic(?:\s+transaction|\s+web|\s+browser)?|advanced(?:\s+web)?|transaction|browser\s+transaction)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
@@ -944,18 +1117,23 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     (/\b(?:applogs?|log\s+management)\b/i.test(text) || /\b(?:logs?)\b/i.test(text)) &&
     !/logistics|login|dialog|catalog/i.test(text);
 
+  const logMonthlyMatch =
+    text.match(/(?:~?\s*(\d[\d,.]*)\s*(?:gb|gigabytes?)\s*(?:monthly|per\s+month|\/mo|\/month))\b/i) ||
+    text.match(/(?:monthly(?:\s+ingestion|\s+volume|\s+logs?)?)\s*(?:of|:|=|,|\||\t)?\s*~?\s*(\d[\d,.]*)\s*(?:gb|gigabytes?)\b/i) ||
+    text.match(/(?:reduce|lower|increase|change|adjust)\s*(?:log\s+ingestion|logs?|applogs?|log\s+management)[^:\n\r\d,|]{0,50}(?:to|:|=|,|\||\t)\s*(\d[\d,.]*)\s*(?:gb|gigabytes?)/i);
+
   const logDayMatch = text.match(
-    /(\d+)\s*(?:gb|gigabytes?)\s*(?:\/|\s+per\s+)\s*day\b/i,
+    /(\d[\d,.]*)\s*(?:gb|gigabytes?)\s*(?:\/|\s+per\s+|\s+a\s+)\s*day(?:\s*\(x30\))?\b/i,
   );
   const logMatch =
     text.match(
-      /(\d+)[^\S\r\n]*(?:gb|gigabytes?|tb|terabytes?)[^\S\r\n]*(?:[a-z \t/]{0,20}?)\b(?:applogs?|logs?)\b/i,
+      /(\d[\d,.]*)[^\S\r\n]*(?:gb|gigabytes?|tb|terabytes?)[^\S\r\n]*(?:[a-z \t/]{0,20}?)\b(?:applogs?|logs?)\b/i,
     ) ||
     text.match(
-      /(?:applogs?|logs?|log\s+management)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?\s*(?:gb|gigabytes?|tb|terabytes?)?/i,
+      /(?:applogs?|logs?|log\s+management)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d[\d,.]*)"?\s*(?:gb|gigabytes?|tb|terabytes?)?/i,
     ) ||
     text.match(
-      /(?:applogs?|logs?)\s*(?:volume|storage|size|retention)?\s*(?:of|:|=|,|\||\t)?\s*"?(\d+)"?\s*(?:gb|gigabytes?|tb|terabytes?)/i,
+      /(?:applogs?|logs?)\s*(?:volume|storage|size|retention)?\s*(?:of|:|=|,|\||\t)?\s*"?(\d[\d,.]*)"?\s*(?:gb|gigabytes?|tb|terabytes?)/i,
     );
 
   const logNoneMatch = text.match(
@@ -986,9 +1164,27 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       previousValue: null,
       materialToPricing: true,
     });
+  } else if (logMonthlyMatch && logMonthlyMatch[1]) {
+    applogGb = parseInt(logMonthlyMatch[1].replace(/,/g, ""), 10);
+    applogState = "stated";
+    applogEvidence = logMonthlyMatch[0].trim();
+    fields.push({
+      key: "applogs_volume",
+      label: "AppLogs Volume",
+      group: "applications",
+      value: applogGb,
+      unit: "GB/month",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.98,
+      evidence: applogEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
   } else if (logDayMatch && logDayMatch[1]) {
     // GB/day converted to monthly volume (30 days)
-    applogGb = parseInt(logDayMatch[1], 10) * 30;
+    applogGb = parseInt(logDayMatch[1].replace(/,/g, ""), 10) * 30;
     applogState = "stated";
     applogEvidence = logDayMatch[0].trim();
     fields.push({
@@ -1007,7 +1203,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     });
   } else if (logMatch && logMatch[1]) {
     const isTb = logMatch[0].toLowerCase().includes("tb") || logMatch[0].toLowerCase().includes("terabyte");
-    applogGb = parseInt(logMatch[1], 10) * (isTb ? 1024 : 1);
+    applogGb = parseInt(logMatch[1].replace(/,/g, ""), 10) * (isTb ? 1024 : 1);
     applogState = "stated";
     applogEvidence = logMatch[0].trim();
     fields.push({
@@ -1482,7 +1678,7 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
 
   let suggestedQuestion: ClarificationQuestion | null = null;
   if (!isComplete && remainingUnknowns.length > 0) {
-    const questions = buildClarificationQuestions(remainingUnknowns);
+    const questions = buildClarificationQuestions(remainingUnknowns, true);
     suggestedQuestion = {
       id: `cq_${Date.now()}`,
       fieldKeys: remainingUnknowns.map((u) => UNIT_TO_FIELD_KEY[u]),
@@ -1534,7 +1730,7 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
 
   const clarificationQuestions =
     !isComplete && remainingUnknowns.length > 0
-      ? buildClarificationQuestions(remainingUnknowns)
+      ? buildClarificationQuestions(remainingUnknowns, true)
       : [];
 
   return {

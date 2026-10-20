@@ -1300,7 +1300,9 @@ async function doProcessInboundEmail(
 
   // 11. Finalize Thread Record
   const bestValueOption =
-    quote.options.find((o) => o.optionType === "best_value") ?? quote.options[0];
+    (quote.recommendedOptionId ? quote.options.find((o) => o.id === quote.recommendedOptionId) : undefined) ??
+    quote.options.find((o) => o.optionType === "best_value") ??
+    quote.options[0];
 
   store.updateThread(thread.id, {
     state: "quoted",

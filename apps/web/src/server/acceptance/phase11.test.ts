@@ -384,7 +384,8 @@ test("Phase 11.15 - PDF text contains plan, line items, total, issue and expiry 
   const pdfBuf = await renderQuotePdf({ quote, thread });
   const text = extractPdfText(pdfBuf);
 
-  assert.ok(text.includes("Professional"), "PDF must contain plan name");
+  const recPlan = quote.options.find((o) => o.id === quote.recommendedOptionId)?.planName ?? quote.options[0]!.planName;
+  assert.ok(text.includes(recPlan), `PDF must contain plan name ${recPlan}`);
   assert.ok(text.includes("Total") || text.includes("TOTAL"), "PDF must contain total");
   assert.ok(text.includes("Validity: 30 days"), "PDF must state validity");
   assert.equal(text.includes("Valued Customer"), false, "Must not contain 'Valued Customer'");

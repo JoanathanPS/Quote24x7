@@ -80,14 +80,20 @@ export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Ca
 
   const integrityChecks = runIntegrityChecks(catalogue, options, demand);
 
-  const candidateTable: CandidateSummary[] = candidates.map((c) => ({
-    planId: c.plan.id,
-    planName: c.plan.name,
-    total: c.total,
-    totalFormatted: formatMoney(c.total, "INR"),
-    valid: c.valid,
-    rejectionReason: c.unavailabilityReason ?? (c.valid ? null : "Requirements not satisfied"),
-  }));
+  const seenPlanNames = new Set<string>();
+  const candidateTable: CandidateSummary[] = [];
+  for (const c of candidates) {
+    if (seenPlanNames.has(c.plan.name)) continue;
+    seenPlanNames.add(c.plan.name);
+    candidateTable.push({
+      planId: c.plan.id,
+      planName: c.plan.name,
+      total: c.total,
+      totalFormatted: formatMoney(c.total, "INR"),
+      valid: c.valid,
+      rejectionReason: c.unavailabilityReason ?? (c.valid ? null : "Requirements not satisfied"),
+    });
+  }
 
   console.log("[Pre-Pricing Unit Evidence Audit]");
   for (const unit of DEMAND_UNITS) {
@@ -128,6 +134,7 @@ export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Ca
     // No verified quote-validity policy exists, so no expiry date is claimed.
     expiresAt: null,
     options,
+    recommendedOptionId: options[0]?.id,
     assumptions: buildAssumptions(demand, catalogue, profile),
     exclusions: buildExclusions(catalogue),
     calculationTrace: trace,

@@ -332,7 +332,15 @@ class SessionStore {
         const pClean = (m.providerMessageId || "").replace(/[<>]/g, "").trim().toLowerCase();
         const mClean = (m.id || "").replace(/[<>]/g, "").trim().toLowerCase();
         const hClean = (m.messageIdHeader || "").replace(/[<>]/g, "").trim().toLowerCase();
-        return pClean === cleanId || mClean === cleanId || hClean === cleanId;
+        const delClean = (m.deliveryId || "").replace(/[<>]/g, "").trim().toLowerCase();
+        const localPart = cleanId.split("@")[0] || cleanId;
+        return (
+          pClean === cleanId ||
+          mClean === cleanId ||
+          hClean === cleanId ||
+          (localPart && pClean === localPart) ||
+          (localPart && delClean === localPart)
+        );
       });
       if (found) return found;
     }

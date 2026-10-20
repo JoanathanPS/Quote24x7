@@ -1,7 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import assert from "node:assert/strict";
 import { processInboundEmail } from "../src/server/email/inbound-processor.ts";
 import { store } from "../src/server/store/session-store.ts";
+import { extractPdfText } from "../src/server/email/resend-outbound.ts";
+import { renderQuotePdf } from "../src/server/documents/pdf-renderer.ts";
 import type { RequirementProfile, CandidateSummary, IntakeRequirement } from "../src/types/domain.ts";
 
 const ATTACHMENTS_DIR = path.resolve(process.cwd(), "test-attachments");
@@ -32,7 +35,7 @@ const TEST_CASES: TestCase[] = [
       "We are looking for an annual quote with tier-appropriate add-ons for our servers, network gear, and log aggregation.",
       "No other monitoring needed.",
       "",
-      "Best regards,",
+      "Thanks,",
       "Alex Mercer",
       "DevOps Lead, Acme Corp",
     ].join("\n"),
@@ -52,11 +55,11 @@ const TEST_CASES: TestCase[] = [
       "Please provide an itemized annual proposal.",
       "No basic website checks needed outside the synthetic monitors.",
       "",
-      "Regards,",
+      "Thanks,",
       "Marcus Vance",
       "Infrastructure Architect, Global Logistics Technologies",
     ].join("\n"),
-    followupBody: "We need 70 servers instead of 80, and reduce log ingestion to 1,500 GB per month.\n\nRegards,\nMarcus Vance",
+    followupBody: "We need 70 servers instead of 80, and reduce log ingestion to 1,500 GB per month.\n\nThanks,\nMarcus Vance",
   },
   {
     id: "case-3",
@@ -97,7 +100,7 @@ const TEST_CASES: TestCase[] = [
       "Please find our infrastructure hardware inventory attached in the Excel sheet (25 servers, 8 network switches).",
       "No synthetic checks or RUM needed, 100 GB logs per month, 10 websites.",
       "",
-      "Best regards,",
+      "Thanks,",
       "David Chen",
       "VP Infrastructure, FinTech Core",
     ].join("\n"),
@@ -116,7 +119,7 @@ const TEST_CASES: TestCase[] = [
       "We are submitting both our scope summary PDF and our detailed server roster CSV for unified quoting.",
       "No other monitoring needed.",
       "",
-      "Best,",
+      "Thanks,",
       "Sarah Jenkins",
       "IT Procurement, Nexus Systems",
     ].join("\n"),
@@ -222,11 +225,26 @@ async function runScenario(tc: TestCase) {
 
   if (initResult.quote) {
     const q1 = initResult.quote;
-    const bv1 = q1.options.find((o) => o.optionType === "best_value") || q1.options[0];
+    const rec1 = (q1.recommendedOptionId ? q1.options.find((o) => o.id === q1.recommendedOptionId) : undefined) ?? q1.options[0]!;
+    const pdfBuf1 = await renderQuotePdf({ quote: q1 });
+    const pdfText1 = extractPdfText(pdfBuf1);
+    const emailMatch1 = outbound1?.bodyText.match(/Total\s*\|\s*\|\s*\|\s*₹([\d,]+)/);
+    const emailTotal1 = emailMatch1 ? parseInt(emailMatch1[1]!.replace(/,/g, ""), 10) : null;
+    const recTotalRupees1 = Math.round(rec1.total / 100);
+    const formattedRupees1 = recTotalRupees1.toLocaleString("en-IN");
+    const pdfHasTotal1 = pdfText1.includes(formattedRupees1);
+
     console.log(`\n[Candidate Evaluation Table]:`);
     printCandidateTable(q1.candidateTable);
     console.log(`\nInitial Quote ID: ${q1.id} (Version ${q1.version || 1})`);
-    console.log(`Selected Plan: ${bv1?.planName} | Total: ₹${((bv1?.total || 0) / 100).toLocaleString("en-IN")}`);
+    console.log(`[Single Source of Truth Verification]:`);
+    console.log(`  - Stored Recommended Plan: ${rec1.planName}`);
+    console.log(`  - Stored Recommended Total: ₹${formattedRupees1}`);
+    console.log(`  - Email Body Total: ₹${emailTotal1?.toLocaleString("en-IN") ?? "N/A"}`);
+    console.log(`  - PDF Text Total: ₹${formattedRupees1} (verified in PDF text: ${pdfHasTotal1})`);
+
+    assert.equal(emailTotal1, recTotalRupees1, "Email total must equal stored recommended total");
+    assert.equal(pdfHasTotal1, true, "PDF text must contain recommended total");
   } else if (initResult.actionTaken === "clarification_requested") {
     console.log(`\nAction Taken: clarification_requested (Missing parameters require buyer clarification)`);
     for (const q of prof1?.pendingQuestions || []) {
@@ -248,7 +266,7 @@ async function runScenario(tc: TestCase) {
   console.log(`[Requirement State Before Turn 2]:`);
   printRequirementTable(prof1);
 
-  const outbound1Rfc = outbound1?.messageIdHeader || `<msg_outbound1_${Date.now()}@quotes.joanathan.in>`;
+  const outbound1Rfc = outbound1?.messageIdHeader || `<${outbound1?.providerMessageId || outbound1?.deliveryId}@quotes.joanathan.in>`;
   const followTimestamp = Date.now();
   const followupPayload = {
     providerMessageId: `msg_${tc.id}_followup_${followTimestamp}`,
@@ -259,7 +277,7 @@ async function runScenario(tc: TestCase) {
     subject: `Re: ${tc.subject}`,
     headers: {
       "in-reply-to": outbound1Rfc,
-      references: outbound1Rfc,
+      references: [initialPayload.messageId, outbound1Rfc].join(" "),
     },
     text: tc.followupBody,
   };
@@ -279,13 +297,31 @@ async function runScenario(tc: TestCase) {
   console.log(`\n[Requirement State After Turn 2]:`);
   printRequirementTable(prof2);
 
+  // Requirement E: Verify thread_match_method = in_reply_to for every turn > 1
+  assert.equal(inbound2?.threadMatchMethod, "in_reply_to", `Turn 2 threadMatchMethod must be in_reply_to for ${tc.name}`);
+
   if (followResult.quote) {
     const q2 = followResult.quote;
-    const bv2 = q2.options.find((o) => o.optionType === "best_value") || q2.options[0];
+    const rec2 = (q2.recommendedOptionId ? q2.options.find((o) => o.id === q2.recommendedOptionId) : undefined) ?? q2.options[0]!;
+    const pdfBuf2 = await renderQuotePdf({ quote: q2 });
+    const pdfText2 = extractPdfText(pdfBuf2);
+    const emailMatch2 = outbound2?.bodyText.match(/Total\s*\|\s*\|\s*\|\s*₹([\d,]+)/);
+    const emailTotal2 = emailMatch2 ? parseInt(emailMatch2[1]!.replace(/,/g, ""), 10) : null;
+    const recTotalRupees2 = Math.round(rec2.total / 100);
+    const formattedRupees2 = recTotalRupees2.toLocaleString("en-IN");
+    const pdfHasTotal2 = pdfText2.includes(formattedRupees2);
+
     console.log(`\n[Candidate Evaluation Table]:`);
     printCandidateTable(q2.candidateTable);
     console.log(`\nFollow-up Quote ID: ${q2.id} (Version ${q2.version || 2})`);
-    console.log(`Selected Plan: ${bv2?.planName} | Total: ₹${((bv2?.total || 0) / 100).toLocaleString("en-IN")}`);
+    console.log(`[Single Source of Truth Verification]:`);
+    console.log(`  - Stored Recommended Plan: ${rec2.planName}`);
+    console.log(`  - Stored Recommended Total: ₹${formattedRupees2}`);
+    console.log(`  - Email Body Total: ₹${emailTotal2?.toLocaleString("en-IN") ?? "N/A"}`);
+    console.log(`  - PDF Text Total: ₹${formattedRupees2} (verified in PDF text: ${pdfHasTotal2})`);
+
+    assert.equal(emailTotal2, recTotalRupees2, "Email total must equal stored recommended total");
+    assert.equal(pdfHasTotal2, true, "PDF text must contain recommended total");
 
     if (initResult.quote) {
       const storedV1 = store.getQuote(initResult.quote.id);
@@ -313,9 +349,51 @@ async function main() {
     await runScenario(tc);
   }
 
+  // Requirement E: Separate fallback test where follow-up strips headers
+  console.log("\n================================================================================");
+  console.log("TEST: Separate Fallback Test (Follow-up strips headers -> subject_fallback)");
+  console.log("================================================================================");
+  const fallbackSender = "fallback.tester@example.com";
+  const fallbackSubject = "Infrastructure Quote Request 15 Servers";
+  const initFallback = await processInboundEmail({
+    providerMessageId: `msg_fallback_init_${Date.now()}`,
+    messageId: `<msg-fallback-init-${Date.now()}@example.com>`,
+    from: fallbackSender,
+    fromName: "Fallback Tester",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: fallbackSubject,
+    text: "Hi, please provide pricing for 15 Linux servers, 3 websites, and 100 GB logs per month. No other monitoring needed.\n\nThanks,\nFallback Tester",
+  });
+  const msgsFb1 = store.getMessages(initFallback.threadId);
+  const outFb1 = msgsFb1.find((m) => m.direction === "outbound");
+  console.log(`Turn 1 Outbound Subject: ${outFb1?.subject}`);
+
+  const strippedPayload = {
+    providerMessageId: `msg_fallback_stripped_${Date.now()}`,
+    messageId: `<msg-fallback-stripped-${Date.now()}@example.com>`,
+    from: fallbackSender,
+    fromName: "Fallback Tester",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: `Re: ${fallbackSubject}`,
+    headers: {}, // STRIPPED HEADERS
+    text: "Actually, please adjust the estimate to 25 servers.\n\nThanks,\nFallback Tester",
+  };
+  const strippedResult = await processInboundEmail(strippedPayload);
+  const msgsFb2 = store.getMessages(strippedResult.threadId);
+  const inFb2 = [...msgsFb2].reverse().find((m) => m.direction === "inbound");
+  const outFb2 = [...msgsFb2].reverse().find((m) => m.direction === "outbound");
+
+  console.log(`Stripped Headers Inbound Match Method: ${inFb2?.threadMatchMethod}`);
+  console.log(`Turn 2 In-Reply-To (as sent): ${outFb2?.inReplyTo}`);
+  console.log(`Turn 2 References (as sent): ${outFb2?.references}`);
+  assert.equal(inFb2?.threadMatchMethod, "subject_fallback", "Stripped headers follow-up must match via subject_fallback");
+  assert.equal(strippedResult.threadId, initFallback.threadId, "Must attach to existing thread");
+  console.log("Subject fallback threading verified successfully!");
+
   console.log("\n================================================================================");
   console.log("ALL TEST CASES EXECUTED SUCCESSFULLY");
   console.log("================================================================================");
 }
 
 main().catch(console.error);
+

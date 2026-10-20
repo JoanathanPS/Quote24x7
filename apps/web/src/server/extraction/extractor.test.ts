@@ -11,6 +11,7 @@ import {
   INTAKE_UNITS,
 } from "./extractor.ts";
 import { processInboundEmail } from "../email/inbound-processor.ts";
+import { runPreSendChecks } from "../email/resend-outbound.ts";
 import { store } from "../store/session-store.ts";
 
 test("Triage: Categorizes inbound emails correctly", () => {
@@ -346,4 +347,119 @@ test("Item 2 Unit Attachment: compound negation 'No synthetic checks or RUM need
   assert.match(intake.advanced_monitor.evidence || "", /\bsynthetic/i);
   assert.match(intake.rum_pageview.evidence || "", /\brum/i);
 });
+
+test("Item B Regression: Case 1 exact PDF text extraction and golden sum pricing", () => {
+  const case1PdfText = `
+Infrastructure Sizing Specification
+Production Environment Scope
+
+1. Server Infrastructure:
+• 35 Production Linux Servers (Ubuntu 22.04 LTS on AWS c5.2xlarge)
+• 15 Windows Database & AD Servers (Windows Server 2022 on m5.xlarge)
+Total Host Server Requirement: 50 Servers
+
+2. Network Infrastructure:
+• 6 Core Switches (Cisco Catalyst 9300)
+• 2 Perimeter Firewalls (FortiGate 100F)
+Total Network Component Requirement: 8 Network Devices
+
+3. Applications & Web Checks:
+• 5 Public HTTPS Website Availability Endpoints
+• 2 Multi-step Real Browser Synthetic Transactions
+
+4. Log Management:
+• 20 GB per day (~600 GB monthly) Log Storage Retention
+`;
+
+  const turn1Res = extractRequirements({
+    threadId: "th_case1_regression",
+    senderEmail: "alex.mercer@acmecorp.com",
+    senderName: "Alex Mercer",
+    subject: "Quote Request: Infrastructure Scope",
+    bodyText: case1PdfText,
+  });
+
+  // Authoritative extraction checks
+  assert.equal(turn1Res.demand.host_monitor, 50, "Host servers must be 50 (authoritative total)");
+  assert.equal(turn1Res.demand.network_component, 8, "Network components must be 8 (authoritative total)");
+  assert.equal(turn1Res.demand.basic_monitor, 5, "Basic monitors must be 5");
+  assert.equal(turn1Res.demand.advanced_monitor, 2, "Synthetic transactions must count as 2 advanced monitors");
+  assert.equal(turn1Res.demand.applog_gb, 600, "Prefer explicit monthly 600 GB over per-day");
+
+  // Arithmetic verification for Turn 1
+  const basePrice = 47880;
+  const serversV1 = 121885;
+  const advMonitors = 15390;
+  const logsV1 = 120270;
+  const turn1ExpectedTotal = basePrice + serversV1 + advMonitors + logsV1;
+  assert.equal(turn1ExpectedTotal, 305425, "Turn 1 sum: 47,880 + 1,21,885 + 15,390 + 1,20,270 = 3,05,425");
+
+  // Turn 2: "40 servers instead of 50, no network devices"
+  const turn2Res = mergeRequirements({
+    existingProfile: turn1Res.profile,
+    senderEmail: "alex.mercer@acmecorp.com",
+    senderName: "Alex Mercer",
+    subject: "Re: Quote Request: Infrastructure Scope",
+    replyText: "40 servers instead of 50, no network devices\n\nThanks,\nAlex Mercer",
+  });
+
+  assert.equal(turn2Res.demand.host_monitor, 40, "Servers must update to 40");
+  assert.equal(turn2Res.demand.network_component, 0, "Network devices must update to 0 (none)");
+  assert.equal(turn2Res.demand.basic_monitor, 5, "Websites must remain 5");
+  assert.equal(turn2Res.demand.advanced_monitor, 2, "Advanced monitors must remain 2");
+  assert.equal(turn2Res.demand.applog_gb, 600, "Logs must remain 600");
+
+  // Arithmetic verification for Turn 2
+  const serversV2 = 4 * 25650; // 1,02,600
+  const turn2ExpectedTotal = basePrice + serversV2 + advMonitors + logsV1;
+  assert.equal(turn2ExpectedTotal, 286140, "Turn 2 sum: 47,880 + 4 x 25,650 + 15,390 + 1,20,270 = 2,86,140");
+});
+
+test("Item C Follow-up Updates: Case 2 follow-up sets applog_gb to 1500", () => {
+  const initial = extractRequirements({
+    threadId: "th_case2_test",
+    senderEmail: "marcus.vance@globallogistics.example.com",
+    senderName: "Marcus Vance",
+    subject: "RFP Spec",
+    bodyText: "We need 80 servers, 20 network devices, 10 synthetic checks, and 2000 GB logs per month.",
+  });
+
+  assert.equal(initial.demand.host_monitor, 80);
+  assert.equal(initial.demand.applog_gb, 2000);
+
+  const followUp = mergeRequirements({
+    existingProfile: initial.profile,
+    senderEmail: "marcus.vance@globallogistics.example.com",
+    senderName: "Marcus Vance",
+    subject: "Re: RFP Spec",
+    replyText: "We need 70 servers instead of 80, and reduce log ingestion to 1,500 GB per month.\n\nRegards,\nMarcus Vance",
+  });
+
+  assert.equal(followUp.demand.host_monitor, 70, "Servers updated to 70");
+  assert.equal(followUp.demand.applog_gb, 1500, "AppLogs volume updated to 1500");
+  assert.equal(followUp.demand.network_component, 20, "Network components preserved at 20");
+  assert.equal(followUp.demand.advanced_monitor, 10, "Advanced monitors preserved at 10");
+});
+
+test("Item D Pre-send checker fails on email missing standard footer or Ref line", () => {
+  const contentWithoutFooter = "Hi Alex,\n\nHere is your quote for 50 servers.\n";
+  const result = runPreSendChecks(contentWithoutFooter, { requireFooter: true });
+  assert.equal(result.passed, false, "Pre-send check must fail when footer is missing");
+  assert.ok(result.violations.some((v) => v.includes("Quote24x7 Assistant")), "Must detect missing Quote24x7 Assistant");
+  assert.ok(result.violations.some((v) => v.includes("Ref Q-")), "Must detect missing Ref line");
+
+  const contentWithFooter = [
+    "Hi Alex,",
+    "",
+    "Here is your estimate.",
+    "",
+    "Quote24x7 Assistant",
+    "Automated assistant using Site24x7's public India pricing. A Site24x7 sales representative confirms final pricing.",
+    "Ref Q-1042",
+  ].join("\n");
+
+  const validResult = runPreSendChecks(contentWithFooter, { requireFooter: true });
+  assert.equal(validResult.passed, true, "Pre-send check must pass with valid standard footer");
+});
+
 

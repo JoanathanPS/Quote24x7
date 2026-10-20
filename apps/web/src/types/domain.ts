@@ -352,7 +352,8 @@ export type QuoteStatus =
   | "validated"
   | "sent"
   | "delivery_failed"
-  | "superseded";
+  | "superseded"
+  | "failed_check";
 
 export type OptionType = "best_value" | "lowest_cost" | "best_coverage";
 
@@ -466,6 +467,8 @@ export interface Quote {
   sourceCitations?: ProposalSourceCitation[];
   /** Candidate evaluation table showing all plans, totals, and rejection reasons. */
   candidateTable?: CandidateSummary[];
+  /** Single source of truth: ID of the valid candidate with minimum annual total. */
+  recommendedOptionId?: string;
 }
 
 export interface IntegrityCheck {

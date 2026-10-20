@@ -30,6 +30,9 @@ const BANNED_PHRASES = [
   /\btailored\b/i,
   /customized quotation/i,
   /\bpaise\b/i,
+  /to configure the best-value plan/i,
+  /best regards/i,
+  /we will prepare your quotation/i,
 ];
 
 const EMOJI_RE = /\p{Emoji_Presentation}|\p{Extended_Pictographic}/u;
@@ -204,7 +207,7 @@ export function resolveRecipientName(
 
 export function runPreSendChecks(
   content: string,
-  options?: { isQuoteEmail?: boolean }
+  options?: { isQuoteEmail?: boolean; requireFooter?: boolean }
 ): PreSendCheckResult {
   const violations: string[] = [];
 
@@ -235,6 +238,18 @@ export function runPreSendChecks(
     const htmlForbiddenMatch = content.match(NON_QUOTE_HTML_FORBIDDEN);
     if (htmlForbiddenMatch) {
       violations.push(`Forbidden HTML in non-quote email: "${htmlForbiddenMatch[0]}"`);
+    }
+  }
+
+  if (options?.requireFooter) {
+    if (!content.includes("Quote24x7 Assistant")) {
+      violations.push("Missing 'Quote24x7 Assistant' in footer");
+    }
+    if (!content.includes("Automated assistant using Site24x7's public India pricing. A Site24x7 sales representative confirms final pricing.")) {
+      violations.push("Missing disclaimer in footer: 'Automated assistant using Site24x7's public India pricing. A Site24x7 sales representative confirms final pricing.'");
+    }
+    if (!/Ref\s+Q-\d+/i.test(content)) {
+      violations.push("Missing 'Ref Q-xxxx' in footer");
     }
   }
 
@@ -530,7 +545,7 @@ async function dispatchEmail(input: DispatchInput): Promise<OutboundDispatchResu
   }
 
   const bodyContent = input.textContent + "\n" + (input.htmlContent ?? "");
-  const check = runPreSendChecks(bodyContent, { isQuoteEmail: input.isQuoteEmail });
+  const check = runPreSendChecks(bodyContent, { isQuoteEmail: input.isQuoteEmail, requireFooter: true });
   const subjectCheck = runPreSendChecks(input.subject, { isQuoteEmail: true });
 
   const attachmentViolations: string[] = [];
@@ -1066,8 +1081,8 @@ export function renderQuoteEmail(input: {
     "",
     "Reply to this email if you'd like to adjust counts, add capabilities, or change billing frequency.",
     "",
-    "Independent estimate based on Site24x7 India public pricing captured 2026-10-16. Not an official Zoho document.",
     "Quote24x7 Assistant",
+    "Automated assistant using Site24x7's public India pricing. A Site24x7 sales representative confirms final pricing.",
     `Ref ${shortRef}`,
   ].join("\n").trim();
 
@@ -1122,7 +1137,7 @@ export function renderQuoteEmail(input: {
     "<p>Estimate valid 30 days. Costs in INR; local taxes extra; final price confirmed by Site24x7 at purchase.</p>",
     "<p>Reply to this email if you'd like to adjust counts, add capabilities, or change billing frequency.</p>",
     "<hr>",
-    `<p style="font-size:12px;color:#666;">Independent estimate based on Site24x7 India public pricing captured 2026-10-16. Not an official Zoho document.<br>Quote24x7 Assistant<br>Ref ${escapeHtml(shortRef)}</p>`,
+    `<p style="font-size:12px;color:#666;">Quote24x7 Assistant<br>Automated assistant using Site24x7's public India pricing. A Site24x7 sales representative confirms final pricing.<br>Ref ${escapeHtml(shortRef)}</p>`,
     "</body>",
     "</html>",
   ].join("\n");
@@ -1155,6 +1170,51 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
     previousQuote: input.previousQuote,
     isUpdate: input.isUpdate,
   });
+
+  // Requirement A: Single Source of Truth
+  // quote.recommendedOptionId = valid candidate with minimum annual total
+  // email total = PDF extracted total = quote total = min of valid candidates
+  const recOption =
+    (input.quote.recommendedOptionId
+      ? input.quote.options.find((o) => o.id === input.quote.recommendedOptionId)
+      : undefined) ??
+    input.quote.options.find((o) => o.optionType === "best_value") ??
+    input.quote.options[0];
+
+  if (!recOption) {
+    input.quote.status = "failed_check";
+    store.saveQuote(input.quote);
+    throw new Error(`Single Source of Truth assertion failed: No recommended option in quote ${input.quote.id}`);
+  }
+
+  const validCandidates = (input.quote.candidateTable ?? []).filter((c) => c.valid);
+  const minValidPaise = validCandidates.length > 0
+    ? Math.min(...validCandidates.map((c) => c.total))
+    : recOption.total;
+
+  const quoteTotalRupees = Math.round(recOption.total / 100);
+  const formattedRupees = quoteTotalRupees.toLocaleString("en-IN");
+
+  const emailTotalMatch = textContent.match(/Total\s*\|\s*\|\s*\|\s*₹([\d,]+)/);
+  const emailTotalRupees = emailTotalMatch ? parseInt(emailTotalMatch[1]!.replace(/,/g, ""), 10) : null;
+
+  const pdfExtractedText = extractPdfText(input.pdfBuffer);
+  const pdfHasTotal = pdfExtractedText.includes(formattedRupees);
+
+  if (
+    recOption.total !== minValidPaise ||
+    emailTotalRupees !== quoteTotalRupees ||
+    !pdfHasTotal
+  ) {
+    input.quote.status = "failed_check";
+    store.saveQuote(input.quote);
+    throw new Error(
+      `Single Source of Truth assertion failed: ` +
+      `recOptionTotal=${recOption.total}, minValidPaise=${minValidPaise}, ` +
+      `emailTotalRupees=${emailTotalRupees}, quoteTotalRupees=${quoteTotalRupees}, ` +
+      `pdfHasTotal=${pdfHasTotal}`
+    );
+  }
 
   return dispatchEmail({
     threadId: input.thread.id,
@@ -1197,7 +1257,7 @@ export function extractClarificationQuestions(questionText: string, maxQuestions
 }
 
 /**
- * Deterministically renders the plain text and responsive HTML clarification email.
+ * Deterministically renders the plain text and responsive HTML clarification email from Golden Template.
  */
 export function renderClarificationEmail(input: {
   recipientName?: string | null;
@@ -1205,21 +1265,30 @@ export function renderClarificationEmail(input: {
   conversationalResponse?: string | null;
   threadId: string;
 }): { textContent: string; htmlContent: string; wordCount: number } {
-  const greeting = input.recipientName ? `Hi ${input.recipientName},` : "Hi there,";
+  let firstName = (input.recipientName || "").trim();
+  if (firstName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(firstName)) {
+    firstName = firstName.split(/\s+/)[0]!;
+  }
+  const greeting = firstName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(firstName)
+    ? `Hi ${firstName},`
+    : "Hi there,";
+
+  const shortRef = formatShortRef(input.threadId);
   const questions = extractClarificationQuestions(input.questionText, 3);
   const numberedList = questions.map((q, idx) => `${idx + 1}. ${q}`).join("\n");
 
   const textContent = [
     greeting,
     "",
-    "Thank you for contacting us about Site24x7. To configure the best-value plan and accurately size your monitoring requirements, could you please clarify:",
+    "Thanks for reaching out. To size your monitoring accurately, could you clarify:",
     "",
     numberedList,
     "",
-    "Reply directly to this email with your counts, and we will prepare your quotation.",
+    "Reply to this email with your counts and I'll send over the estimate.",
     "",
-    "Best regards,",
     "Quote24x7 Assistant",
+    "Automated assistant using Site24x7's public India pricing. A Site24x7 sales representative confirms final pricing.",
+    `Ref ${shortRef}`,
   ].join("\n").trim();
 
   const words = textContent.split(/\s+/).filter(Boolean);
@@ -1252,7 +1321,7 @@ export function renderClarificationEmail(input: {
     </div>
 
     <p>${escapeHtml(greeting)}</p>
-    <p>Thank you for contacting us about Site24x7. To configure the best-value plan and accurately size your monitoring requirements, could you please clarify:</p>
+    <p>Thanks for reaching out. To size your monitoring accurately, could you clarify:</p>
     <div class="card">
       <div class="card-title">Questions</div>
       <ol>
@@ -1261,11 +1330,13 @@ export function renderClarificationEmail(input: {
     </div>
 
     <p style="font-size: 14px; font-weight: 500; color: #0f172a;">
-      Reply directly to this email with your counts, and we will prepare your quotation.
+      Reply to this email with your counts and I'll send over the estimate.
     </p>
 
     <div class="footer">
-      Quote24x7 Assistant &mdash; Automated assistant using Site24x7 public India pricing
+      Quote24x7 Assistant<br>
+      Automated assistant using Site24x7's public India pricing. A Site24x7 sales representative confirms final pricing.<br>
+      Ref ${escapeHtml(shortRef)}
     </div>
   </div>
 </body>
@@ -1300,18 +1371,27 @@ export async function sendNonSubstantiveReplyEmail(
   input: SendNonSubstantiveReplyEmailInput
 ): Promise<OutboundDispatchResult> {
   const subject = resolveThreadSubject(input.thread.subject);
+  let firstName = (input.recipientName || "").trim();
+  if (firstName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(firstName)) {
+    firstName = firstName.split(/\s+/)[0]!;
+  }
+  const greeting = firstName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(firstName)
+    ? `Hi ${firstName},`
+    : "Hi there,";
 
-  const textContent = `
-Hi ${input.recipientName || "there"},
+  const shortRef = formatShortRef(input.thread.id);
 
-Thanks for reaching out. To put a quote together I just need to know your monitoring requirements (such as servers, websites/APIs, synthetic transactions, network devices, RUM pageviews, or log volume).
-
-Simply reply to this email with your expected counts, and we'll calculate your configuration options.
-
-Best regards,
-Quote24x7 Assistant
-https://quotes.joanathan.in/
-  `.trim();
+  const textContent = [
+    greeting,
+    "",
+    "Thanks for reaching out. To put together an estimate, I need to know your monitoring requirements (such as servers, websites/APIs, synthetic transactions, network devices, RUM pageviews, or log volume).",
+    "",
+    "Simply reply to this email with your expected counts, and I'll calculate your configuration options.",
+    "",
+    "Quote24x7 Assistant",
+    "Automated assistant using Site24x7's public India pricing. A Site24x7 sales representative confirms final pricing.",
+    `Ref ${shortRef}`,
+  ].join("\n").trim();
 
   return dispatchEmail({
     threadId: input.thread.id,
@@ -1326,28 +1406,33 @@ export async function sendFinalYieldEmail(
   input: SendFinalYieldEmailInput
 ): Promise<OutboundDispatchResult> {
   const subject = resolveThreadSubject(input.thread.subject);
+  let firstName = (input.recipientName || "").trim();
+  if (firstName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(firstName)) {
+    firstName = firstName.split(/\s+/)[0]!;
+  }
+  const greeting = firstName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(firstName)
+    ? `Hi ${firstName},`
+    : "Hi there,";
 
+  const shortRef = formatShortRef(input.thread.id);
   const missingList = input.missingUnits.length > 0
     ? input.missingUnits.map((u) => `• ${u}`).join("\n")
     : "• Specific monitoring counts (servers, websites, or network devices)";
 
-  const textContent = `
-Hi ${input.recipientName || "there"},
-
-Thank you for contacting us regarding Site24x7 monitoring.
-
-To provide an accurate quotation without gaps, I still need your specific requirements for:
-${missingList}
-
-You can also explore plans and calculate custom configurations directly on the Site24x7 pricing calculator:
-https://www.site24x7.in/pricing.html
-
-If you reply with those counts I'll continue right away. You can also use Site24x7's price calculator or contact Site24x7 sales at sales@site24x7.com.
-
-Best regards,
-Quote24x7 Assistant
-https://quotes.joanathan.in/
-  `.trim();
+  const textContent = [
+    greeting,
+    "",
+    "Thanks for reaching out.",
+    "",
+    "To provide an accurate estimate without gaps, I still need your specific requirements for:",
+    missingList,
+    "",
+    "You can also explore plans and calculate custom configurations directly on the Site24x7 pricing calculator: https://www.site24x7.in/pricing.html",
+    "",
+    "Quote24x7 Assistant",
+    "Automated assistant using Site24x7's public India pricing. A Site24x7 sales representative confirms final pricing.",
+    `Ref ${shortRef}`,
+  ].join("\n").trim();
 
   return dispatchEmail({
     threadId: input.thread.id,
@@ -1362,26 +1447,32 @@ export async function sendUnpriceableNotificationEmail(
   input: SendUnpriceableNotificationEmailInput
 ): Promise<OutboundDispatchResult> {
   const subject = resolveThreadSubject(input.thread.subject);
+  let firstName = (input.recipientName || "").trim();
+  if (firstName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(firstName)) {
+    firstName = firstName.split(/\s+/)[0]!;
+  }
+  const greeting = firstName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(firstName)
+    ? `Hi ${firstName},`
+    : "Hi there,";
 
+  const shortRef = formatShortRef(input.thread.id);
   const reasonList = input.rejectionReasons.map((r) => `• ${r}`).join("\n");
 
-  const textContent = `
-Hi ${input.recipientName || "there"},
-
-Thank you for contacting Quote24x7 regarding Site24x7 monitoring.
-
-Our automated pricing system evaluated your requirements against active Site24x7 plans and add-on packs. However, we are unable to generate an automated quotation for your request due to the following:
-
-${reasonList}
-
-If your requirements can be adjusted or clarified, reply to this email and I will recalculate. You can also contact Site24x7 sales at sales@site24x7.com or use their price calculator.
-
-We appreciate your patience and look forward to assisting you.
-
-Best regards,
-Quote24x7 Assistant
-https://quotes.joanathan.in/
-  `.trim();
+  const textContent = [
+    greeting,
+    "",
+    "Thanks for reaching out.",
+    "",
+    "Our automated pricing system evaluated your requirements against active Site24x7 plans and add-on packs. However, we are unable to generate an automated estimate for your request due to the following:",
+    "",
+    reasonList,
+    "",
+    "If your requirements can be adjusted or clarified, reply to this email and I will recalculate.",
+    "",
+    "Quote24x7 Assistant",
+    "Automated assistant using Site24x7's public India pricing. A Site24x7 sales representative confirms final pricing.",
+    `Ref ${shortRef}`,
+  ].join("\n").trim();
 
   return dispatchEmail({
     threadId: input.thread.id,

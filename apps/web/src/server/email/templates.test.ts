@@ -103,9 +103,9 @@ test("Phase 8 - Clarification Template: At most 3 numbered questions and polite 
     threadId: "th_test_numbered",
   });
 
-  // Greeting
-  assert.ok(textContent.startsWith("Hi Vikram Malhotra,"));
-  assert.ok(htmlContent.includes("Hi Vikram Malhotra,"));
+  // Greeting: first name only per Item D
+  assert.ok(textContent.startsWith("Hi Vikram,"));
+  assert.ok(htmlContent.includes("Hi Vikram,"));
 
   // Numbered questions in text: 1., 2., 3. and NOT 4. or 5.
   assert.ok(textContent.includes("1. How many servers?"));
@@ -193,7 +193,7 @@ test("Phase 8 - Quote Template: Complete itemized breakdown, transparent cadence
   // 6. Comparison line from engine when applicable
   if (bestValue.planId !== lowestCost.planId) {
     const hasComparison =
-      textContent.includes("costs") && textContent.includes("/year");
+      textContent.includes("costs") && textContent.includes("per year");
     assert.ok(hasComparison, "Comparison line must be present in text when plans differ");
   }
 

@@ -399,6 +399,13 @@ export function evaluateCandidate(
   );
 
   let unavailabilityReason: string | null = null;
+  const isMspPlan =
+    plan.id === "plan_msp" ||
+    plan.id === "plan_msp_enterprise" ||
+    Boolean(plan.families && plan.families.includes("fam_msp"));
+  if (isMspPlan) {
+    unavailabilityReason ??= "MSP plans are for managed service providers";
+  }
 
   for (const unit of DEMAND_UNITS) {
     const required = demand[unit];
@@ -462,7 +469,7 @@ export function evaluateCandidate(
 
     const packs = packsForPlan(catalogue, plan, unit);
     if (packs.length === 0) {
-      unavailabilityReason ??= `${plan.name} cannot be topped up for ${UNIT_LABELS[unit].toLowerCase()} — no add-on pack is allowed for this plan.`;
+      unavailabilityReason ??= `${plan.name} cannot be topped up for ${UNIT_LABELS[unit].toLowerCase()}; additional packs not available for this plan.`;
       coverage.push({
         unit,
         label: UNIT_LABELS[unit],
@@ -603,68 +610,74 @@ export function includesStrictlyMore(
   base: Candidate,
   demand: PricingDemand,
 ): boolean {
+  if (alt.total <= base.total) return false;
+
+  let hasMore = false;
+
   for (const unit of DEMAND_UNITS) {
-    if (demand[unit] > 0) {
-      const altCov = alt.coverage.find((c) => c.unit === unit)?.total ?? 0;
-      if (altCov < demand[unit]) return false;
+    const altInc = includedFor(alt.plan, unit) ?? 0;
+    const baseInc = includedFor(base.plan, unit) ?? 0;
+    const altCov = alt.coverage.find((c) => c.unit === unit)?.total ?? altInc;
+
+    // Alt must fully cover demand on all requested units
+    if (demand[unit] > 0 && altCov < demand[unit]) return false;
+
+    // On unrequested units, alt must never provide less included base entitlement
+    if (demand[unit] === 0 && altInc < baseInc) return false;
+
+    if (altInc > baseInc) {
+      hasMore = true;
     }
   }
 
-  const hasMoreIncluded = DEMAND_UNITS.some(
-    (u) => (includedFor(alt.plan, u) ?? 0) > (includedFor(base.plan, u) ?? 0),
-  );
-  if (hasMoreIncluded) return true;
+  const altPollSeconds = alt.plan.pollingFrequency.includes("second") ? 30 : 60;
+  const basePollSeconds = base.plan.pollingFrequency.includes("second") ? 30 : 60;
+  if (altPollSeconds > basePollSeconds) return false;
+  if (altPollSeconds < basePollSeconds) hasMore = true;
 
-  const hasMoreCoverage = DEMAND_UNITS.some(
-    (u) =>
-      demand[u] > 0 &&
-      (alt.coverage.find((c) => c.unit === u)?.total ?? 0) >
-        (base.coverage.find((c) => c.unit === u)?.total ?? 0),
-  );
-  if (hasMoreCoverage) return true;
-
-  if (alt.plan.capabilities.length > base.plan.capabilities.length) return true;
-
-  if ((alt.plan.monitoringLocations ?? 0) > (base.plan.monitoringLocations ?? 0)) return true;
-
-  if (
-    alt.plan.pollingFrequency.includes("second") &&
-    !base.plan.pollingFrequency.includes("second")
-  ) {
-    return true;
-  }
-
-  return false;
+  return hasMore;
 }
 
-export function describeWhatItAdds(alt: Candidate, base: Candidate): string[] {
+export function describeWhatItAdds(
+  alt: Candidate,
+  base: Candidate,
+  _demand?: PricingDemand,
+): string[] {
   const adds: string[] = [];
 
   for (const unit of DEMAND_UNITS) {
     const altInc = includedFor(alt.plan, unit) ?? 0;
     const baseInc = includedFor(base.plan, unit) ?? 0;
+
     if (altInc > baseInc) {
-      adds.push(`${altInc} ${UNIT_SHORT_UNITS[unit]} (${base.plan.name} includes ${baseInc})`);
+      const diff = altInc - baseInc;
+      let label = "";
+      if (unit === "advanced_monitor") {
+        label = diff === 1 ? "1 advanced monitor" : `${diff} advanced monitors`;
+      } else if (unit === "network_component") {
+        label = diff === 1 ? "1 network device" : `${diff} network devices`;
+      } else if (unit === "basic_monitor") {
+        label = diff === 1 ? "1 website check" : `${diff} website checks`;
+      } else if (unit === "host_monitor") {
+        label = diff === 1 ? "1 server" : `${diff} servers`;
+      } else if (unit === "rum_pageview") {
+        label = `${diff.toLocaleString("en-IN")} RUM page views`;
+      } else if (unit === "applog_gb") {
+        label = `${diff} GB log ingestion`;
+      }
+
+      if (label) {
+        adds.push(label);
+      }
     }
   }
 
-  for (const cap of alt.plan.capabilities) {
-    if (!base.plan.capabilities.includes(cap)) {
-      adds.push(cap);
-    }
-  }
-
+  // APM and status pages must never appear in the alternative line unless the buyer asked for them
   if (
     alt.plan.pollingFrequency.includes("second") &&
     !base.plan.pollingFrequency.includes("second")
   ) {
-    adds.push(`faster polling (${alt.plan.pollingFrequency} vs ${base.plan.pollingFrequency})`);
-  }
-
-  if ((alt.plan.monitoringLocations ?? 0) > (base.plan.monitoringLocations ?? 0)) {
-    adds.push(
-      `${alt.plan.monitoringLocations} monitoring locations (vs ${base.plan.monitoringLocations})`,
-    );
+    adds.push(`faster ${alt.plan.pollingFrequency} polling`);
   }
 
   return adds;
@@ -675,23 +688,16 @@ export function buildComparisonLine(
   alternative: QuoteOption,
   _demand?: PricingDemand,
 ): string {
-  const addOnsCount = lowest.lineItems
-    .filter((i) => i.ruleId === "RULE-ADDON-PACK")
-    .reduce((acc, i) => acc + i.quantity, 0);
-  const addOnsText =
-    addOnsCount > 0
-      ? ` with ${addOnsCount} add-on pack${addOnsCount > 1 ? "s" : ""}`
-      : "";
+  const diffPaise = alternative.total - lowest.total;
+  const diffFormatted = formatMoney(diffPaise, "INR", { showDecimals: false });
+  const altTotalFormatted = formatMoney(alternative.total, "INR", { showDecimals: false });
 
   const adds =
     alternative.whatItAdds && alternative.whatItAdds.length > 0
-      ? alternative.whatItAdds.slice(0, 2).join(" and ")
+      ? alternative.whatItAdds.join(", ").replace(/, ([^,]+)$/, ", and $1")
       : "additional capability";
 
-  const diffPaise = alternative.total - lowest.total;
-  const diffFormatted = diffPaise > 0 ? ` (${formatMoney(diffPaise, "INR", { showDecimals: false })} more)` : "";
-
-  return `${lowest.planName}${addOnsText} costs ${formatMoney(lowest.total, "INR", { showDecimals: false })}/year; ${alternative.planName} includes ${adds} at ${formatMoney(alternative.total, "INR", { showDecimals: false })}/year${diffFormatted}.`;
+  return `${alternative.planName} costs ${diffFormatted} more per year (${altTotalFormatted}). It adds ${adds}.`;
 }
 
 const RANK_REASONS: Record<OptionType, (candidate: Candidate) => string> = {
@@ -755,7 +761,7 @@ export function rankOptions(
 
   if (alternatives.length > 0) {
     const altCandidate = alternatives[0]!;
-    const whatItAdds = describeWhatItAdds(altCandidate, lowestCostCandidate);
+    const whatItAdds = describeWhatItAdds(altCandidate, lowestCostCandidate, demand);
     const altOpt = toQuoteOption(altCandidate, "best_value", demand, quoteId, whatItAdds);
     const comparisonLine = buildComparisonLine(lowestOpt, altOpt, demand);
     altOpt.comparisonNote = comparisonLine;

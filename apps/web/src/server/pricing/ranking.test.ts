@@ -44,12 +44,11 @@ test("Ranking: 25 Linux servers + 1 website check correctly ranks Lowest Cost at
   assert.equal(bestValue.planId, "plan_professional", "Professional must be the best_value option");
   assert.equal(bestValue.total, 9918000, "Professional total must be 99,180 INR/yr (9,918,000 paise)");
 
-  // Invariant 3: Comparison line is generated
+  // Invariant 3: Comparison line is generated with golden format (<Plan> costs ₹X more per year (₹Y). It adds ...)
   assert.ok(comparisonLine, "Comparison line must be present");
-  assert.ok(comparisonLine.includes("Lite"), "Comparison line must mention Lite");
-  assert.ok(comparisonLine.includes("Professional"), "Comparison line must mention Professional");
-  assert.ok(comparisonLine.includes("₹87,210"), "Comparison line must include Lite price");
-  assert.ok(comparisonLine.includes("₹99,180"), "Comparison line must include Professional price");
+  assert.ok(comparisonLine.includes("Professional costs"), "Comparison line must mention Professional costs");
+  assert.ok(comparisonLine.includes("₹11,970"), "Comparison line must include difference");
+  assert.ok(comparisonLine.includes("₹99,180"), "Comparison line must include Professional total");
 
   // Invariant 4: What it adds is described on alternative
   assert.ok(bestValue.whatItAdds && bestValue.whatItAdds.length > 0, "whatItAdds must be populated on alternative");

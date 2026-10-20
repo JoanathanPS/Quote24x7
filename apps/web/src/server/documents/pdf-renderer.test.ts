@@ -109,8 +109,8 @@ test("Golden Template PDF Generation: Short ref, no INR prefix, no monospace, cl
   assert.equal(pdfText.includes("Purchased"), false, "Must not contain 'Purchased' column");
 
   // Verify all line items and numbers match engine output without .00 decimals or INR prefix
-  const bestValue = quote.options.find((o) => o.optionType === "best_value")!;
-  for (const item of bestValue.lineItems) {
+  const recOption = (quote.recommendedOptionId ? quote.options.find((o) => o.id === quote.recommendedOptionId) : undefined) ?? quote.options[0]!;
+  for (const item of recOption.lineItems) {
     const formattedLineTotal = formatMoney(item.lineTotal, "INR", { showDecimals: false }).replace(/[^0-9,]/g, "");
     assert.ok(
       pdfText.includes(formattedLineTotal),
@@ -118,7 +118,7 @@ test("Golden Template PDF Generation: Short ref, no INR prefix, no monospace, cl
     );
   }
 
-  const formattedGrandTotal = formatMoney(bestValue.total, "INR", { showDecimals: false }).replace(/[^0-9,]/g, "");
+  const formattedGrandTotal = formatMoney(recOption.total, "INR", { showDecimals: false }).replace(/[^0-9,]/g, "");
   assert.ok(
     pdfText.includes(formattedGrandTotal),
     `Grand total ${formattedGrandTotal} must match engine output`
