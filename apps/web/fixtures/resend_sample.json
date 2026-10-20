@@ -1,0 +1,17 @@
+{
+  "id": "re_abc123def456",
+  "message_id": "<original_sender@mail.com>",
+  "from": "Sender Name <sender@example.com>",
+  "to": ["recipient@example.com"],
+  "subject": "Re: Site24x7 Quote Request for Production Infrastructure",
+  "text": "Hello, we need monitoring for our servers.",
+  "html": "Hello, we need monitoring for our servers.",
+  "headers": {
+    "message-id": "<original_sender@mail.com>",
+    "in-reply-to": "<prev_outbound@quotes.joanathan.in>",
+    "references": "<prev1@quotes.joanathan.in> <prev2@quotes.joanathan.in>"
+  },
+  "attachments": [],
+  "receivedAt": "2026-10-20T14:30:00.000Z",
+  "created_at": "2026-10-20T14:30:00.000Z"
+}

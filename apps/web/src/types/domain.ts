@@ -215,7 +215,25 @@ export interface EmailMessage {
   messageIdHeader?: string | null;
   inReplyTo?: string | null;
   references?: string | null;
+  /** How this message was attached to a thread. Recorded on every inbound. */
+  threadMatchMethod?: ThreadMatchMethod | null;
 }
+
+/**
+ * Which rule placed an inbound message into its thread.
+ *
+ * `in_reply_to`   an In-Reply-To / References token matched a stored message id
+ * `alias`         the token matched a registered alias
+ * `subject_fallback` same sender + subject, exactly one open thread
+ * `awaiting_reply` fresh subject, but the sender had one thread awaiting a reply
+ * `new`           no rule matched; a new thread was opened
+ */
+export type ThreadMatchMethod =
+  | "in_reply_to"
+  | "alias"
+  | "subject_fallback"
+  | "awaiting_reply"
+  | "new";
 
 export type DocumentFormatKind = "pdf" | "excel" | "csv" | "text" | "image" | "word" | "other";
 

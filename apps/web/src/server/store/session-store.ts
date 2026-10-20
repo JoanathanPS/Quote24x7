@@ -332,6 +332,28 @@ class SessionStore {
     return undefined;
   }
 
+  // --- Message-id aliases -------------------------------------------------
+  // A provider may echo an id we did not send (a rewritten Message-ID, a
+  // mailing-list hop, a client that regenerates on forward). Recording that id
+  // against a known message-id lets the next buyer mail resolve to the right
+  // thread instead of starting a new one.
+  private messageIdAliases: Map<string, string> = new Map();
+
+  registerMessageIdAlias(alias: string, anchorMessageId: string): void {
+    const key = alias.replace(/[<>]/g, "").trim().toLowerCase();
+    if (!key) return;
+    this.messageIdAliases.set(key, anchorMessageId);
+  }
+
+  getThreadIdByMessageIdAlias(alias: string): string | null {
+    const key = alias.replace(/[<>]/g, "").trim().toLowerCase();
+    if (!key) return null;
+    const anchor = this.messageIdAliases.get(key);
+    if (!anchor) return null;
+    const matched = this.getMessageByProviderMessageId(anchor);
+    return matched ? matched.threadId : null;
+  }
+
   addMessage(message: EmailMessage): void {
     this.ensureInitialized();
     const existing = this.messages.get(message.threadId) ?? [];

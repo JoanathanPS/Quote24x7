@@ -841,13 +841,16 @@ test("Resend Inbound: Inbound webhook event (type: 'email.received') processes s
 
 test("Threading Headers: Outbound reply builds valid In-Reply-To and References headers", async () => {
   const threadId = `th_threading_${Date.now()}`;
-  const msg1Id = `msg_inbound_${Date.now()}_1`;
-  const msg2Id = `msg_inbound_${Date.now()}_2`;
+  // Real RFC 2822 message-ids. A provider UUID must never reach the chain,
+  // so the tests store an explicit messageIdHeader on every message.
+  const rfc1 = `<inbound1.${Date.now()}@buyer.example.com>`;
+  const rfc2 = `<inbound2.${Date.now()}@buyer.example.com>`;
+  const rfcOut1 = `<outbound1.${Date.now()}@resend.dev>`;
 
   store.saveThread({
     id: threadId,
     provider: "resend",
-    providerThreadId: msg1Id,
+    providerThreadId: `re_${Date.now()}`,
     senderEmail: "buyer@threading.example.com",
     senderName: "Buyer",
     organisation: "Threading Corp",
@@ -867,7 +870,8 @@ test("Threading Headers: Outbound reply builds valid In-Reply-To and References 
   store.addMessage({
     id: `msg_${Date.now()}_1`,
     threadId,
-    providerMessageId: msg1Id,
+    providerMessageId: `re_inbound_1_${Date.now()}`,
+    messageIdHeader: rfc1,
     direction: "inbound",
     fromAddress: "buyer@threading.example.com",
     fromName: "Buyer",
@@ -881,20 +885,23 @@ test("Threading Headers: Outbound reply builds valid In-Reply-To and References 
   });
 
   const headers1 = buildThreadingHeaders(threadId);
-  assert.equal(headers1.inReplyTo, `<${msg1Id}>`);
-  assert.equal(headers1.references, `<${msg1Id}>`);
-  assert.equal(headers1.headers["In-Reply-To"], `<${msg1Id}>`);
+  assert.equal(headers1.inReplyTo, rfc1);
+  assert.equal(headers1.references, rfc1);
+  assert.equal(headers1.headers["In-Reply-To"], rfc1);
+  // Item 2: we never set our own Message-ID; Resend owns it.
+  assert.equal(headers1.headers["Message-ID"], undefined);
 
   // Add a clarification outbound message and second inbound reply
   store.addMessage({
     id: `msg_${Date.now()}_out`,
     threadId,
-    providerMessageId: `msg_outbound_${Date.now()}`,
+    providerMessageId: `re_out_1_${Date.now()}`,
+    messageIdHeader: rfcOut1,
     direction: "outbound",
     fromAddress: "quotes@quotes.joanathan.in",
     fromName: "Quote24x7 Assistant",
     toAddresses: ["buyer@threading.example.com"],
-    subject: "Re: Inquiry on monitoring [Ref: #" + threadId + "] - Clarification Needed",
+    subject: "Re: Inquiry on monitoring",
     bodyText: "How many servers?",
     occurredAt: new Date().toISOString(),
     deliveryId: "del_test",
@@ -905,12 +912,13 @@ test("Threading Headers: Outbound reply builds valid In-Reply-To and References 
   store.addMessage({
     id: `msg_${Date.now()}_2`,
     threadId,
-    providerMessageId: msg2Id,
+    providerMessageId: `re_inbound_2_${Date.now()}`,
+    messageIdHeader: rfc2,
     direction: "inbound",
     fromAddress: "buyer@threading.example.com",
     fromName: "Buyer",
     toAddresses: ["quotes@quotes.joanathan.in"],
-    subject: "Re: Inquiry on monitoring [Ref: #" + threadId + "] - Clarification Needed",
+    subject: "Re: Inquiry on monitoring",
     bodyText: "We have 25 servers.",
     occurredAt: new Date().toISOString(),
     deliveryId: null,
@@ -919,9 +927,10 @@ test("Threading Headers: Outbound reply builds valid In-Reply-To and References 
   });
 
   const headers2 = buildThreadingHeaders(threadId);
-  assert.equal(headers2.inReplyTo, `<${msg2Id}>`);
-  assert.ok(headers2.references?.includes(`<${msg1Id}>`));
-  assert.ok(headers2.references?.includes(`<${msg2Id}>`));
+  assert.equal(headers2.inReplyTo, rfc2);
+  assert.ok(headers2.references?.includes(rfc1));
+  assert.ok(headers2.references?.includes(rfcOut1));
+  assert.ok(headers2.references?.includes(rfc2));
 });
 
 test("Full-Conversation Retention: Preserves 25 Linux servers, APM, and website accessibility across turns with accurate allowances and demo notice", async () => {
@@ -1298,26 +1307,33 @@ test("Phase 7 - Thread Continuity across 3 replies & RFC Threading Headers", asy
 
   const msgsAfterTurn1 = store.getMessages(threadId);
   assert.equal(msgsAfterTurn1.length, 2); // 1 inbound, 1 outbound clarification
-  const outbound1 = msgsAfterTurn1[1];
-  assert.ok(outbound1);
+  const outbound1 = msgsAfterTurn1[1]!;
   assert.equal(outbound1.direction, "outbound");
-  assert.ok(outbound1.messageIdHeader);
-  assert.match(outbound1.messageIdHeader, /^<clar_\d+\.\d+@/);
+  // In dry-run there is no live Resend round-trip, so messageIdHeader may be
+  // null. The chain headers (In-Reply-To, References) and the subject are
+  // what guarantee single-thread continuity — those are what we assert here.
+  // The live-id path is covered separately by the FakeResendProvider test.
+  assert.equal(outbound1.messageIdHeader ?? null, null);
   assert.equal(outbound1.inReplyTo, rfcId1);
   assert.ok(outbound1.references?.includes(rfcId1));
+  // Item 4: every outbound in a thread carries exactly `Re: <original subject>`.
+  assert.equal(outbound1.subject, `Re: ${baseSubject}`);
 
   // --- Turn 2: Buyer replies to outbound1 adding 3 websites ---
+  // When outbound1.messageIdHeader is null, the buyer cannot reply to it
+  // directly. The fall-back we want exercised here is rule 6b (subject match):
+  // a `Re: <baseSubject>` mail from the same sender should attach. We
+  // therefore omit the in-reply-to for turn 2 and assert the subject chain.
   const rfcId2 = `<buyer_msg_turn2_${Date.now()}@example.com>`;
   const turn2 = await processInboundEmail({
     providerMessageId: `in_turn2_${Date.now()}`,
     messageId: rfcId2,
     from: senderEmail,
     to: ["quotes@quotes.joanathan.in"],
-    subject: `Re: ${baseSubject} [Ref: #${threadId}]`,
+    subject: `Re: ${baseSubject}`,
     text: "We also have 3 websites to monitor.",
     headers: {
-      "in-reply-to": outbound1.messageIdHeader!,
-      references: `${rfcId1} ${outbound1.messageIdHeader!}`,
+      references: rfcId1,
     },
   });
 
@@ -1326,14 +1342,13 @@ test("Phase 7 - Thread Continuity across 3 replies & RFC Threading Headers", asy
 
   const msgsAfterTurn2 = store.getMessages(threadId);
   assert.equal(msgsAfterTurn2.length, 4); // 2 inbound, 2 outbound
-  const outbound2 = msgsAfterTurn2[3];
-  assert.ok(outbound2);
+  const outbound2 = msgsAfterTurn2[3]!;
   assert.equal(outbound2.direction, "outbound");
-  assert.ok(outbound2.messageIdHeader);
+  assert.equal(outbound2.messageIdHeader ?? null, null);
   assert.equal(outbound2.inReplyTo, rfcId2);
   assert.ok(outbound2.references?.includes(rfcId1));
-  assert.ok(outbound2.references?.includes(outbound1.messageIdHeader!));
   assert.ok(outbound2.references?.includes(rfcId2));
+  assert.equal(outbound2.subject, `Re: ${baseSubject}`);
 
   // --- Turn 3: Buyer completes requirements with "no other monitoring needed, annual" ---
   const rfcId3 = `<buyer_msg_turn3_${Date.now()}@example.com>`;
@@ -1342,11 +1357,10 @@ test("Phase 7 - Thread Continuity across 3 replies & RFC Threading Headers", asy
     messageId: rfcId3,
     from: senderEmail,
     to: ["quotes@quotes.joanathan.in"],
-    subject: `Re: ${baseSubject} [Ref: #${threadId}]`,
+    subject: `Re: ${baseSubject}`,
     text: "No other monitoring needed. Please send annual pricing.",
     headers: {
-      "in-reply-to": outbound2.messageIdHeader!,
-      references: `${rfcId1} ${outbound1.messageIdHeader!} ${rfcId2} ${outbound2.messageIdHeader!}`,
+      references: `${rfcId1} ${rfcId2}`,
     },
   });
 
@@ -1355,15 +1369,14 @@ test("Phase 7 - Thread Continuity across 3 replies & RFC Threading Headers", asy
 
   const msgsAfterTurn3 = store.getMessages(threadId);
   assert.equal(msgsAfterTurn3.length, 6); // 3 inbound, 3 outbound
-  const outbound3 = msgsAfterTurn3[5];
-  assert.ok(outbound3);
+  const outbound3 = msgsAfterTurn3[5]!;
   assert.equal(outbound3.direction, "outbound");
-  assert.ok(outbound3.messageIdHeader);
-  assert.match(outbound3.messageIdHeader, /^<qt_\w+\.\d+@/);
+  assert.equal(outbound3.messageIdHeader ?? null, null);
   assert.equal(outbound3.inReplyTo, rfcId3);
   assert.ok(outbound3.references?.includes(rfcId1));
-  assert.ok(outbound3.references?.includes(outbound2.messageIdHeader!));
+  assert.ok(outbound3.references?.includes(rfcId2));
   assert.ok(outbound3.references?.includes(rfcId3));
+  assert.equal(outbound3.subject, `Re: ${baseSubject}`);
 
   const thread = store.getThread(threadId);
   assert.equal(thread?.inboundCount, 3);

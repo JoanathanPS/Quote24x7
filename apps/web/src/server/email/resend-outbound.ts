@@ -6,6 +6,7 @@ import { dryRunStore } from "../store/dryrun-store.ts";
 import { formatMoney } from "../pricing/money.ts";
 import { loadActiveCatalogue } from "../catalogue/loader.ts";
 import { buildComparisonLine } from "../pricing/engine.ts";
+import { dedupe, extractMessageIds, normalizeRfcMessageId } from "./rfc-message-id.ts";
 
 const BANNED_PHRASES = [
   /valued customer/i,
@@ -176,6 +177,14 @@ export function resolveThreadSubject(originalSubject: string): string {
  * Resolves standard RFC 2822 / 5322 In-Reply-To and References headers for email threading.
  * Gathers prior messages from the thread history to maintain email client conversation grouping.
  */
+/**
+ * Builds the threading headers for an outbound reply in a thread.
+ *
+ * Item 4 guarantees:
+ *   - In-Reply-To is the RFC message-id of the latest inbound.
+ *   - References lists earlier RFC ids in order, de-duplicated, valid tokens only.
+ *   - No custom Message-ID is set; Resend owns the message-id we later record.
+ */
 export function buildThreadingHeaders(
   threadId: string,
   customPrefix?: string
@@ -191,42 +200,31 @@ export function buildThreadingHeaders(
   const prefix = customPrefix || `msg_${Date.now()}`;
   const messageId = `<${prefix}.${Date.now()}@${domain}>`;
 
-  const headers: Record<string, string> = {
-    "Message-ID": messageId,
-  };
+  // Item 2: Do NOT set a custom Message-ID header — let Resend generate it.
+  // We still compute In-Reply-To and References for threading.
+  const headers: Record<string, string> = {};
 
   const messages = store.getMessages(threadId);
   if (!messages || messages.length === 0) {
     return { messageId, headers };
   }
 
-  const formatMsgId = (id: string): string => {
-    const trimmed = id.trim();
-    if (trimmed.startsWith("<") && trimmed.endsWith(">")) return trimmed;
-    return `<${trimmed}>`;
-  };
+  // Only real RFC tokens reach the chain. A stored id that is not `<local@domain>`
+  // (a provider UUID, or a legacy bare value) is dropped rather than emitted.
+  const chain: string[] = [];
+  for (const m of messages) {
+    chain.push(...extractMessageIds(m.messageIdHeader));
+  }
+  const orderedChain = dedupe(chain);
 
-  // Predecessor message IDs: prioritize messageIdHeader if set, else format providerMessageId
-  const validPredecessors = messages
-    .filter(
-      (m) =>
-        Boolean(m.messageIdHeader || m.providerMessageId) &&
-        !m.providerMessageId.startsWith("local_out_")
-    )
-    .map((m) => (m.messageIdHeader ? formatMsgId(m.messageIdHeader) : formatMsgId(m.providerMessageId)));
-
-  // The latest inbound or prior message to reply directly to
   const lastInbound = [...messages].reverse().find((m) => m.direction === "inbound");
-  const immediateParent = lastInbound || messages[messages.length - 1];
-  const inReplyTo = immediateParent
-    ? immediateParent.messageIdHeader
-      ? formatMsgId(immediateParent.messageIdHeader)
-      : immediateParent.providerMessageId
-        ? formatMsgId(immediateParent.providerMessageId)
-        : undefined
+  const inReplyTo = lastInbound
+    ? normalizeRfcMessageId(lastInbound.messageIdHeader) ??
+      undefined
     : undefined;
 
-  const references = validPredecessors.length > 0 ? validPredecessors.join(" ") : inReplyTo;
+  const references =
+    orderedChain.length > 0 ? orderedChain.join(" ") : inReplyTo;
 
   if (inReplyTo) headers["In-Reply-To"] = inReplyTo;
   if (references) headers["References"] = references;
@@ -299,29 +297,58 @@ export function validateOutboundPolicy(
   return { targetRecipient: cleanIntended, isBlocked: false };
 }
 
-function resolveOutboundRecipient(
-  config: ReturnType<typeof getAppConfig>,
-  threadId: string,
-  intendedRecipient: string
-): string {
-  const policy = validateOutboundPolicy(config, threadId, intendedRecipient);
-  if (policy.isBlocked) {
-    throw new Error(`Outbound Policy Rejection: ${policy.blockReason}`);
-  }
-  return policy.targetRecipient;
-}
-
 async function dispatchEmail(input: DispatchInput): Promise<OutboundDispatchResult> {
   const config = getAppConfig();
   const deliveryId = `del_${Date.now()}`;
   const now = new Date().toISOString();
 
-  const targetRecipient = resolveOutboundRecipient(config, input.threadId, input.recipientEmail);
+  const isSendingPaused = store.getOutboundSendingPaused();
+  const policy = validateOutboundPolicy(config, input.threadId, input.recipientEmail);
+  const targetRecipient = policy.targetRecipient;
 
   if (targetRecipient.toLowerCase() === config.outboundFromEmail.toLowerCase()) {
     throw new Error(
       `Loop Prevention: Outbound recipient (${targetRecipient}) matches system sender address.`
     );
+  }
+
+  if (policy.isBlocked && !isSendingPaused) {
+    const failedRecord: DeliveryRecord = {
+      id: deliveryId,
+      threadId: input.threadId,
+      quoteId: input.quoteId ?? null,
+      provider: "resend",
+      providerMessageId: null,
+      recipient: targetRecipient,
+      subject: input.subject,
+      status: "failed",
+      attemptCount: 0,
+      maxAttempts: 0,
+      lastErrorCode: "POLICY_BLOCKED",
+      lastErrorMessage: policy.blockReason || "Outbound policy rejection",
+      nextRetryAt: null,
+      retryEligible: false,
+      createdAt: now,
+      updatedAt: now,
+      events: [
+        {
+          at: now,
+          status: "failed",
+          detail: `Outbound policy rejected: ${policy.blockReason}`,
+        },
+      ],
+    };
+    store.saveDelivery(failedRecord);
+
+    return {
+      success: false,
+      providerMessageId: null,
+      deliveryId,
+      status: "failed",
+      mode: "dry_run",
+      error: `Outbound Policy Rejection: ${policy.blockReason}`,
+      dispatchedTo: targetRecipient,
+    };
   }
 
   const bodyContent = input.textContent + "\n" + (input.htmlContent ?? "");
@@ -367,17 +394,14 @@ async function dispatchEmail(input: DispatchInput): Promise<OutboundDispatchResu
     };
   }
 
-  const { messageId, inReplyTo, references, headers: threadingHeaders } = buildThreadingHeaders(
-    input.threadId,
-    `${input.prefixTag}_${Date.now()}`
-  );
+  const { messageId: _localMessageId, inReplyTo, references, headers: threadingHeaders } =
+    buildThreadingHeaders(input.threadId, `${input.prefixTag}_${Date.now()}`);
 
   let providerMessageId: string | null = null;
   let status: "accepted" | "failed" = "accepted";
   let mode: "live" | "dry_run" = "dry_run";
   let errorMessage: string | undefined;
-
-  const isSendingPaused = store.getOutboundSendingPaused();
+  let messageIdHeader: string | null = null;
 
   if (isSendingPaused) {
     status = "accepted";
@@ -404,6 +428,30 @@ async function dispatchEmail(input: DispatchInput): Promise<OutboundDispatchResu
       } else if (res.data?.id) {
         providerMessageId = res.data.id;
         mode = "live";
+
+        // === Item 2: Fetch the actual RFC Message-ID from Resend ===
+        // Resend's emails.get() returns the RFC 2822 Message-ID as a top-level
+        // `message_id` field on the response. Retry a few times so a transient
+        // failure right after send does not permanently lose the real ID.
+        let rfcMessageId: string | null = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const getRes = await resend.emails.get(res.data.id);
+            const candidate = getRes.data?.message_id;
+            if (!getRes.error && typeof candidate === "string" && candidate.trim()) {
+              rfcMessageId = normalizeRfcMessageId(candidate);
+              break;
+            }
+            if (attempt < 2) await new Promise((r) => setTimeout(r, 300));
+          } catch {
+            if (attempt < 2) await new Promise((r) => setTimeout(r, 300));
+          }
+        }
+
+        // Store Resend's real RFC Message-ID as the outbound message's header ID so
+        // later inbound thread resolution can match on it. Never store the Resend
+        // API id (a UUID) here — that is not a valid RFC 2822 message-id.
+        messageIdHeader = rfcMessageId;
       }
     } catch (err) {
       status = "failed";
@@ -470,7 +518,7 @@ async function dispatchEmail(input: DispatchInput): Promise<OutboundDispatchResu
       sizeBytes: a.content.length,
       scanned: true,
     })) ?? [],
-    messageIdHeader: messageId,
+    messageIdHeader: messageIdHeader,
     inReplyTo: inReplyTo ?? null,
     references: references ?? null,
   };

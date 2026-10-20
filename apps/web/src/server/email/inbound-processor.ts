@@ -6,9 +6,16 @@ import type {
   MessageAttachment,
   Quote,
   QuoteDocument,
+  ThreadMatchMethod,
 } from "@/types/domain";
 import { getAppConfig } from "../config.ts";
 import { store } from "../store/session-store.ts";
+import {
+  dedupe,
+  extractMessageIds,
+  getHeaderValue,
+  normalizeRfcMessageId,
+} from "./rfc-message-id.ts";
 import { loadActiveCatalogue } from "../catalogue/loader.ts";
 import { buildQuote } from "../pricing/quote-builder.ts";
 import { renderQuotePdf } from "../documents/pdf-renderer.ts";
@@ -574,33 +581,105 @@ async function doProcessInboundEmail(
 
   const normalizedSender = extractEmail(payload.from);
   let thread: EmailThread | undefined;
+  let threadMatchMethod: ThreadMatchMethod = "new";
 
-  // A. Thread by In-Reply-To and References headers
-  const inReplyToHdr = payload.headers?.["in-reply-to"] || payload.headers?.["In-Reply-To"];
-  const referencesHdr = payload.headers?.["references"] || payload.headers?.["References"];
+  // --- Item 6a: match a stored RFC id or an alias from the threading headers ---
+  const headerTokens: string[] = [
+    ...extractMessageIds(getHeaderValue(payload.headers, "in-reply-to")),
+    ...extractMessageIds(getHeaderValue(payload.headers, "references")),
+  ];
 
-  if (inReplyToHdr || referencesHdr) {
-    const candidateIds: string[] = [];
-    if (inReplyToHdr) {
-      candidateIds.push(...inReplyToHdr.split(/\s+/).map((id) => id.replace(/[<>]/g, "").trim()).filter(Boolean));
+  for (const refId of headerTokens) {
+    const matchedMsg = store.getMessageByProviderMessageId(refId);
+    if (matchedMsg) {
+      thread = store.getThread(matchedMsg.threadId);
+      if (thread) {
+        threadMatchMethod = "in_reply_to";
+        break;
+      }
     }
-    if (referencesHdr) {
-      candidateIds.push(...referencesHdr.split(/\s+/).map((id) => id.replace(/[<>]/g, "").trim()).filter(Boolean));
-    }
-
-    for (const refId of candidateIds) {
-      const matchedMsg = store.getMessageByProviderMessageId(refId);
-      if (matchedMsg) {
-        thread = store.getThread(matchedMsg.threadId);
-        if (thread) break;
+    const aliasedThreadId = store.getThreadIdByMessageIdAlias(refId);
+    if (aliasedThreadId) {
+      thread = store.getThread(aliasedThreadId);
+      if (thread) {
+        threadMatchMethod = "alias";
+        break;
       }
     }
   }
 
-  // B. Check for explicit Thread or Quote Ref in subject or body
+  // --- Item 6b: same sender + normalized subject, exactly one open thread, 30d ---
   if (!thread) {
-    const threadRefMatch = (payload.subject + "\n" + payload.text).match(/#(th_\w+)/i);
-    const quoteRefMatch = (payload.subject + "\n" + payload.text).match(/#(qt_\w+)/i);
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    const targetClean = cleanSubject(payload.subject);
+    const candidates = store.getThreads().filter((t) => {
+      const tSender = extractEmail(t.senderEmail);
+      if (tSender !== normalizedSender) return false;
+      const lastAt = new Date(
+        t.lastInboundAt || t.updatedAt || t.createdAt
+      ).getTime();
+      if (Date.now() - lastAt > thirtyDaysMs) return false;
+      const tClean = cleanSubject(t.subject);
+      return (
+        tClean === targetClean ||
+        tClean.includes(targetClean) ||
+        targetClean.includes(tClean)
+      );
+    });
+
+    if (candidates.length === 1) {
+      const matchedThread = candidates[0]!;
+      thread = matchedThread;
+      threadMatchMethod = "subject_fallback";
+
+      // Register every id we did not recognise as an alias of this thread's
+      // latest outbound, so the buyer's client echoing a different id still
+      // resolves next time.
+      const latestOutbound = [...store.getMessages(matchedThread.id)]
+        .reverse()
+        .find((m) => m.direction === "outbound");
+      const anchor = normalizeRfcMessageId(latestOutbound?.messageIdHeader);
+      if (anchor) {
+        for (const unknownId of headerTokens) {
+          if (
+            !store.getMessageByProviderMessageId(unknownId) &&
+            !store.getThreadIdByMessageIdAlias(unknownId)
+          ) {
+            store.registerMessageIdAlias(unknownId, anchor);
+          }
+        }
+      }
+    }
+  }
+
+  // --- Item 6c: new mail without "Re:" from a sender with exactly one
+  //     awaiting_reply thread inside 7 days continues that thread. ---
+  if (!thread && !isReply) {
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const awaiting = store.getThreads().filter((t) => {
+      if (extractEmail(t.senderEmail) !== normalizedSender) return false;
+      if (t.status !== "awaiting_reply") return false;
+      const lastAt = new Date(
+        t.lastInboundAt || t.updatedAt || t.createdAt
+      ).getTime();
+      return Date.now() - lastAt <= sevenDaysMs;
+    });
+
+    if (awaiting.length === 1) {
+      thread = awaiting[0];
+      threadMatchMethod = "awaiting_reply";
+    }
+  }
+
+  // --- Legacy fallback: explicit #th_ / #qt_ reference in subject or body.
+  //     Last resort only; these tokens are never written into outbound mail. ---
+  if (!thread) {
+    const threadRefMatch = (payload.subject + "\n" + payload.text).match(
+      /#(th_\w+)/i
+    );
+    const quoteRefMatch = (payload.subject + "\n" + payload.text).match(
+      /#(qt_\w+)/i
+    );
 
     if (threadRefMatch && threadRefMatch[1]) {
       thread = store.getThread(threadRefMatch[1]);
@@ -610,36 +689,7 @@ async function doProcessInboundEmail(
         thread = store.getThread(quote.threadId);
       }
     }
-  }
-
-  // C. Match active thread for this sender only if this is a reply (within 30 days)
-  if (!thread && isReply) {
-    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-    const openThread = store.getActiveThreadBySender(normalizedSender);
-    if (openThread) {
-      const lastAt = new Date(openThread.lastInboundAt || openThread.updatedAt || openThread.createdAt).getTime();
-      if (Date.now() - lastAt <= thirtyDaysMs) {
-        thread = openThread;
-      }
-    }
-    if (!thread) {
-      // Fuzzy match subject for this sender within 30 days
-      const targetClean = cleanSubject(payload.subject);
-      const subjectMatch = store.getThreads().find((t) => {
-        const tSender = extractEmail(t.senderEmail);
-        const tClean = cleanSubject(t.subject);
-        const lastAt = new Date(t.lastInboundAt || t.updatedAt || t.createdAt).getTime();
-        const within30Days = Date.now() - lastAt <= thirtyDaysMs;
-        return (
-          within30Days &&
-          tSender === normalizedSender &&
-          (tClean === targetClean || tClean.includes(targetClean) || targetClean.includes(tClean))
-        );
-      });
-      if (subjectMatch) {
-        thread = subjectMatch;
-      }
-    }
+    if (thread) threadMatchMethod = "in_reply_to";
   }
 
   // If thread was already completed with a quote and receives identical duplicate content, discard replay
@@ -771,8 +821,24 @@ async function doProcessInboundEmail(
     }
   }
 
-  const inReplyToHdrVal = payload.headers?.["in-reply-to"] || payload.headers?.["In-Reply-To"] || null;
-  const referencesHdrVal = payload.headers?.["references"] || payload.headers?.["References"] || null;
+  // Item 5: case-insensitive lookup, string-or-array values, never throws.
+  // Item 3: only real RFC tokens are stored. A provider UUID or a malformed value
+  // is dropped rather than recorded, so it can never leak into an outbound chain.
+  const inReplyToTokens = extractMessageIds(
+    getHeaderValue(payload.headers, "in-reply-to")
+  );
+  const referencesTokens = dedupe([
+    ...extractMessageIds(getHeaderValue(payload.headers, "references")),
+  ]);
+  const inReplyToHdrVal = inReplyToTokens[0] ?? null;
+  const referencesHdrVal =
+    referencesTokens.length > 0 ? referencesTokens.join(" ") : null;
+  // The buyer's own id: the payload's RFC id if it is a real token, else the
+  // message-id header, else null. Never the provider UUID.
+  const buyerRfcId =
+    normalizeRfcMessageId(rfcMessageId) ??
+    normalizeRfcMessageId(getHeaderValue(payload.headers, "message-id"));
+
   const inboundMessage: EmailMessage = {
     id: `msg_in_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     threadId: thread.id,
@@ -787,9 +853,10 @@ async function doProcessInboundEmail(
     deliveryId: null,
     securityNotes: [],
     attachments: parsedAttachments,
-    messageIdHeader: rfcMessageId || null,
+    messageIdHeader: buyerRfcId,
     inReplyTo: inReplyToHdrVal,
     references: referencesHdrVal,
+    threadMatchMethod: threadMatchMethod,
   };
 
   store.addMessage(inboundMessage);
