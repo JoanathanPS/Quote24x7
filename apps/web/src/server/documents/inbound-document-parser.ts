@@ -1,6 +1,13 @@
 import zlib from "node:zlib";
+import * as mammoth from "mammoth";
 import * as XLSX from "xlsx";
+import { PDFDocument, PDFName, PDFArray } from "pdf-lib";
+// @ts-expect-error pdf-parse subpath import avoids the index.js debug execution bug
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 import type { DocumentFormatKind } from "@/types/domain";
+
+export const MAX_ATTACHMENT_SIZE_BYTES = 15 * 1024 * 1024; // 15MB
+export const MAX_EXTRACTED_TEXT_LENGTH = 20_000; // 20k characters cap for LLM safety
 
 export interface ParsedInboundDocument {
   filename: string;
@@ -8,13 +15,16 @@ export interface ParsedInboundDocument {
   sizeBytes: number;
   documentKind: DocumentFormatKind;
   text: string;
+  unparsed?: boolean;
+  unparsedReason?: string;
+  isImageOnlyPdf?: boolean;
   metadata: {
     pageCount?: number;
     sheetNames?: string[];
     wordCount?: number;
     parsedAt: string;
   };
-  /** Base64-encoded content for vision/multimodal processing (e.g. images, PDFs). */
+  /** Base64-encoded content for vision/multimodal processing (e.g. images). */
   contentBase64?: string;
 }
 
@@ -22,6 +32,46 @@ export interface ParseDocumentOptions {
   filename: string;
   contentType?: string;
   buffer: Buffer;
+}
+
+const ALLOWED_EXTENSIONS = new Set([
+  "pdf",
+  "docx",
+  "doc",
+  "xlsx",
+  "xls",
+  "csv",
+  "txt",
+  "log",
+  "md",
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+]);
+
+/**
+ * Checks if the file extension or MIME type is on our safe intake allowlist.
+ */
+export function isAllowedAttachment(filename: string, contentType?: string): boolean {
+  const ext = (filename || "").split(".").pop()?.toLowerCase() || "";
+  if (ALLOWED_EXTENSIONS.has(ext)) return true;
+
+  const ct = (contentType || "").toLowerCase();
+  if (
+    ct.includes("pdf") ||
+    ct.includes("word") ||
+    ct.includes("officedocument") ||
+    ct.includes("spreadsheet") ||
+    ct.includes("excel") ||
+    ct.includes("csv") ||
+    ct.startsWith("text/") ||
+    ct.startsWith("image/")
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -47,6 +97,15 @@ export function detectDocumentKind(filename: string, contentType?: string): Docu
   }
 
   if (
+    lowerName.endsWith(".docx") ||
+    lowerName.endsWith(".doc") ||
+    lowerType.includes("word") ||
+    lowerType.includes("openxmlformats-officedocument.wordprocessingml")
+  ) {
+    return "word";
+  }
+
+  if (
     lowerName.endsWith(".xlsx") ||
     lowerName.endsWith(".xls") ||
     lowerType.includes("spreadsheet") ||
@@ -58,15 +117,6 @@ export function detectDocumentKind(filename: string, contentType?: string): Docu
 
   if (lowerName.endsWith(".csv") || lowerType.includes("csv")) {
     return "csv";
-  }
-
-  if (
-    lowerName.endsWith(".docx") ||
-    lowerName.endsWith(".doc") ||
-    lowerType.includes("word") ||
-    lowerType.includes("openxmlformats-officedocument.wordprocessingml")
-  ) {
-    return "word";
   }
 
   if (
@@ -100,144 +150,345 @@ function decodePdfHexString(hex: string): string {
 }
 
 /**
- * Decompresses and extracts text directly from PDF flate and text streams without native binary dependencies.
- * Supports literal text ((Text) Tj), hex-encoded vectors (<...> Tj), and array spacing ([(Text) 20 <Hex>] TJ).
+ * Decodes Adobe ASCII85 (Base85) stream data commonly produced by ReportLab and Ghostscript.
+ */
+function decodeAscii85(bytes: Uint8Array | Buffer): Buffer {
+  const str = Buffer.from(bytes).toString("latin1").replace(/\s+/g, "");
+  const clean = str.replace(/^<~/, "").replace(/~>.*$/, "");
+  const out: number[] = [];
+  for (let i = 0; i < clean.length; ) {
+    if (clean[i] === "z") {
+      out.push(0, 0, 0, 0);
+      i++;
+      continue;
+    }
+    const chunk = clean.slice(i, i + 5);
+    i += 5;
+    const pad = 5 - chunk.length;
+    let padded = chunk;
+    while (padded.length < 5) padded += "u";
+    let val = 0;
+    for (let j = 0; j < 5; j++) {
+      val = val * 85 + (padded.charCodeAt(j) - 33);
+    }
+    for (let j = 0; j < 4 - pad; j++) {
+      out.push((val >> (24 - j * 8)) & 0xff);
+    }
+  }
+  return Buffer.from(out);
+}
+
+/**
+ * Decodes standard PDF escape sequences in literal strings.
+ */
+function decodePdfString(s: string): string {
+  return s
+    .replace(/\\([0-7]{1,3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)))
+    .replace(/\\r/g, "\r")
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .replace(/\\b/g, "\b")
+    .replace(/\\f/g, "\f")
+    .replace(/\\(.)/g, "$1");
+}
+
+/**
+ * Extracts readable lines of text from a decoded PDF content stream.
+ * Parses text blocks (BT ... ET) and text operators (Tj, ', ", and TJ arrays).
+ */
+function extractTextFromPdfStream(streamText: string): string {
+  const lines: string[] = [];
+  const btRegex = /BT[\s\S]*?ET/g;
+  const blocks = streamText.match(btRegex) || [streamText];
+
+  for (const block of blocks) {
+    let currentLine = "";
+    const opRegex = /(?:(?:\((?:[^()\\]|\\.)*\)|<[0-9a-fA-F\s]+>)\s*(?:Tj|'|")|\[(?:[^\[\]\\]|\\.)*\]\s*TJ)/g;
+    const ops = block.match(opRegex) || [];
+    for (const op of ops) {
+      if (op.includes("TJ")) {
+        const inner = op.slice(op.indexOf("[") + 1, op.lastIndexOf("]"));
+        const parts = inner.match(/\((?:[^()\\]|\\.)*\)|<[0-9a-fA-F]+>|-?\d+(?:\.\d+)?/g) || [];
+        for (const p of parts) {
+          if (p.startsWith("(")) {
+            currentLine += decodePdfString(p.slice(1, -1));
+          } else if (p.startsWith("<")) {
+            const h = p.slice(1, -1).replace(/\s+/g, "");
+            currentLine += decodePdfHexString(h);
+          } else if (parseFloat(p) < -150) {
+            currentLine += " ";
+          }
+        }
+      } else {
+        const parenMatch = op.match(/\(([\s\S]*?)\)\s*(?:Tj|'|")/);
+        const hexMatch = op.match(/<([0-9a-fA-F\s]+)>\s*(?:Tj|'|")/);
+        if (parenMatch && parenMatch[1] !== undefined) {
+          currentLine += decodePdfString(parenMatch[1]);
+        } else if (hexMatch && hexMatch[1] !== undefined) {
+          const h = hexMatch[1].replace(/\s+/g, "");
+          currentLine += decodePdfHexString(h);
+        }
+      }
+      currentLine += " ";
+    }
+    if (currentLine.trim()) {
+      lines.push(currentLine.trim());
+    }
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Decodes a raw stream buffer based on its PDF filter specifications.
+ */
+function decodePdfStream(bytes: Uint8Array, filterObj?: unknown): string {
+  let cur: Buffer = Buffer.from(bytes);
+  let filters: string[] = [];
+  if (filterObj instanceof PDFArray) {
+    filters = filterObj.asArray().map((f) => f.toString());
+  } else if (filterObj) {
+    filters = [filterObj.toString()];
+  }
+  for (const f of filters) {
+    if (f === "/ASCII85Decode" || f === "ASCII85Decode") {
+      cur = decodeAscii85(cur);
+    } else if (f === "/FlateDecode" || f === "FlateDecode") {
+      try {
+        cur = zlib.inflateSync(cur);
+      } catch {
+        try {
+          cur = zlib.inflateRawSync(cur);
+        } catch {
+          // ignore decompression failure
+        }
+      }
+    }
+  }
+  return cur.toString("latin1");
+}
+
+/**
+ * Traverses PDF indirect objects using pdf-lib to decode streams and extract text.
+ */
+async function extractPdfWithPdfLib(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
+  const doc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+  const pageCount = doc.getPageCount();
+  const allText: string[] = [];
+
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const streamObj = obj as any;
+    if (typeof streamObj.getContents === "function") {
+      const filter = streamObj.dict?.get(PDFName.of("Filter"));
+      const textStream = decodePdfStream(streamObj.getContents(), filter);
+      const extracted = extractTextFromPdfStream(textStream);
+      if (extracted) allText.push(extracted);
+    }
+  }
+
+  return {
+    text: allText.join("\n").replace(/[^\x20-\x7E\n]/g, " ").replace(/ +/g, " ").trim(),
+    pageCount,
+  };
+}
+
+/**
+ * Decompresses and extracts readable text directly from PDF flate and text streams as a raw fallback.
+ * Supports ASCII85, Flate, literal text (Tj) and hex-encoded font vectors (<...> Tj / TJ).
  */
 export function extractPdfStreamText(buffer: Buffer): string {
   const content = buffer.toString("latin1");
   const texts: string[] = [];
 
-  const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g;
+  const streamRegex = /stream[\r\n]+([\s\S]*?)(?:[\r\n]+endstream|~>endstream|endstream)/g;
   let match: RegExpExecArray | null;
 
   while ((match = streamRegex.exec(content)) !== null) {
     const rawData = match[1];
     if (!rawData) continue;
-    const streamData = Buffer.from(rawData, "latin1");
 
-    let decompressed = "";
+    let decompressed: string | null = null;
+    const streamBuf = Buffer.from(rawData, "latin1");
+
+    // Try flate inflate
     try {
-      decompressed = zlib.inflateSync(streamData).toString("latin1");
+      decompressed = zlib.inflateSync(streamBuf).toString("latin1");
     } catch {
       try {
-        decompressed = zlib.inflateRawSync(streamData).toString("latin1");
+        decompressed = zlib.inflateRawSync(streamBuf).toString("latin1");
       } catch {
-        decompressed = streamData.toString("latin1");
+        try {
+          // Try ASCII85 decode followed by flate inflate
+          const a85 = decodeAscii85(streamBuf);
+          decompressed = zlib.inflateSync(a85).toString("latin1");
+        } catch {
+          // Stream is uncompressed or unsupported filter
+          decompressed = rawData;
+        }
       }
     }
 
     if (decompressed) {
-      // 1. Literal strings: (Text) Tj
-      const tjMatches = decompressed.match(/\((.*?)\)\s*Tj/g) || [];
-      for (const tj of tjMatches) {
-        const clean = tj.replace(/^\(|\)\s*Tj$/g, "");
-        if (clean.trim()) texts.push(clean);
-      }
-
-      // 2. Hex-encoded strings: <3235...> Tj
-      const hexTjMatches = decompressed.match(/<([0-9a-fA-F]+)>\s*Tj/g) || [];
-      for (const htj of hexTjMatches) {
-        const hex = htj.replace(/[<>\s]|Tj/g, "");
-        const decoded = decodePdfHexString(hex);
-        if (decoded.trim()) texts.push(decoded.trim());
-      }
-
-      // 3. Array text: [(Text) 20 <Hex>] TJ
-      const arrayTjMatches = decompressed.match(/\[(.*?)\]\s*TJ/g) || [];
-      for (const atj of arrayTjMatches) {
-        const inside = atj.slice(1, atj.lastIndexOf("]"));
-        const tokens = inside.match(/\(.*?\)|<[0-9a-fA-F]+>/g) || [];
-        const lineParts: string[] = [];
-        for (const token of tokens) {
-          if (token.startsWith("(")) {
-            lineParts.push(token.slice(1, -1));
-          } else if (token.startsWith("<")) {
-            lineParts.push(decodePdfHexString(token.slice(1, -1)));
-          }
-        }
-        const combined = lineParts.join("").trim();
-        if (combined) texts.push(combined);
+      const extracted = extractTextFromPdfStream(decompressed);
+      if (extracted) {
+        texts.push(extracted);
       }
     }
   }
 
-  if (texts.length > 0) {
-    return texts.join("\n").replace(/[^\x20-\x7E\n]/g, " ").replace(/ +/g, " ").trim();
-  }
-
-  return extractAsciiStrings(buffer);
-}
-
-/**
- * Extracts plain text from a Word .docx file by extracting document.xml from the ZIP container.
- */
-function extractDocxText(buffer: Buffer): string {
-  try {
-    // A .docx file is a ZIP archive containing word/document.xml
-    const latin1 = buffer.toString("latin1");
-    // Look for word/document.xml local file header in ZIP
-    const docXmlIndex = latin1.indexOf("word/document.xml");
-    if (docXmlIndex !== -1) {
-      // Find following stream compressed bytes
-      const headerPos = latin1.lastIndexOf("PK\x03\x04", docXmlIndex);
-      if (headerPos !== -1) {
-        const startOfData = headerPos + 30 + buffer.readUInt16LE(headerPos + 26) + buffer.readUInt16LE(headerPos + 28);
-        const compressedSize = buffer.readUInt32LE(headerPos + 18);
-        if (compressedSize > 0 && startOfData + compressedSize <= buffer.length) {
-          const compressed = buffer.subarray(startOfData, startOfData + compressedSize);
-          try {
-            const xml = zlib.inflateRawSync(compressed).toString("utf-8");
-            // Extract text from <w:t> tags
-            const textMatches = xml.match(/<w:t[^>]*>(.*?)<\/w:t>/g) || [];
-            const textContent = textMatches
-              .map((m) => m.replace(/<[^>]+>/g, ""))
-              .join(" ")
-              .replace(/\s+/g, " ")
-              .trim();
-            if (textContent) return textContent;
-          } catch {
-            // Fall through to ASCII scanner
-          }
-        }
-      }
-    }
-  } catch {
-    // Fall through to ASCII scanner
-  }
-
-  return extractAsciiStrings(buffer);
+  return texts.join("\n").replace(/[^\x20-\x7E\n]/g, " ").replace(/ +/g, " ").trim();
 }
 
 /**
  * Extracts plain text and structured content from email attachments:
- * - PDF documents (.pdf)
- * - Excel workbooks (.xlsx, .xls)
- * - CSV tables (.csv)
- * - Plain text (.txt, .log)
+ * - PDF documents (.pdf) -> pdf-lib stream traversal -> pdf-parse -> raw zlib stream regex -> ASCII scanner
+ * - Word documents (.docx, .doc) -> mammoth -> ASCII scanner
+ * - Excel workbooks (.xlsx, .xls) -> SheetJS multi-sheet CSV tables
+ * - CSV tables (.csv) -> raw UTF-8 text
+ * - Plain text (.txt, .log, .md) -> UTF-8 text
  * - Images (.png, .jpg, .webp) -> retains base64 for Multimodal Vision (Gemini)
- * - Word documents (.docx)
  */
 export async function parseInboundDocument(
   options: ParseDocumentOptions
 ): Promise<ParsedInboundDocument> {
-  const { filename, contentType = "application/octet-stream", buffer } = options;
+  const { filename, buffer } = options;
+  const sizeBytes = buffer ? buffer.length : 0;
+  const contentType = options.contentType || "application/octet-stream";
   const kind = detectDocumentKind(filename, contentType);
-  const sizeBytes = buffer.length;
   const now = new Date().toISOString();
+
+  // Safety Check 1: Empty file
+  if (!buffer || sizeBytes === 0) {
+    return {
+      filename,
+      contentType,
+      sizeBytes: 0,
+      documentKind: kind,
+      text: "",
+      unparsed: true,
+      unparsedReason: "File is empty (0 bytes)",
+      metadata: { parsedAt: now },
+    };
+  }
+
+  // Safety Check 2: Oversized file (>15MB)
+  if (sizeBytes > MAX_ATTACHMENT_SIZE_BYTES) {
+    return {
+      filename,
+      contentType,
+      sizeBytes,
+      documentKind: kind,
+      text: `[Attachment "${filename}" exceeds maximum allowable size limit (${(sizeBytes / 1024 / 1024).toFixed(1)}MB > 15MB)]`,
+      unparsed: true,
+      unparsedReason: "Exceeds maximum allowable size limit (15MB)",
+      metadata: { parsedAt: now },
+    };
+  }
+
+  // Safety Check 3: File type allowlist
+  if (!isAllowedAttachment(filename, contentType)) {
+    return {
+      filename,
+      contentType,
+      sizeBytes,
+      documentKind: "other",
+      text: `[Attachment "${filename}" (${contentType}) has an unsupported file format]`,
+      unparsed: true,
+      unparsedReason: `Unsupported file format: ${filename}`,
+      metadata: { parsedAt: now },
+    };
+  }
 
   let text = "";
   let contentBase64: string | undefined;
+  let unparsed = false;
+  let unparsedReason: string | undefined;
+  let isImageOnlyPdf = false;
   const metadata: ParsedInboundDocument["metadata"] = { parsedAt: now };
 
   try {
     switch (kind) {
       case "pdf": {
-        text = extractPdfStreamText(buffer);
-        metadata.pageCount = 1;
-        // Retain base64 for potential multimodal validation if small enough (<5MB)
-        if (sizeBytes > 0 && sizeBytes < 5_000_000) {
+        let pdfText = "";
+        let pageCount = 1;
+
+        // 1. Primary: pdf-lib stream traversal (handles ReportLab, GhostScript, multi-filter)
+        try {
+          const pdfLibResult = await extractPdfWithPdfLib(buffer);
+          if (pdfLibResult.text.trim()) {
+            pdfText = pdfLibResult.text.trim();
+          }
+          if (pdfLibResult.pageCount > 0) {
+            pageCount = pdfLibResult.pageCount;
+          }
+        } catch {
+          // pdf-lib traversal failed or was encrypted; fallback to pdfParse
+        }
+
+        // 2. Secondary fallback: pdfParse subpath import
+        if (!pdfText) {
+          try {
+            const parser =
+              typeof pdfParse === "function"
+                ? pdfParse
+                : (pdfParse as unknown as { default: typeof pdfParse }).default;
+
+            const data = await parser(buffer);
+            if (data && data.text && data.text.trim()) {
+              pdfText = data.text.replace(/\r\n/g, "\n").trim();
+              pageCount = data.numpages || pageCount;
+            }
+          } catch {
+            // pdfParse threw
+          }
+        }
+
+        // 3. Tertiary fallback: raw Node.js zlib stream regex
+        if (!pdfText) {
+          pdfText = extractPdfStreamText(buffer);
+        }
+
+        metadata.pageCount = pageCount;
+
+        // If after extraction layers no text was found, the PDF is likely a scanned bitmap/image
+        if (!pdfText.trim()) {
+          isImageOnlyPdf = true;
+          unparsed = true;
+          unparsedReason = "PDF contains no extractable text layer (scanned or image-only PDF)";
+          text = `[Document Attachment "${filename}": Scanned image-only PDF with no text layer. Operator review required.]`;
+        } else {
+          text = pdfText;
+        }
+
+        // Retain base64 for potential multimodal validation if <5MB
+        if (sizeBytes < 5_000_000) {
           contentBase64 = buffer.toString("base64");
         }
+        break;
+      }
+
+      case "word": {
+        if (filename.toLowerCase().endsWith(".docx")) {
+          try {
+            const result = await mammoth.extractRawText({ buffer });
+            text = (result.value || "").replace(/\r\n/g, "\n").trim();
+          } catch (mammothErr) {
+            text = extractAsciiStrings(buffer);
+            if (!text) {
+              unparsed = true;
+              unparsedReason = "Failed to parse Word (.docx) archive";
+            }
+          }
+        } else {
+          // Legacy .doc format
+          try {
+            const result = await mammoth.extractRawText({ buffer });
+            text = (result.value || "").trim();
+          } catch {
+            text = extractAsciiStrings(buffer);
+          }
+        }
+        metadata.wordCount = text ? text.split(/\s+/).length : 0;
         break;
       }
 
@@ -266,24 +517,17 @@ export async function parseInboundDocument(
       }
 
       case "image": {
-        // Encode base64 for Gemini vision model
-        if (sizeBytes > 0 && sizeBytes < 10_000_000) {
+        // Retain base64 for Gemini vision model
+        if (sizeBytes < 10_000_000) {
           contentBase64 = buffer.toString("base64");
         }
         text = `[Image Attachment: "${filename}" (${kind.toUpperCase()}, ${(sizeBytes / 1024).toFixed(1)} KB)]`;
         break;
       }
 
-      case "word": {
-        text = extractDocxText(buffer);
-        metadata.wordCount = text ? text.split(/\s+/).length : 0;
-        break;
-      }
-
       case "text":
       default: {
         const asUtf8 = buffer.toString("utf-8");
-        // Verify if it is valid printable text
         if (/^[\x09\x0A\x0D\x20-\x7E\u00A0-\uFFFF]*$/.test(asUtf8.substring(0, 500))) {
           text = asUtf8.trim();
         } else {
@@ -292,9 +536,16 @@ export async function parseInboundDocument(
         break;
       }
     }
-  } catch (err) {
-    console.error(`Failed to parse email attachment "${filename}" (${kind}):`, err);
-    text = `[Attachment: ${filename} (${kind.toUpperCase()}) could not be fully parsed. Fallback text: ${extractAsciiStrings(buffer)}]`;
+  } catch {
+    // Soft error handling: never throw, never crash webhook, never log file contents
+    unparsed = true;
+    unparsedReason = `Corrupt or unreadable ${kind} document`;
+    text = `[Document Attachment: "${filename}" (${kind.toUpperCase()}) could not be fully parsed. Fallback text: ${extractAsciiStrings(buffer)}]`;
+  }
+
+  // Safety Cap 4: Cap extracted text length to MAX_EXTRACTED_TEXT_LENGTH before reaching LLM
+  if (text.length > MAX_EXTRACTED_TEXT_LENGTH) {
+    text = text.slice(0, MAX_EXTRACTED_TEXT_LENGTH) + "\n\n[... Truncated: attachment content exceeded limit ...]";
   }
 
   return {
@@ -303,6 +554,9 @@ export async function parseInboundDocument(
     sizeBytes,
     documentKind: kind,
     text,
+    unparsed,
+    unparsedReason,
+    isImageOnlyPdf,
     metadata,
     contentBase64,
   };
