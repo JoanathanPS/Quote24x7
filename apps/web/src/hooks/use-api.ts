@@ -14,6 +14,7 @@ import type {
   SystemHealth,
   IntegrationStatus,
   AiDecisionRecord,
+  KnowledgeDocument,
 } from "@/types/domain";
 
 // ---------------------------------------------------------------------------
@@ -139,5 +140,21 @@ export function useThreadAiDecisions(threadId: string) {
     queryKey: ["threads", threadId, "decisions"],
     queryFn: () => apiGet<AiDecisionRecord[]>(`/api/v1/threads/${threadId}/decisions`),
     enabled: !!threadId,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Knowledge Library
+// ---------------------------------------------------------------------------
+
+export function useKnowledgeDocuments(params?: {
+  category?: string;
+  status?: string;
+  search?: string;
+}) {
+  return useQuery({
+    queryKey: ["knowledge", params],
+    queryFn: () => apiGet<{ documents: KnowledgeDocument[] }>("/api/v1/knowledge", params),
+    refetchInterval: 5000,
   });
 }

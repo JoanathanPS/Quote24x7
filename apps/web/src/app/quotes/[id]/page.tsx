@@ -19,6 +19,8 @@ import {
   Sparkle,
   TrendUp,
   Stack,
+  BookOpen,
+  ArrowSquareOut,
 } from "@phosphor-icons/react";
 
 import { useQuote } from "@/hooks/use-api";
@@ -589,6 +591,107 @@ export default function QuoteDetailPage() {
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Source Document Provenance & Evidence Audit */}
+      <Card className="border-border/80 bg-surface shadow-xs">
+        <CardHeader className="p-5 pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5 text-primary" />
+              <CardTitle className="text-base font-semibold">
+                Source Document Provenance &amp; Evidence Audit
+              </CardTitle>
+            </div>
+            <Badge variant="success" className="text-xs gap-1">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Document Evidence Tracing ({quote.sourceCitations?.length || 0})
+            </Badge>
+          </div>
+          <CardDescription className="text-xs">
+            Traces proposal pricing, tier inclusions, and product claims back to approved Knowledge Library documents in Supabase Storage
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="p-5 pt-0">
+          {!quote.sourceCitations || quote.sourceCitations.length === 0 ? (
+            <div className="rounded-md border border-border/60 bg-surface-sunken/40 p-4 text-xs text-muted-foreground flex items-center justify-between">
+              <div>
+                <p className="font-medium text-foreground">Standard Catalogue Baseline</p>
+                <p className="text-[11px] mt-0.5">
+                  Calculated against the active Site24x7 catalogue seed ({quote.catalogueVersion}). No custom overriding contracts or customer-specific rate cards were referenced.
+                </p>
+              </div>
+              <Link href="/knowledge">
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                  <span>Knowledge Library</span>
+                  <ArrowSquareOut className="h-3.5 w-3.5" />
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-md border border-border/60">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-border bg-surface-sunken/40">
+                    <TableHead className="w-[180px]">Field / Claim</TableHead>
+                    <TableHead>Selected Value</TableHead>
+                    <TableHead>Source Document</TableHead>
+                    <TableHead>Page / Section</TableHead>
+                    <TableHead className="w-[280px]">Extracted Evidence Quote</TableHead>
+                    <TableHead className="text-right">Verification</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {quote.sourceCitations.map((citation) => (
+                    <TableRow key={citation.id} className="border-border/60 text-xs">
+                      <TableCell className="font-semibold text-foreground">
+                        {citation.field}
+                      </TableCell>
+                      <TableCell className="font-mono text-muted-foreground">
+                        {citation.selectedValue}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="neutral" className="text-[10px] capitalize">
+                            {citation.category}
+                          </Badge>
+                          <span className="font-medium text-foreground truncate max-w-[150px]" title={citation.documentName}>
+                            {citation.documentName}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {citation.pageNumber ? `Page ${citation.pageNumber}` : citation.sectionTitle || "—"}
+                      </TableCell>
+                      <TableCell className="font-mono text-[11px] text-foreground/80 italic max-w-xs truncate" title={citation.evidenceQuote}>
+                        &ldquo;{citation.evidenceQuote}&rdquo;
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {citation.verificationStatus === "verified" ? (
+                          <Badge variant="success" className="text-[10px] gap-1">
+                            <CheckCircle className="h-3 w-3" />
+                            Verified
+                          </Badge>
+                        ) : citation.verificationStatus === "conflicting" ? (
+                          <Badge variant="danger" className="text-[10px] gap-1">
+                            <WarningCircle className="h-3 w-3" />
+                            Conflicting
+                          </Badge>
+                        ) : (
+                          <Badge variant="warning" className="text-[10px] gap-1">
+                            <WarningCircle className="h-3 w-3" />
+                            Unverified
+                          </Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 

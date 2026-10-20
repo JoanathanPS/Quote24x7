@@ -449,6 +449,8 @@ export interface Quote {
   comparisonLine?: string | null;
   version?: number;
   supersededBy?: string | null;
+  /** Source citations tracing pricing and product claims back to approved knowledge documents. */
+  sourceCitations?: ProposalSourceCitation[];
 }
 
 export interface IntegrityCheck {
@@ -689,5 +691,80 @@ export interface WebhookEventRecord {
   status: "pending" | "processed" | "failed" | "ignored";
   processedAt: IsoDateTime | null;
   createdAt: IsoDateTime;
+}
+
+export type KnowledgeCategory =
+  | "pricing"
+  | "plans"
+  | "add_ons"
+  | "entitlements"
+  | "product_docs"
+  | "policies"
+  | "other";
+
+export type KnowledgeDocumentStatus =
+  | "uploaded"
+  | "processing"
+  | "ready"
+  | "failed"
+  | "archived";
+
+export interface KnowledgeDocument {
+  id: string;
+  name: string;
+  storagePath: string;
+  mimeType: string;
+  fileExtension: string;
+  fileSizeBytes: number;
+  sha256: string;
+  category: KnowledgeCategory;
+  version: number;
+  status: KnowledgeDocumentStatus;
+  pageCount: number | null;
+  chunkCount: number;
+  uploadedBy: string | null;
+  errorMessage: string | null;
+  createdAt: IsoDateTime;
+  updatedAt: IsoDateTime;
+  processedAt: IsoDateTime | null;
+}
+
+export interface KnowledgeChunk {
+  id: string;
+  documentId: string;
+  chunkIndex: number;
+  content: string;
+  pageNumber: number | null;
+  sectionTitle: string | null;
+  sourceMetadata: Record<string, unknown>;
+  createdAt: IsoDateTime;
+}
+
+export interface KnowledgeSearchResult {
+  chunkId: string;
+  documentId: string;
+  documentName: string;
+  category: KnowledgeCategory;
+  pageNumber: number | null;
+  sectionTitle: string | null;
+  content: string;
+  similarityOrRank: number;
+  snippet?: string;
+  storagePath: string;
+}
+
+export interface ProposalSourceCitation {
+  id: string;
+  quoteId?: string;
+  field: string;
+  selectedValue: string;
+  documentId: string;
+  documentName: string;
+  category: KnowledgeCategory;
+  pageNumber: number | null;
+  sectionTitle: string | null;
+  evidenceQuote: string;
+  verificationStatus: "verified" | "unverified" | "conflicting" | "assumed";
+  notes?: string;
 }
 

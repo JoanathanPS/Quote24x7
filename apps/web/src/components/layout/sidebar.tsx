@@ -12,6 +12,7 @@ import {
   Heartbeat,
   GearSix,
   X,
+  BookOpen,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 
@@ -44,6 +45,12 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
     href: "/catalogue",
     icon: Database,
     isActive: (pathname) => pathname.startsWith("/catalogue"),
+  },
+  {
+    name: "Knowledge",
+    href: "/knowledge",
+    icon: BookOpen,
+    isActive: (pathname) => pathname.startsWith("/knowledge"),
   },
 ];
 

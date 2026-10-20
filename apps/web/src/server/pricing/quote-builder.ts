@@ -1,5 +1,6 @@
 import type {
   CatalogueVersion,
+  ProposalSourceCitation,
   Quote,
   QuoteDocument,
   RequirementProfile,
@@ -15,6 +16,7 @@ import {
   type Candidate,
   type PricingDemand,
 } from "./engine.ts";
+import { findCitationsForLineItem } from "../knowledge/retriever.ts";
 
 /**
  * Assembles a complete `Quote` record from a demand and a catalogue version.
@@ -167,3 +169,41 @@ function buildExclusions(catalogue: CatalogueVersion): string[] {
     `Contractual terms, service-level commitments and quote validity periods — catalogue ${catalogue.version} carries no authorised policy for these.`,
   ];
 }
+
+/**
+ * Traces quote options and line items back to indexed knowledge documents,
+ * generating verified source citations and provenance evidence.
+ */
+export async function enrichQuoteWithKnowledgeCitations(quote: Quote): Promise<Quote> {
+  const citations: ProposalSourceCitation[] = [];
+
+  for (const option of quote.options) {
+    const planCitation = await findCitationsForLineItem({
+      field: `plan_${option.planId}`,
+      name: option.planName,
+      code: option.planId,
+      category: "plans",
+    });
+    if (planCitation) {
+      planCitation.quoteId = quote.id;
+      citations.push(planCitation);
+    }
+
+    for (const item of option.lineItems) {
+      const itemCitation = await findCitationsForLineItem({
+        field: `item_${item.ruleId}`,
+        name: item.description,
+        code: item.ruleId,
+        category: "pricing",
+      });
+      if (itemCitation) {
+        itemCitation.quoteId = quote.id;
+        citations.push(itemCitation);
+      }
+    }
+  }
+
+  quote.sourceCitations = citations;
+  return quote;
+}
+
