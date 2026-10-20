@@ -143,6 +143,7 @@ test("Phase 8 - Quote Template: Complete itemized breakdown, transparent cadence
   });
 
   assert.ok(quote.options.length >= 2, "Should have best_value and lowest_cost");
+  const primaryOption = quote.options[0]!;
   const bestValue = quote.options.find((o) => o.optionType === "best_value")!;
   const lowestCost = quote.options.find((o) => o.optionType === "lowest_cost")!;
 
@@ -162,11 +163,11 @@ test("Phase 8 - Quote Template: Complete itemized breakdown, transparent cadence
   assert.ok(htmlContent.includes("servers / virtual machines"));
 
   // 3. Lowest-priced option statement with plan name and total
-  assert.ok(textContent.includes(`For your setup, the lowest-priced option is ${bestValue.planName} at ${formatMoney(bestValue.total, "INR", { showDecimals: false })} per year.`));
+  assert.ok(textContent.includes(`For your setup, the lowest-priced option is ${primaryOption.planName} at ${formatMoney(primaryOption.total, "INR", { showDecimals: false })} per year.`));
 
   // 4. Itemized table: 4 columns Item | Qty | What it covers | Per year
   assert.ok(textContent.includes("Item | Qty | What it covers | Per year"));
-  for (const item of bestValue.lineItems) {
+  for (const item of primaryOption.lineItems) {
     const formattedLineTotal = formatMoney(item.lineTotal, "INR", { showDecimals: false });
     assert.ok(
       textContent.includes(formattedLineTotal),
@@ -179,10 +180,10 @@ test("Phase 8 - Quote Template: Complete itemized breakdown, transparent cadence
   }
 
   // Exact numbers match engine output: sum of line items equals total billed today
-  const computedSum = bestValue.lineItems.reduce((acc, item) => acc + item.lineTotal, 0);
-  assert.equal(computedSum, bestValue.total, "Line items sum must exactly equal option total");
-  assert.ok(textContent.includes(`Total | | | ${formatMoney(bestValue.total, "INR", { showDecimals: false })}`));
-  assert.ok(htmlContent.includes(formatMoney(bestValue.total, "INR", { showDecimals: false })));
+  const computedSum = primaryOption.lineItems.reduce((acc, item) => acc + item.lineTotal, 0);
+  assert.equal(computedSum, primaryOption.total, "Line items sum must exactly equal option total");
+  assert.ok(textContent.includes(`Total | | | ${formatMoney(primaryOption.total, "INR", { showDecimals: false })}`));
+  assert.ok(htmlContent.includes(formatMoney(primaryOption.total, "INR", { showDecimals: false })));
 
   // 5. Transparent calculation note verbatim
   const expectedNote = "Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.";

@@ -844,9 +844,8 @@ export function renderQuoteEmail(input: {
     ? `Hi ${nameRes.name},`
     : "Hi there,";
 
-  const bestValue =
-    input.quote.options.find((o) => o.optionType === "best_value") ?? input.quote.options[0];
-  const lowestCost = input.quote.options.find((o) => o.optionType === "lowest_cost");
+  const bestValue = input.quote.options[0]!;
+  const alternativeOption = input.quote.options[1];
 
   // Determine if this is an updated quote in the thread
   const priorQuotes = input.threadId ? store.getQuotesByThreadId(input.threadId) : [];
@@ -938,8 +937,10 @@ export function renderQuoteEmail(input: {
   ];
 
   let comparisonLine: string | null = null;
-  if (lowestCost && bestValue && lowestCost.planId !== bestValue.planId) {
-    comparisonLine = buildComparisonLine(lowestCost, bestValue);
+  if (alternativeOption && bestValue.planId !== alternativeOption.planId) {
+    comparisonLine = input.quote.comparisonLine ?? buildComparisonLine(bestValue, alternativeOption);
+  } else if (input.quote.comparisonLine) {
+    comparisonLine = input.quote.comparisonLine;
   }
 
   const pdfFilename = `Site24x7-estimate-${shortRef}.pdf`;

@@ -1,4 +1,5 @@
 import type {
+  CandidateSummary,
   CatalogueVersion,
   ProposalSourceCitation,
   Quote,
@@ -16,6 +17,7 @@ import {
   type Candidate,
   type PricingDemand,
 } from "./engine.ts";
+import { formatMoney } from "./money.ts";
 import { findCitationsForLineItem } from "../knowledge/retriever.ts";
 
 /**
@@ -76,6 +78,22 @@ export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Ca
 
   const integrityChecks = runIntegrityChecks(catalogue, options, demand);
 
+  const candidateTable: CandidateSummary[] = candidates.map((c) => ({
+    planId: c.plan.id,
+    planName: c.plan.name,
+    total: c.total,
+    totalFormatted: formatMoney(c.total, "INR"),
+    valid: c.valid,
+    rejectionReason: c.unavailabilityReason ?? (c.valid ? null : "Requirements not satisfied"),
+  }));
+
+  console.log("[Pricing Engine] Candidate Evaluation Table:");
+  for (const row of candidateTable) {
+    console.log(
+      `  - ${row.planName.padEnd(16)} | Total: ${row.totalFormatted.padEnd(12)} | Status: ${row.valid ? "VALID" : "REJECTED"} | Reason: ${row.rejectionReason ?? "None"}`
+    );
+  }
+
   const quote: Quote = {
     id: quoteId,
     threadId,
@@ -105,6 +123,7 @@ export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Ca
     documents: input.documents ?? [],
     optionCountNote,
     comparisonLine,
+    candidateTable,
   };
 
   return { quote, rejected };

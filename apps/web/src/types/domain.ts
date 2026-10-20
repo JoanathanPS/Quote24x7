@@ -423,6 +423,15 @@ export interface CalculationStep {
   resultMinor: MinorUnits | null;
 }
 
+export interface CandidateSummary {
+  planId: string;
+  planName: string;
+  total: MinorUnits;
+  totalFormatted: string;
+  valid: boolean;
+  rejectionReason: string | null;
+}
+
 export interface Quote {
   id: string;
   threadId: string;
@@ -455,6 +464,8 @@ export interface Quote {
   shortRef?: string;
   /** Source citations tracing pricing and product claims back to approved knowledge documents. */
   sourceCitations?: ProposalSourceCitation[];
+  /** Candidate evaluation table showing all plans, totals, and rejection reasons. */
+  candidateTable?: CandidateSummary[];
 }
 
 export interface IntegrityCheck {

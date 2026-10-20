@@ -315,3 +315,52 @@ test("Integrity check: lowest-cost-is-minimum check fails if lowest_cost has hig
   assert.ok(minCheck);
   assert.equal(minCheck.passed, false, "lowest-cost-is-minimum check must FAIL when lowest_cost is more expensive");
 });
+
+test("Item 1 Property Test: for 200 random small requirement sets, option 1 total <= the total of every valid candidate", () => {
+  // Brute-force reference implementation: find the exact minimum total of all valid candidates
+  function bruteForceMinTotal(candidates: Candidate[]): number | null {
+    const valid = candidates.filter((c) => c.valid);
+    if (valid.length === 0) return null;
+    let min = Infinity;
+    for (const c of valid) {
+      if (c.total < min) min = c.total;
+    }
+    return min;
+  }
+
+  for (let i = 0; i < 200; i++) {
+    const demand: PricingDemand = {
+      host_monitor: Math.floor(Math.random() * 60),
+      basic_monitor: Math.floor(Math.random() * 30),
+      advanced_monitor: Math.floor(Math.random() * 6),
+      network_component: Math.floor(Math.random() * 25),
+      rum_pageview: Math.random() < 0.3 ? 0 : Math.floor(Math.random() * 5) * 100_000,
+      applog_gb: Math.floor(Math.random() * 400),
+    };
+
+    const candidates = catalogue.plans.map((p) => evaluateCandidate(catalogue, p, demand));
+    const validCandidates = candidates.filter((c) => c.valid);
+    const { options } = rankOptions(candidates, demand, `prop_quote_${i}`);
+
+    if (validCandidates.length > 0) {
+      assert.ok(options.length >= 1, `Must have at least 1 option for iteration ${i}`);
+      const option1 = options[0]!;
+      const expectedMin = bruteForceMinTotal(candidates)!;
+
+      // Option 1 total MUST equal the minimum of every valid candidate
+      assert.equal(
+        option1.total,
+        expectedMin,
+        `Iteration ${i}: Option 1 (${option1.planName} at ${option1.total}) must equal brute-force minimum (${expectedMin})`,
+      );
+
+      // Option 1 total MUST be <= the total of every valid candidate
+      for (const vc of validCandidates) {
+        assert.ok(
+          option1.total <= vc.total,
+          `Iteration ${i}: Option 1 total ${option1.total} must be <= candidate ${vc.plan.name} total ${vc.total}`,
+        );
+      }
+    }
+  }
+});

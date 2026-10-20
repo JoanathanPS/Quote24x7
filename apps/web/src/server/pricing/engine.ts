@@ -688,7 +688,10 @@ export function buildComparisonLine(
       ? alternative.whatItAdds.slice(0, 2).join(" and ")
       : "additional capability";
 
-  return `${lowest.planName}${addOnsText} costs ${formatMoney(lowest.total, "INR")}/year; ${alternative.planName} includes ${adds} at ${formatMoney(alternative.total, "INR")}/year.`;
+  const diffPaise = alternative.total - lowest.total;
+  const diffFormatted = diffPaise > 0 ? ` (${formatMoney(diffPaise, "INR")} more)` : "";
+
+  return `${lowest.planName}${addOnsText} costs ${formatMoney(lowest.total, "INR")}/year; ${alternative.planName} includes ${adds} at ${formatMoney(alternative.total, "INR")}/year${diffFormatted}.`;
 }
 
 const RANK_REASONS: Record<OptionType, (candidate: Candidate) => string> = {
@@ -725,6 +728,8 @@ export function rankOptions(
     };
   }
 
+  // Item 1: RECOMMENDATION = CHEAPEST.
+  // Sort strictly by cheapest annual total ascending.
   const sortedByPrice = [...valid].sort(cheapest);
   const lowestCostCandidate = sortedByPrice[0]!;
 
@@ -736,6 +741,10 @@ export function rankOptions(
     return { options, rejected, optionCountNote, comparisonLine: null };
   }
 
+  // Option 1 (index 0) MUST ALWAYS be the valid candidate with the minimum annual total!
+  const lowestOpt = toQuoteOption(lowestCostCandidate, "lowest_cost", demand, quoteId);
+
+  // Alternative option: find a higher-tier or higher-spec candidate that costs more
   const alternatives = sortedByPrice
     .slice(1)
     .filter(
@@ -747,12 +756,13 @@ export function rankOptions(
   if (alternatives.length > 0) {
     const altCandidate = alternatives[0]!;
     const whatItAdds = describeWhatItAdds(altCandidate, lowestCostCandidate);
-    const lowestOpt = toQuoteOption(lowestCostCandidate, "lowest_cost", demand, quoteId);
     const altOpt = toQuoteOption(altCandidate, "best_value", demand, quoteId, whatItAdds);
     const comparisonLine = buildComparisonLine(lowestOpt, altOpt, demand);
     altOpt.comparisonNote = comparisonLine;
+    lowestOpt.comparisonNote = comparisonLine;
 
-    const options: QuoteOption[] = [altOpt, lowestOpt];
+    // Option 1 is lowestOpt (cheapest), Option 2 is altOpt (higher tier/coverage)
+    const options: QuoteOption[] = [lowestOpt, altOpt];
     return { options, rejected, optionCountNote: null, comparisonLine };
   }
 
