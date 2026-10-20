@@ -166,7 +166,7 @@ export async function decideNextAction(
   const rulesResult = input.existingProfile
     ? mergeRequirements({
         existingProfile: input.existingProfile,
-        replyText: input.cumulativeText,
+        replyText: input.latestMessageText,
         senderEmail: input.senderEmail,
         senderName: input.senderName,
         subject: input.subject,

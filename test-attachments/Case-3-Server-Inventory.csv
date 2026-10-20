@@ -1,0 +1,21 @@
+Hostname,OS,Environment,Role,IP Address,Sizing Unit
+web-prod-01,Ubuntu Linux 22.04,Production,Frontend Web Server,10.0.1.11,Host Server
+web-prod-02,Ubuntu Linux 22.04,Production,Frontend Web Server,10.0.1.12,Host Server
+web-prod-03,Ubuntu Linux 22.04,Production,Frontend Web Server,10.0.1.13,Host Server
+api-prod-01,Debian Linux 12,Production,REST Microservices,10.0.2.21,Host Server
+api-prod-02,Debian Linux 12,Production,REST Microservices,10.0.2.22,Host Server
+api-prod-03,Debian Linux 12,Production,REST Microservices,10.0.2.23,Host Server
+api-prod-04,Debian Linux 12,Production,REST Microservices,10.0.2.24,Host Server
+db-primary-01,Red Hat Enterprise 9,Production,PostgreSQL Primary,10.0.3.31,Host Server
+db-replica-01,Red Hat Enterprise 9,Production,PostgreSQL Standby,10.0.3.32,Host Server
+db-replica-02,Red Hat Enterprise 9,Production,PostgreSQL Standby,10.0.3.33,Host Server
+redis-cache-01,Ubuntu Linux 22.04,Production,Redis Cluster,10.0.4.41,Host Server
+redis-cache-02,Ubuntu Linux 22.04,Production,Redis Cluster,10.0.4.42,Host Server
+kafka-broker-01,Ubuntu Linux 22.04,Production,Event Stream,10.0.5.51,Host Server
+kafka-broker-02,Ubuntu Linux 22.04,Production,Event Stream,10.0.5.52,Host Server
+kafka-broker-03,Ubuntu Linux 22.04,Production,Event Stream,10.0.5.53,Host Server
+win-ad-01,Windows Server 2022,Production,Domain Controller,10.0.6.61,Host Server
+win-ad-02,Windows Server 2022,Production,Domain Controller,10.0.6.62,Host Server
+win-file-01,Windows Server 2022,Production,Corporate Storage,10.0.6.63,Host Server
+lb-external-01,Alpine Linux,Edge,NGINX Reverse Proxy,10.0.0.1,Host Server
+lb-external-02,Alpine Linux,Edge,NGINX Reverse Proxy,10.0.0.2,Host Server

@@ -191,6 +191,8 @@ export interface EmailThread {
   inboundCount?: number;
   lastInboundAt?: IsoDateTime | null;
   subjectCanonical?: string | null;
+  contactName?: string | null;
+  contact_name?: string | null;
 }
 
 export type MessageDirection = "inbound" | "outbound";

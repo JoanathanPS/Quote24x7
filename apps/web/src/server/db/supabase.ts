@@ -88,10 +88,12 @@ export function threadToRow(t: EmailThread) {
     inbound_count: t.inboundCount ?? 0,
     last_inbound_at: t.lastInboundAt ?? null,
     subject_canonical: t.subjectCanonical ?? null,
+    contact_name: t.contact_name ?? t.contactName ?? null,
   };
 }
 
 export function rowToThread(r: Record<string, unknown>): EmailThread {
+  const contactName = r.contact_name ? String(r.contact_name) : null;
   return {
     id: String(r.id),
     provider: String(r.provider || "resend"),
@@ -116,6 +118,8 @@ export function rowToThread(r: Record<string, unknown>): EmailThread {
     inboundCount: Number(r.inbound_count || 0),
     lastInboundAt: r.last_inbound_at ? String(r.last_inbound_at) : null,
     subjectCanonical: r.subject_canonical ? String(r.subject_canonical) : null,
+    contactName,
+    contact_name: contactName,
   };
 }
 

@@ -103,43 +103,61 @@ function wrapText(
 }
 
 function getWhatItCovers(
-  item: { ruleId: string; description: string; quantity: number; packSize?: number | null; purchasedUnits?: number | null },
+  item: { ruleId: string; description: string; quantity: number; packSize?: number | null; purchasedUnits?: number | null; unit?: string },
   coverage: CoverageRow[]
 ): string {
   if (item.ruleId === "RULE-BASE-PRICE") {
-    const parts = coverage
+    const unitPriority: Record<string, number> = {
+      host_monitor: 1,
+      basic_monitor: 2,
+      advanced_monitor: 3,
+      network_component: 4,
+      applog_gb: 5,
+      rum_pageview: 6,
+    };
+
+    const parts = [...coverage]
       .filter((c) => c.included > 0)
+      .sort((a, b) => (unitPriority[a.unit] ?? 99) - (unitPriority[b.unit] ?? 99))
       .map((c) => {
-        if (c.unit === "basic_monitor") return `${c.included} basic`;
-        if (c.unit === "advanced_monitor") return `${c.included} advanced`;
-        if (c.unit === "host_monitor") return `${c.included} hosts`;
-        if (c.unit === "network_component") return `${c.included} network`;
+        if (c.unit === "host_monitor") return `${c.included} servers`;
+        if (c.unit === "basic_monitor") return `${c.included} websites`;
+        if (c.unit === "advanced_monitor") return `${c.included} advanced monitor${c.included > 1 ? "s" : ""}`;
+        if (c.unit === "network_component") return `${c.included} network devices`;
         if (c.unit === "applog_gb") return `${c.included} GB logs`;
-        if (c.unit === "rum_pageview") return `${c.included.toLocaleString("en-IN")} RUM`;
+        if (c.unit === "rum_pageview") return `${c.included.toLocaleString("en-IN")} RUM pageviews`;
         return `${c.included} ${c.label}`;
       });
-    return parts.length > 0 ? `Includes ${parts.join(", ")} in base` : "Base plan included entitlements";
+    return parts.length > 0 ? `Base plan: includes ${parts.join(", ")}` : "Base plan included entitlements";
   }
 
   const desc = item.description.toLowerCase();
   const purchased = item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1));
 
-  if (desc.includes("advanced")) {
-    return `${purchased} synthetic web checks / browser transactions`;
+  if (desc.includes("host") || desc.includes("server") || item.unit === "host_monitor") {
+    const cov = coverage.find((c) => c.unit === "host_monitor");
+    const total = cov?.total ?? (cov ? cov.included + purchased : purchased);
+    return `${purchased} more servers (${total} in total)`;
   }
-  if (desc.includes("host") || desc.includes("server")) {
-    return `${purchased} servers / VMs / hosts`;
+  if (desc.includes("advanced") || item.unit === "advanced_monitor") {
+    return `${purchased} more advanced monitors`;
   }
-  if (desc.includes("log") || item.ruleId.includes("log")) {
-    return `${purchased} GB monthly log ingestion (${item.quantity} x ${item.packSize ?? 100} GB packs)`;
+  if (desc.includes("log") || item.ruleId.includes("log") || item.unit === "applog_gb") {
+    const cov = coverage.find((c) => c.unit === "applog_gb");
+    const total = cov?.total ?? (cov ? cov.included + purchased : purchased);
+    return `${purchased} GB more log ingestion per month (${total} GB in total)`;
   }
-  if (desc.includes("network") || desc.includes("switch")) {
-    return `${purchased} network devices (switches, routers, firewalls)`;
+  if (desc.includes("network") || desc.includes("switch") || item.unit === "network_component") {
+    const cov = coverage.find((c) => c.unit === "network_component");
+    const total = cov?.total ?? (cov ? cov.included + purchased : purchased);
+    return `${purchased} more network devices (${total} in total)`;
   }
-  if (desc.includes("rum") || desc.includes("pageview")) {
-    return `${purchased.toLocaleString("en-IN")} RUM pageviews / month`;
+  if (desc.includes("rum") || desc.includes("pageview") || item.unit === "rum_pageview") {
+    const cov = coverage.find((c) => c.unit === "rum_pageview");
+    const total = cov?.total ?? (cov ? cov.included + purchased : purchased);
+    return `${purchased.toLocaleString("en-IN")} more RUM pageviews per month (${total.toLocaleString("en-IN")} in total)`;
   }
-  return `${purchased} units (${item.quantity} x ${item.packSize ?? 1} per pack)`;
+  return `${purchased} more ${item.description}`;
 }
 
 /**
@@ -290,9 +308,9 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
     color: rgb(0.35, 0.42, 0.52),
   });
 
-  // Name rule: explicit recipientName, or thread senderName, or email localpart, NEVER "Procurement Contact"
-  let customerName = (recipientName || thread?.senderName || "").trim();
-  if (!customerName || /^(?:Procurement Contact|Customer|Valued Customer|Unknown)$/i.test(customerName)) {
+  // Name rule: explicit recipientName, or thread contact_name, or senderName, or email localpart, NEVER "Procurement Contact" or "there"
+  let customerName = (recipientName || thread?.contactName || thread?.contact_name || thread?.senderName || "").trim();
+  if (!customerName || /^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(customerName)) {
     customerName = thread?.senderEmail ? thread.senderEmail.split("@")[0]! : "Customer";
   }
 

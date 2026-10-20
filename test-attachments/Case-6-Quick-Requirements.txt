@@ -1,0 +1,23 @@
+Hi Site24x7 Team,
+
+We are looking to migrate from Datadog to Site24x7 to optimize monitoring costs.
+Here is what our DevOps team manages:
+
+1. Host Servers:
+   - 28 Linux EC2 instances running microservices
+   - 4 Windows SQL Servers
+
+2. Network & Edge:
+   - 6 Cisco switches in our primary colocation facility
+
+3. Public Endpoints:
+   - 8 public website URLs monitored every 1 minute
+   - 3 Synthetic browser checkout scripts
+
+4. Application Logs:
+   - Approximately 15 GB/day of application logs
+
+Please send us an official annual proposal breakdown in INR.
+
+Best regards,
+DevOps Lead, FinEdge Solutions

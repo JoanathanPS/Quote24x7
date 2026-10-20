@@ -189,10 +189,14 @@ export function resolveRecipientName(
 ): { name: string; evidence?: string } {
   if (latestMessageBody) {
     const sig = extractSignatureName(latestMessageBody);
-    if (sig) return sig;
+    if (sig && sig.name) return sig;
+  }
+  const savedContact = (thread?.contactName || thread?.contact_name || "").trim();
+  if (savedContact && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(savedContact)) {
+    return { name: savedContact };
   }
   const displayName = thread?.senderName?.trim();
-  if (displayName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown)$/i.test(displayName)) {
+  if (displayName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(displayName)) {
     return { name: displayName };
   }
   return { name: "" };
@@ -275,6 +279,8 @@ export interface SendQuoteEmailInput {
   recipientEmail: string;
   recipientName?: string | null;
   conversationalResponse?: string | null;
+  previousQuote?: Quote | null;
+  isUpdate?: boolean;
 }
 
 export interface SendClarificationEmailInput {
@@ -726,41 +732,89 @@ async function dispatchEmail(input: DispatchInput): Promise<OutboundDispatchResu
   };
 }
 
-function getWhatItCoversText(item: QuoteLineItem, coverage: CoverageRow[]): string {
+export function buildChangeSentences(
+  currCoverage: CoverageRow[],
+  prevCoverage: CoverageRow[]
+): string[] {
+  const units: Array<{ unit: string; label: string }> = [
+    { unit: "host_monitor", label: "Servers" },
+    { unit: "network_component", label: "Network devices" },
+    { unit: "basic_monitor", label: "Websites" },
+    { unit: "advanced_monitor", label: "Advanced monitors" },
+    { unit: "applog_gb", label: "Logs" },
+    { unit: "rum_pageview", label: "RUM pageviews" },
+  ];
+
+  const sentences: string[] = [];
+  for (const { unit, label } of units) {
+    const curr = currCoverage.find((c) => c.unit === unit)?.required ?? 0;
+    const prev = prevCoverage.find((c) => c.unit === unit)?.required ?? 0;
+    if (curr !== prev) {
+      if (prev > 0 && curr === 0) {
+        sentences.push(`${label}: removed.`);
+      } else if (prev > 0 && curr > 0) {
+        sentences.push(`${label}: ${prev} to ${curr}.`);
+      } else if (prev === 0 && curr > 0) {
+        sentences.push(`${label}: ${curr}.`);
+      }
+    }
+  }
+  return sentences;
+}
+
+export function getWhatItCoversText(item: QuoteLineItem, coverage: CoverageRow[]): string {
   if (item.ruleId === "RULE-BASE-PRICE") {
-    const parts = coverage
+    const unitPriority: Record<string, number> = {
+      host_monitor: 1,
+      basic_monitor: 2,
+      advanced_monitor: 3,
+      network_component: 4,
+      applog_gb: 5,
+      rum_pageview: 6,
+    };
+
+    const parts = [...coverage]
       .filter((c) => c.included > 0)
+      .sort((a, b) => (unitPriority[a.unit] ?? 99) - (unitPriority[b.unit] ?? 99))
       .map((c) => {
-        if (c.unit === "basic_monitor") return `${c.included} basic monitors`;
-        if (c.unit === "advanced_monitor") return `${c.included} advanced monitor`;
-        if (c.unit === "host_monitor") return `${c.included} host monitors`;
+        if (c.unit === "host_monitor") return `${c.included} servers`;
+        if (c.unit === "basic_monitor") return `${c.included} websites`;
+        if (c.unit === "advanced_monitor") return `${c.included} advanced monitor${c.included > 1 ? "s" : ""}`;
         if (c.unit === "network_component") return `${c.included} network devices`;
         if (c.unit === "applog_gb") return `${c.included} GB logs`;
         if (c.unit === "rum_pageview") return `${c.included.toLocaleString("en-IN")} RUM pageviews`;
         return `${c.included} ${c.label}`;
       });
-    return parts.length > 0 ? `Includes ${parts.join(", ")} included in base plan` : "Base plan included entitlements";
+    return parts.length > 0 ? `Base plan: includes ${parts.join(", ")}` : "Base plan included entitlements";
   }
 
   const desc = item.description.toLowerCase();
   const purchased = item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1));
 
-  if (desc.includes("advanced")) {
-    return `${purchased} synthetic web checks / browser transactions`;
+  if (desc.includes("host") || desc.includes("server") || item.unit === "host_monitor") {
+    const cov = coverage.find((c) => c.unit === "host_monitor");
+    const total = cov?.total ?? (cov ? cov.included + purchased : purchased);
+    return `${purchased} more servers (${total} in total)`;
   }
-  if (desc.includes("host") || desc.includes("server")) {
-    return `${purchased} servers / VMs / hosts`;
+  if (desc.includes("advanced") || item.unit === "advanced_monitor") {
+    return `${purchased} more advanced monitors`;
   }
   if (desc.includes("log") || item.ruleId.includes("log") || item.unit === "applog_gb") {
-    return `${purchased} GB monthly log ingestion (${item.quantity} × ${item.packSize ?? 100} GB packs)`;
+    const cov = coverage.find((c) => c.unit === "applog_gb");
+    const total = cov?.total ?? (cov ? cov.included + purchased : purchased);
+    return `${purchased} GB more log ingestion per month (${total} GB in total)`;
   }
-  if (desc.includes("network") || desc.includes("switch")) {
-    return `${purchased} network devices (switches, routers, firewalls)`;
+  if (desc.includes("network") || desc.includes("switch") || item.unit === "network_component") {
+    const cov = coverage.find((c) => c.unit === "network_component");
+    const total = cov?.total ?? (cov ? cov.included + purchased : purchased);
+    return `${purchased} more network devices (${total} in total)`;
   }
-  if (desc.includes("rum") || desc.includes("pageview")) {
-    return `${purchased.toLocaleString("en-IN")} real user monitoring pageviews / month`;
+  if (desc.includes("rum") || desc.includes("pageview") || item.unit === "rum_pageview") {
+    const cov = coverage.find((c) => c.unit === "rum_pageview");
+    const total = cov?.total ?? (cov ? cov.included + purchased : purchased);
+    return `${purchased.toLocaleString("en-IN")} more RUM pageviews per month (${total.toLocaleString("en-IN")} in total)`;
   }
-  return `${purchased} units (${item.quantity} × ${item.packSize ?? 1} per pack)`;
+  return `${purchased} more ${item.description}`;
 }
 
 /**
@@ -771,22 +825,51 @@ function getWhatItCoversText(item: QuoteLineItem, coverage: CoverageRow[]): stri
 export function renderQuoteEmail(input: {
   recipientName?: string | null;
   quote: Quote;
-  threadId: string;
+  threadId?: string;
   conversationalResponse?: string | null;
   latestMessageBody?: string | null;
+  previousQuote?: Quote | null;
+  isUpdate?: boolean;
+  changeSentences?: string[] | null;
 }): { textContent: string; htmlContent: string } {
   const shortRef = input.quote.shortRef || formatShortRef(input.quote.id);
   const nameRes = input.recipientName
     ? { name: input.recipientName }
-    : resolveRecipientName(null, input.latestMessageBody);
+    : resolveRecipientName(
+        input.threadId ? store.getThread(input.threadId) : null,
+        input.latestMessageBody
+      );
 
-  const greeting = nameRes.name && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown)$/i.test(nameRes.name)
+  const greeting = nameRes.name && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(nameRes.name)
     ? `Hi ${nameRes.name},`
     : "Hi there,";
 
   const bestValue =
     input.quote.options.find((o) => o.optionType === "best_value") ?? input.quote.options[0];
   const lowestCost = input.quote.options.find((o) => o.optionType === "lowest_cost");
+
+  // Determine if this is an updated quote in the thread
+  const priorQuotes = input.threadId ? store.getQuotesByThreadId(input.threadId) : [];
+  const prevQuote =
+    input.previousQuote ||
+    priorQuotes.find((q) => q.id !== input.quote.id && (input.quote.version ? (q.version ?? 1) < input.quote.version : true));
+
+  const isUpdate = Boolean(
+    input.isUpdate ||
+    (input.quote.version && input.quote.version > 1) ||
+    Boolean(prevQuote)
+  );
+
+  let changeSentences = input.changeSentences || [];
+  if (isUpdate && changeSentences.length === 0 && prevQuote) {
+    const prevOption = prevQuote.options.find((o) => o.optionType === "best_value") ?? prevQuote.options[0];
+    const currOption = bestValue;
+    if (prevOption && currOption) {
+      changeSentences = buildChangeSentences(currOption.coverage, prevOption.coverage);
+    }
+  }
+
+  const changeLine = changeSentences.join(" ");
 
   // Plain-word requirement summary
   const understoodLines: string[] = [];
@@ -861,10 +944,20 @@ export function renderQuoteEmail(input: {
 
   const pdfFilename = `Site24x7-estimate-${shortRef}.pdf`;
 
+  const openingTextLines = isUpdate
+    ? [
+        "Thanks. I've updated the estimate.",
+        ...(changeLine ? [changeLine] : []),
+        "This replaces the earlier estimate.",
+      ]
+    : [
+        "Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your estimate.",
+      ];
+
   const textContent = [
     greeting,
     "",
-    "Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your estimate.",
+    ...openingTextLines,
     "",
     "Summary of understood requirements:",
     ...understoodLines,
@@ -906,7 +999,15 @@ export function renderQuoteEmail(input: {
     '<meta charset="utf-8">',
     '<body style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;max-width:600px;margin:0 auto;padding:16px;">',
     `<p>${escapeHtml(greeting)}</p>`,
-    "<p>Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your estimate.</p>",
+    ...(isUpdate
+      ? [
+          "<p>Thanks. I've updated the estimate.</p>",
+          ...(changeLine ? [`<p>${escapeHtml(changeLine)}</p>`] : []),
+          "<p>This replaces the earlier estimate.</p>",
+        ]
+      : [
+          "<p>Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your estimate.</p>",
+        ]),
     "<p><strong>Summary of understood requirements:</strong></p>",
     `<ul>${htmlUnderstoodList}</ul>`,
     `<p>For your setup, the lowest-priced option is <strong>${escapeHtml(planName)}</strong> at <strong>${escapeHtml(totalAmount)}</strong> per year.</p>`,
@@ -943,11 +1044,14 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
   let subject = resolveThreadSubject(input.thread.subject);
   subject = subject.replace(/#?th_[a-zA-Z0-9_-]+/gi, "").replace(/#?qt_[a-zA-Z0-9_-]+/gi, "").trim();
 
-  // Resolve signature name or display name; never "Procurement Contact"
+  // Resolve signature name or display name; never "Procurement Contact" or "there"
   const storeMessages = store.getMessages(input.thread.id);
   const latestInbound = [...storeMessages].reverse().find((m) => m.direction === "inbound");
   const nameRes = resolveRecipientName(input.thread, latestInbound?.bodyText);
-  const resolvedName = input.recipientName || nameRes.name || null;
+  const candidateName = input.recipientName || nameRes.name || input.thread.contactName || input.thread.contact_name || null;
+  const resolvedName = (candidateName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(candidateName))
+    ? candidateName
+    : null;
 
   const shortRef = input.quote.shortRef || formatShortRef(input.quote.id);
   const pdfFilename = `Site24x7-estimate-${shortRef}.pdf`;
@@ -958,6 +1062,8 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
     threadId: input.thread.id,
     conversationalResponse: input.conversationalResponse,
     latestMessageBody: latestInbound?.bodyText,
+    previousQuote: input.previousQuote,
+    isUpdate: input.isUpdate,
   });
 
   return dispatchEmail({

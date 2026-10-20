@@ -29,6 +29,7 @@ import {
   sendUnpriceableNotificationEmail,
   sendNonSubstantiveReplyEmail,
   sendFinalYieldEmail,
+  extractSignatureName,
   type OutboundDispatchResult,
 } from "./resend-outbound.ts";
 import {
@@ -120,7 +121,11 @@ export async function processInboundEmail(
   await store.ensureInitializedAsync();
   const config = getAppConfig();
   const now = payload.receivedAt || new Date().toISOString();
-  const providerMessageId = payload.providerMessageId.trim();
+  const providerMessageId = (
+    payload.providerMessageId ||
+    payload.messageId ||
+    `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`
+  ).trim();
   const rfcMessageId = payload.messageId?.trim() || null;
 
   // 1. Idempotency & In-Flight Check (Deduplicate by Message-ID)
@@ -738,6 +743,11 @@ async function doProcessInboundEmail(
     };
   }
 
+  const sig = extractSignatureName(payload.text);
+  const sigName = sig && sig.name && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(sig.name)
+    ? sig.name
+    : null;
+
   if (!thread) {
     const newThreadId = `th_${Date.now()}`;
     thread = {
@@ -746,6 +756,8 @@ async function doProcessInboundEmail(
       providerThreadId: providerMessageId,
       senderEmail: payload.from,
       senderName: payload.fromName || null,
+      contactName: sigName,
+      contact_name: sigName,
       organisation: null,
       subject: payload.subject,
       status: "received",
@@ -769,9 +781,15 @@ async function doProcessInboundEmail(
   } else {
     thread.inboundCount = (thread.inboundCount ?? 0) + 1;
     thread.lastInboundAt = now;
+    if (sigName) {
+      thread.contactName = sigName;
+      thread.contact_name = sigName;
+    }
     store.updateThread(thread.id, {
       inboundCount: thread.inboundCount,
       lastInboundAt: thread.lastInboundAt,
+      contactName: thread.contactName,
+      contact_name: thread.contact_name,
     });
   }
 
@@ -1153,6 +1171,10 @@ async function doProcessInboundEmail(
   store.updateThread(thread.id, { status: "pricing" });
 
   const quoteId = `qt_${Date.now()}`;
+  const priorQuotes = store.getQuotesByThreadId(thread.id);
+  const nextVersion = priorQuotes.length > 0
+    ? Math.max(...priorQuotes.map((q) => q.version ?? 1)) + 1
+    : 1;
 
   const { quote, rejected } = buildQuote({
     quoteId,
@@ -1162,6 +1184,7 @@ async function doProcessInboundEmail(
     catalogue,
     createdAt: now,
     status: "validated",
+    version: nextVersion,
   });
 
   // Fail-Closed Gate: Do not produce documents or send quotes if no valid options or integrity fails
@@ -1205,10 +1228,11 @@ async function doProcessInboundEmail(
   }
 
   // One active quote per thread. New quotes supersede old ones.
-  const priorQuotes = store.getQuotesByThreadId(thread.id);
+  const latestPriorQuote = priorQuotes.find((pq) => pq.status !== "superseded" && pq.id !== quote.id);
   for (const pq of priorQuotes) {
     if (pq.id !== quote.id) {
-      store.updateQuote(pq.id, { status: "superseded" });
+      store.updateQuote(pq.id, { status: "superseded", supersededBy: quote.id });
+      console.log(`[Quote] Quote ${pq.id} superseded by ${quote.id} (superseded)`);
     }
   }
 
@@ -1244,8 +1268,10 @@ async function doProcessInboundEmail(
     quote,
     pdfBuffer,
     recipientEmail: payload.from,
-    recipientName: payload.fromName,
+    recipientName: thread.contactName || thread.contact_name || payload.fromName,
     conversationalResponse: extraction.conversationalResponse,
+    previousQuote: latestPriorQuote,
+    isUpdate: nextVersion > 1,
   });
 
   // 11. Finalize Thread Record

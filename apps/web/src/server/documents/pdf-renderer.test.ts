@@ -15,6 +15,8 @@ import {
   extractPdfText,
 } from "../email/resend-outbound.ts";
 import { PDFDocument } from "pdf-lib";
+import { store } from "../store/session-store.ts";
+import { processInboundEmail } from "../email/inbound-processor.ts";
 
 const catalogue = loadActiveCatalogue();
 
@@ -246,6 +248,15 @@ DevOps Lead, Acme Corp
   assert.ok(emailRendered.textContent.includes("Site24x7-estimate-Q-1042.pdf"));
   assert.ok(emailRendered.textContent.includes("Ref Q-1042"));
 
+  // Requirement 10: WHAT IT COVERS column plain English, never internal units
+  assert.ok(emailRendered.textContent.includes("Base plan: includes 5 servers, 20 websites"));
+  assert.ok(emailRendered.textContent.includes("50 more servers (55 in total)"));
+  assert.ok(emailRendered.textContent.includes("2 more advanced monitors"));
+  assert.ok(emailRendered.textContent.includes("600 GB more log ingestion per month (604 GB in total)"));
+  assert.equal(emailRendered.textContent.includes("host_monitor"), false);
+  assert.equal(emailRendered.textContent.includes("basic_monitor"), false);
+  assert.equal(emailRendered.textContent.includes("applog_gb"), false);
+
   // Render PDF
   const pdfBuffer = await renderQuotePdf({
     quote,
@@ -315,4 +326,96 @@ test("PDF Line Boundary Check: Every text line right edge is strictly inside the
   // Extract raw text streams and verify no lines overflow
   const pdfText = extractPdfText(pdfBuffer);
   assert.ok(pdfText.length > 500, "PDF must contain text content");
+});
+
+test("Requirement 11 - Golden test for the update: 40 servers, no network devices", async () => {
+  // 1. Initial inbound message for Acme case
+  const inbound1 = {
+    providerMessageId: `msg_acme_v1_${Date.now()}`,
+    from: "alex@acme.com",
+    fromName: "Alex Mercer",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Pricing for Acme Corp",
+    text: [
+      "Hi Team,",
+      "",
+      "We need a quote for monitoring our infrastructure: 50 Linux servers, 8 core network switches,",
+      "5 public websites, 2 synthetic user transaction flows, and 600 GB of logs monthly.",
+      "No other monitoring needed.",
+      "",
+      "Thanks,",
+      "Alex Mercer",
+      "DevOps Lead, Acme Corp",
+    ].join("\n"),
+  };
+
+  const res1 = await processInboundEmail(inbound1);
+  assert.ok(res1.quote, "Must produce quote v1");
+  const quoteV1 = res1.quote;
+  assert.equal(quoteV1.version, 1, "Quote v1 must have version 1");
+  const bestV1 = quoteV1.options.find((o) => o.optionType === "best_value")!;
+  assert.equal(bestV1.total, 30542500, "Acme v1 total must equal ₹3,05,425");
+
+  // Verify contact_name saved on thread
+  const threadAfterV1 = store.getThread(res1.threadId)!;
+  assert.equal(threadAfterV1.contactName, "Alex Mercer", "contactName must be saved on thread");
+  assert.equal(threadAfterV1.contact_name, "Alex Mercer", "contact_name must be saved on thread");
+
+  // Get outbound message 1
+  const msgs1 = store.getMessages(res1.threadId);
+  const outbound1 = [...msgs1].reverse().find((m) => m.direction === "outbound")!;
+  assert.ok(outbound1.bodyText.startsWith("Hi Alex Mercer,"));
+  assert.ok(outbound1.bodyText.includes("Thank you for contacting us about Site24x7 monitoring."));
+
+  // 2. Apply reply email in the same thread (no signature)
+  const inbound2 = {
+    providerMessageId: `msg_acme_v2_${Date.now()}`,
+    from: "alex@acme.com",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Re: Pricing for Acme Corp",
+    headers: {
+      "in-reply-to": outbound1.providerMessageId || `<msg_${Date.now()}@quote24x7.com>`,
+      references: outbound1.providerMessageId || `<msg_${Date.now()}@quote24x7.com>`,
+    },
+    text: "40 servers instead of 50, no network devices",
+  };
+
+  const res2 = await processInboundEmail(inbound2);
+  assert.equal(res2.threadId, res1.threadId, "Must attach to existing thread");
+  assert.ok(res2.quote, "Must produce quote v2");
+  const quoteV2 = res2.quote;
+
+  // v2 total must equal ₹2,86,140
+  const bestV2 = quoteV2.options.find((o) => o.optionType === "best_value")!;
+  assert.equal(bestV2.total, 28614000, "Acme v2 total must equal ₹2,86,140 (28,614,000 paise)");
+  assert.equal(quoteV2.version, 2, "Quote v2 must have version 2");
+
+  // v1 superseded (superseded_by)
+  const storedV1 = store.getQuote(quoteV1.id)!;
+  assert.equal(storedV1.status, "superseded", "v1 must be marked superseded");
+  assert.equal(storedV1.supersededBy, quoteV2.id, "v1 supersededBy must point to v2");
+
+  // Get outbound message 2
+  const msgs2 = store.getMessages(res2.threadId);
+  const outbound2 = [...msgs2].reverse().find((m) => m.direction === "outbound")!;
+
+  // Same subject (canonical subject)
+  assert.ok(outbound2.subject.includes("Pricing for Acme Corp"), "Subject must remain the same");
+
+  // Greeting uses saved name (never 'there')
+  assert.ok(outbound2.bodyText.startsWith("Hi Alex Mercer,"), "Greeting must use saved name Alex Mercer");
+  assert.equal(outbound2.bodyText.startsWith("Hi there,"), false, "Must never overwrite saved name with 'there'");
+
+  // Updated-quote email body requirements
+  assert.ok(outbound2.bodyText.includes("Thanks. I've updated the estimate."));
+  assert.ok(outbound2.bodyText.includes("Servers: 50 to 40. Network devices: removed."));
+  assert.ok(outbound2.bodyText.includes("This replaces the earlier estimate."));
+  assert.equal(outbound2.bodyText.includes("Thank you for contacting us"), false, "Must never say 'Thank you for contacting us' in reply");
+  assert.ok(outbound2.bodyText.includes("₹2,86,140"));
+
+  // Line items check for v2
+  assert.ok(outbound2.bodyText.includes("40 more servers (45 in total)"));
+  assert.ok(outbound2.bodyText.includes("2 more advanced monitors"));
+  assert.ok(outbound2.bodyText.includes("600 GB more log ingestion per month (604 GB in total)"));
+  assert.equal(outbound2.bodyText.includes("Network devices add-on"), false, "Network devices add-on should not be present");
 });

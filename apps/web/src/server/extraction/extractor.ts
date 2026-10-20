@@ -626,22 +626,22 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   let advancedState: IntakeUnitState = "unknown";
 
   const advMentioned =
-    /\b(?:synthetic(?:\s+(?:transaction|web|browser))?|advanced(?:\s+web)?|transaction|critical\s+web)\s*(?:monitors?|monitoring|endpoints?|checks?|urls?|apis?)\b/i.test(
+    /\b(?:synthetic(?:\s+(?:transaction|web|browser))?|advanced(?:\s+web)?|transaction|browser\s+transaction|critical\s+web)\s*(?:monitors?|monitoring|endpoints?|checks?|urls?|apis?|transactions?|flows?)\b/i.test(
       text,
     ) || /\b(?:synthetic(?:\s+[a-z]+)?\s+monitoring)\b/i.test(text);
 
   const advMatch =
     text.match(
-      /(\d+)[^\S\r\n]*(?:[a-z \t]{0,35}?)\b(?:synthetic(?:\s+(?:transaction|web|browser))?|advanced(?:\s+web)?|transaction|critical\s+web)\s*(?:monitors?|endpoints?|urls?|checks?|apis?)\b/i,
+      /(\d+)[^\S\r\n]*(?:[a-z \t]{0,35}?)\b(?:synthetic(?:\s+(?:transaction|web|browser))?|advanced(?:\s+web)?|transaction|browser\s+transaction|critical\s+web)\s*(?:monitors?|endpoints?|urls?|checks?|apis?|transactions?|flows?)\b/i,
     ) ||
     text.match(
-      /(?:synthetic(?:\s+transaction|\s+web|\s+browser)?|advanced(?:\s+web)?|transaction)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
+      /(?:synthetic(?:\s+transaction|\s+web|\s+browser)?|advanced(?:\s+web)?|transaction|browser\s+transaction)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
     ) ||
     text.match(
-      /(\d+)[^\S\r\n]*(?:synthetic|advanced|transaction)\s*(?:(?:transaction|web|browser)\s+)?(?:monitors?|endpoints?|checks?|urls?|apis?)/i,
+      /(\d+)[^\S\r\n]*(?:synthetic|advanced|transaction|browser\s+transaction)\s*(?:(?:transaction|web|browser)\s+)?(?:monitors?|endpoints?|checks?|urls?|apis?|transactions?|flows?)/i,
     ) ||
     text.match(
-      /(?:advanced|synthetic|transaction)\s*(?:monitors?|endpoints?|checks?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
+      /(?:advanced|synthetic|transaction|browser\s+transaction)\s*(?:monitors?|endpoints?|checks?|transactions?|flows?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
     );
 
   const appApmMatch =
@@ -1297,6 +1297,22 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
     rum_pageview: { ...existingProfile.intakeRequirements?.rum_pageview ?? { unit: "rum_pageview", state: "unknown", quantity: null, evidence: null } },
     applog_gb: { ...existingProfile.intakeRequirements?.applog_gb ?? { unit: "applog_gb", state: "unknown", quantity: null, evidence: null } },
   };
+
+  // Populate any missing intake units from existingProfile.fields
+  for (const field of existingProfile.fields || []) {
+    const unit = FIELD_KEY_TO_UNIT[field.key];
+    if (unit && mergedIntake[unit].state === "unknown" && field.value !== null && field.value !== undefined) {
+      const numVal = typeof field.value === "number" ? field.value : parseInt(String(field.value), 10);
+      if (!isNaN(numVal)) {
+        mergedIntake[unit] = {
+          unit,
+          state: numVal === 0 ? "none" : "stated",
+          quantity: numVal,
+          evidence: field.evidence ?? String(field.value),
+        };
+      }
+    }
+  }
 
   // Check if reply answers a pending question directly with a standalone number
   const pendingUnits = INTAKE_UNITS.filter((u) => mergedIntake[u].state === "unknown");
