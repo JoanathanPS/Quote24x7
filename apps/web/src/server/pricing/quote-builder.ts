@@ -85,11 +85,12 @@ export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Ca
   for (const c of candidates) {
     if (seenPlanNames.has(c.plan.name)) continue;
     seenPlanNames.add(c.plan.name);
+    const totalFormatted = c.valid ? formatMoney(c.total, "INR") : "—";
     candidateTable.push({
       planId: c.plan.id,
       planName: c.plan.name,
-      total: c.total,
-      totalFormatted: formatMoney(c.total, "INR"),
+      total: c.valid ? c.total : 0,
+      totalFormatted,
       valid: c.valid,
       rejectionReason: c.unavailabilityReason ?? (c.valid ? null : "Requirements not satisfied"),
     });
@@ -97,8 +98,8 @@ export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Ca
 
   console.log("[Pre-Pricing Unit Evidence Audit]");
   for (const unit of DEMAND_UNITS) {
-    const intake = profile.intakeRequirements?.[unit as IntakeUnit];
-    const field = profile.fields?.find((f) => FIELD_KEY_TO_UNIT[f.key] === unit);
+    const intake = profile?.intakeRequirements?.[unit as IntakeUnit];
+    const field = profile?.fields?.find((f) => FIELD_KEY_TO_UNIT[f.key] === unit);
     const evidence = intake?.evidence ?? field?.evidence ?? "none";
     const state = intake?.state ?? (demand[unit] > 0 ? "stated" : "none");
     const qty = demand[unit];
@@ -115,7 +116,7 @@ export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Ca
   const quote: Quote = {
     id: quoteId,
     threadId,
-    requirementProfileId: profile.id,
+    requirementProfileId: profile?.id ?? `prof_${quoteId}`,
     catalogueVersionId: catalogue.id,
     catalogueVersion: catalogue.version,
     calculationVersion: CALCULATION_VERSION,
@@ -179,7 +180,7 @@ function buildAssumptions(
     }.`,
   );
 
-  const inferred = profile.fields.filter((field) => field.state === "inferred");
+  const inferred = (profile?.fields ?? []).filter((field) => field.state === "inferred");
   for (const field of inferred) {
     assumptions.push(
       `${field.label} was not stated explicitly; ${String(field.value)}${field.unit ? ` ${field.unit}` : ""} was inferred from the request and used in the calculation.`,
@@ -187,7 +188,7 @@ function buildAssumptions(
   }
 
   // Explicit Website Monitoring Allowance
-  const hasWebsite = profile.fields.some((f) => f.key === "website_monitoring") || demand.basic_monitor > 0;
+  const hasWebsite = (profile?.fields ?? []).some((f) => f.key === "website_monitoring") || demand.basic_monitor > 0;
   if (hasWebsite) {
     assumptions.push(
       "Website Availability Monitoring: Website uptime and accessibility checks are covered under the base plan subscription's included basic monitor allowance (Lite includes 5, Professional includes 20, Enterprise includes 50) at INR 0 additional cost.",
@@ -195,7 +196,7 @@ function buildAssumptions(
   }
 
   // Explicit APM Capability & Pack Information
-  const hasApm = profile.fields.some((f) => f.key === "application_monitoring");
+  const hasApm = (profile?.fields ?? []).some((f) => f.key === "application_monitoring");
   if (hasApm) {
     assumptions.push(
       "Application Performance Monitoring (APM): Server/host monitoring does not implicitly bundle custom APM instances. In the active catalogue, Lite includes 0 APM/advanced monitors, Professional includes 1 included APM/advanced monitor, and Enterprise includes 10 included APM/advanced monitors. Additional APM capacity requires 2-pack Advanced Monitor add-ons (INR 15,390.00/yr per pack) or custom APM licensing once specific runtime instances are confirmed.",

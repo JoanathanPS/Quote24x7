@@ -310,7 +310,8 @@ function buildAiDecision(
     warnings.push(`Referenced plan id "${planId}" does not exist in the active catalogue and was ignored.`);
   }
 
-  // --- Guard 3: quantities must be plausible whole numbers ----------------
+  // --- Guard 3: quantities must be plausible whole numbers and validated against source text ---
+  const availableSourceText = `${input.latestMessageText}\n${input.cumulativeText}`.toLowerCase();
   const aiQuantities = new Map<DemandUnit, { quantity: number; basis: "stated" | "inferred"; evidence: string; confidence: number }>();
   for (const requirement of output.knownRequirements) {
     const bound = QUANTITY_BOUNDS[requirement.unit];
@@ -324,14 +325,39 @@ function buildAiDecision(
       );
       continue;
     }
+
+    // Task 1 requirement: The AI path must not be able to change quantities.
+    // Every extracted quantity must be validated against an evidence span in the email or attachment text,
+    // and a mismatch must fall back to the deterministic value.
+    const evidenceLower = (requirement.evidence || "").toLowerCase().trim();
+    const hasEvidenceSpan = evidenceLower.length > 0 && availableSourceText.includes(evidenceLower);
+    const deterministicVal = rulesResult.demand[requirement.unit];
+    const deterministicState = rulesResult.intakeRequirements?.[requirement.unit]?.state;
+
+    let finalQuantity = requirement.quantity;
+    let finalEvidence = requirement.evidence;
+    let finalBasis = requirement.basis;
+
+    if (!hasEvidenceSpan && requirement.quantity > 0) {
+      warnings.push(`AI quantity ${requirement.quantity} for ${UNIT_LABELS[requirement.unit]} lacks a valid evidence span in the source text; falling back to deterministic value ${deterministicVal}.`);
+      finalQuantity = deterministicVal;
+      finalEvidence = rulesResult.intakeRequirements?.[requirement.unit]?.evidence || requirement.evidence;
+      finalBasis = deterministicState === "stated" ? "stated" : "inferred";
+    } else if (deterministicState === "stated" && deterministicVal !== requirement.quantity) {
+      warnings.push(`AI quantity ${requirement.quantity} for ${UNIT_LABELS[requirement.unit]} differs from deterministic stated value ${deterministicVal}; falling back to deterministic value.`);
+      finalQuantity = deterministicVal;
+      finalEvidence = rulesResult.intakeRequirements?.[requirement.unit]?.evidence || requirement.evidence;
+      finalBasis = "stated";
+    }
+
     // Last value wins if the model emitted a unit twice; both are recorded.
     if (aiQuantities.has(requirement.unit)) {
       warnings.push(`${UNIT_LABELS[requirement.unit]} was reported more than once; the last value was used.`);
     }
     aiQuantities.set(requirement.unit, {
-      quantity: requirement.quantity,
-      basis: requirement.basis,
-      evidence: requirement.evidence,
+      quantity: finalQuantity,
+      basis: finalBasis,
+      evidence: finalEvidence,
       confidence: requirement.confidence,
     });
   }

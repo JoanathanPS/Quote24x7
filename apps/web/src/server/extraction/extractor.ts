@@ -695,16 +695,50 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   let basicEvidence: string | null = null;
   let basicState: IntakeUnitState = "unknown";
 
-  const basicCountMatch =
-    text.match(
-      /(\d+)[^\S\r\n]*(?:[a-z0-9 \t/-]{0,35}?)\b(?:basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?)?|standard(?:\s+monitors?)?|websites?|urls?|web\s+sites?|apis?|api\s+endpoints?|rest\s+apis?|web\s+endpoints?|endpoints?|website(?:\s+uptime|\s+availability)?(?:\s+monitors?|\s+checks?)?)\b/i,
-    ) ||
-    text.match(
-      /(?:basic|ping|port|website\s+uptime|uptime\s+checks?|websites?|urls?|apis?|endpoints?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
-    ) ||
-    text.match(
-      /(?:basic|ping|port|standard|websites?|urls?|web\s+sites?|apis?|endpoints?|website(?:\s+uptime)?)\s*(?:monitors?|checks?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
-    );
+  const isServerLine = (line: string): boolean =>
+    /\b(?:servers?|hosts?|vms?|nodes?|instances?|ubuntu|linux|windows|c5\.|m5\.|database\s+&\s+active\s+directory)\b/i.test(line);
+
+  const isSectionHeading = (line: string): boolean =>
+    /^\s*\d+\.\s+[A-Za-z]/i.test(line.trim());
+
+  let basicCountCandidate: { quantity: number; evidence: string } | null = null;
+  const itemLineBasicMatches = [
+    ...text.matchAll(/(?:^|\n)[^\S\r\n]*[•\-\*]?\s*(\d+)[^\S\r\n]*([^\n\r]*?\b(?:basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?)?|standard(?:\s+monitors?)?|websites?|urls?|web\s+sites?|apis?|api\s+endpoints?|rest\s+apis?|web\s+endpoints?|endpoints?|website(?:\s+uptime|\s+availability)?(?:\s+monitors?|\s+checks?)?)\b[^\n\r]*)/gi),
+  ];
+  for (const m of itemLineBasicMatches) {
+    if (!isServerLine(m[0]) && !isSectionHeading(m[0])) {
+      basicCountCandidate = {
+        quantity: parseInt(m[1]!, 10),
+        evidence: m[0].trim(),
+      };
+      break;
+    }
+  }
+
+  if (!basicCountCandidate) {
+    const inlineBasicMatches = [
+      ...text.matchAll(/(\d+)[^\S\r\n]*(?:[a-z0-9 \t/-]{0,35}?)\b(?:basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?)?|standard(?:\s+monitors?)?|websites?|urls?|web\s+sites?|api\s+endpoints?|rest\s+apis?|web\s+endpoints?|website(?:\s+uptime|\s+availability)(?:\s+monitors?|\s+checks?)?)\b/gi),
+    ];
+    for (const m of inlineBasicMatches) {
+      if (!isServerLine(m[0])) {
+        basicCountCandidate = {
+          quantity: parseInt(m[1]!, 10),
+          evidence: m[0].trim(),
+        };
+        break;
+      }
+    }
+  }
+
+  if (!basicCountCandidate) {
+    const mColon = text.match(/(?:basic|ping|port|website\s+uptime|uptime\s+checks?|websites?|urls?|apis?|endpoints?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i);
+    if (mColon && mColon[1] && !isServerLine(mColon[0])) {
+      basicCountCandidate = {
+        quantity: parseInt(mColon[1], 10),
+        evidence: mColon[0].trim(),
+      };
+    }
+  }
 
   const websiteAvailabilityMentioned =
     /\b(?:website(?:\s+is|\s+being)?\s+accessible|website\s+uptime|website\s+downtime|website\s+(?:going\s+)?down|website\s+availability|website\s+accessibility|check\s+(?:our\s+)?website|monitor(?:\s+whether)?\s+(?:our\s+)?website)\b/i.test(
@@ -720,13 +754,33 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     /\b(?:no\s+(?:websites?|urls?|apis?|endpoints?|basic(?:\s+monitors?)?|uptime\s+checks?|website\s+checks?|web\s+checks?)|without\s+(?:websites?|urls?|apis?|endpoints?|basic(?:\s+monitors?)?|uptime\s+checks?|website\s+checks?|web\s+checks?)|zero\s+(?:websites?|urls?|apis?)|0\s+(?:websites?|urls?|apis?)|don'?t\s+need\s+(?:websites?|urls?|apis?)|(?:websites?|urls?|apis?)\s*:\s*(?:none|0|no)|no\s+basic\s+website\s+checks)\b/i,
   );
 
+  const hasPositiveBasic = basicCountCandidate !== null;
+
   const basicNone =
     serversOnly ||
-    (noOtherNeeds && !basicMentioned) ||
+    (!hasPositiveBasic && noOtherNeeds && !basicMentioned) ||
     Boolean(basicNoneMatch) ||
     Boolean(compoundNegPhrase && /\b(?:websites?|urls?|apis?|endpoints?|basic\s+monitors?|uptime\s+checks?|website\s+checks?|web\s+checks?)\b/i.test(compoundNegInner));
 
-  if (basicNone) {
+  if (hasPositiveBasic && !basicNoneMatch) {
+    basicCount = basicCountCandidate!.quantity;
+    basicState = "stated";
+    basicEvidence = basicCountCandidate!.evidence;
+    fields.push({
+      key: "basic_monitors",
+      label: "Basic Monitors",
+      group: "applications",
+      value: basicCount,
+      unit: "monitors",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.95,
+      evidence: basicEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
+  } else if (basicNone) {
     basicCount = 0;
     basicState = "none";
     basicEvidence = basicNoneMatch ? basicNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no websites (servers-only)" : "Explicitly stated no websites/APIs");
@@ -739,24 +793,6 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       state: "provided",
       intakeState: "none",
       confidence: 0.99,
-      evidence: basicEvidence,
-      conflictWith: null,
-      previousValue: null,
-      materialToPricing: true,
-    });
-  } else if (basicCountMatch && basicCountMatch[1]) {
-    basicCount = parseInt(basicCountMatch[1], 10);
-    basicState = "stated";
-    basicEvidence = basicCountMatch[0].trim();
-    fields.push({
-      key: "basic_monitors",
-      label: "Basic Monitors",
-      group: "applications",
-      value: basicCount,
-      unit: "monitors",
-      state: "provided",
-      intakeState: "stated",
-      confidence: 0.95,
       evidence: basicEvidence,
       conflictWith: null,
       previousValue: null,
@@ -966,32 +1002,75 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const rumMillionMatch =
     text.match(
-      /(\d+(?:[.,]\d+)?)\s*(?:million\b|m\b)\s*(?:[a-z\s/]{0,25}?)\b(?:pageviews?|views?|rum)\b/i,
+      /(\d+(?:[.,]\d+)?)\s*(?:million\b|m\b)\s*(?:[a-z\s/]{0,35}?)\b(?:pageviews?|views?|rum)\b/i,
     ) ||
     text.match(
-      /(?:rum|real\s+user\s+monitoring)\s*(?:[a-z\s]{0,25}?)\b(\d+(?:[.,]\d+)?)\s*(?:million\b|m\b)\s*(?:pageviews?|views?)?/i,
+      /(?:rum|real\s+user\s+monitoring)\s*(?:[a-z\s]{0,35}?)\b(\d+(?:[.,]\d+)?)\s*(?:million\b|m\b)\s*(?:pageviews?|views?)?/i,
     );
   const rumKMatch = text.match(
-    /(\d+(?:[.,]\d+)?)\s*(?:thousand\b|k\b)\s*(?:[a-z\s/]{0,25}?)\b(?:pageviews?|views?|rum)\b/i,
+    /(\d+(?:[.,]\d+)?)\s*(?:thousand\b|k\b)\s*(?:[a-z\s/]{0,35}?)\b(?:pageviews?|views?|rum)\b/i,
   );
   const rumColonMatch = text.match(
     /(?:rum|real\s+user\s+monitoring|pageviews?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d[\d,.]*)"?\s*(million|m|k|thousand)?/i,
   );
-  const rumRawMatch = text.match(
-    /(\d{1,3}(?:,\d{3})+|\d{5,})\s*(?:[a-z\s/]{0,25}?)\b(?:pageviews?|views?|rum)\b/i,
-  );
+  const rumRawMatch =
+    text.match(
+      /(\d{1,3}(?:,\d{3})+|\d{5,})\s*(?:[a-z\s/()\-]{0,50}?)\b(?:pageviews?|views?|rum)\b/i,
+    ) ||
+    text.match(
+      /(\d{1,3}(?:,\d{3})+|\d{5,})\s+(?:real\s+user\s+monitoring(?:\s*\([a-z]+\))?\s+)?pageviews?/i,
+    );
 
   const rumNoneMatch = text.match(
     /\b(?:no\s+(?:rum|real\s+user(?:\s+monitoring)?|page\s*views?|views?)|without\s+(?:rum|real\s+user(?:\s+monitoring)?|page\s*views?|views?)|zero\s+rum|0\s+rum|don'?t\s+need\s+rum|rum\s*:\s*(?:none|0|no)|no\s+real\s+user\s+monitoring)\b/i,
   );
 
+  const hasPositiveRum = Boolean(rumMillionMatch || rumKMatch || rumColonMatch || rumRawMatch);
+
   const rumNone =
     serversOnly ||
-    (noOtherNeeds && !rumMentioned) ||
+    (!hasPositiveRum && noOtherNeeds && !rumMentioned) ||
     Boolean(rumNoneMatch) ||
     Boolean(compoundNegPhrase && /\b(?:rum|real\s+user|page\s*views?|views?)\b/i.test(compoundNegInner));
 
-  if (rumNone) {
+  if (hasPositiveRum && !rumNoneMatch) {
+    if (rumMillionMatch && rumMillionMatch[1]) {
+      rumPageviews = Math.round(parseFloat(rumMillionMatch[1].replace(/,/g, "")) * 1_000_000);
+      rumEvidence = rumMillionMatch[0].trim();
+    } else if (rumKMatch && rumKMatch[1]) {
+      rumPageviews = Math.round(parseFloat(rumKMatch[1].replace(/,/g, "")) * 1_000);
+      rumEvidence = rumKMatch[0].trim();
+    } else if (rumColonMatch && rumColonMatch[1]) {
+      const rawVal = parseFloat(rumColonMatch[1].replace(/,/g, ""));
+      const unit = (rumColonMatch[2] || "").toLowerCase();
+      if (unit === "million" || unit === "m") {
+        rumPageviews = Math.round(rawVal * 1_000_000);
+      } else if (unit === "thousand" || unit === "k") {
+        rumPageviews = Math.round(rawVal * 1_000);
+      } else {
+        rumPageviews = Math.round(rawVal);
+      }
+      rumEvidence = rumColonMatch[0].trim();
+    } else if (rumRawMatch && rumRawMatch[1]) {
+      rumPageviews = parseInt(rumRawMatch[1].replace(/,/g, ""), 10);
+      rumEvidence = rumRawMatch[0].trim();
+    }
+    rumState = "stated";
+    fields.push({
+      key: "rum_pageviews",
+      label: "RUM Pageviews",
+      group: "applications",
+      value: rumPageviews,
+      unit: "pageviews/month",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.95,
+      evidence: rumEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
+  } else if (rumNone) {
     rumPageviews = 0;
     rumState = "none";
     rumEvidence = rumNoneMatch ? rumNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no RUM (servers-only)" : "Explicitly stated no RUM pageviews");
@@ -1004,86 +1083,6 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       state: "provided",
       intakeState: "none",
       confidence: 0.99,
-      evidence: rumEvidence,
-      conflictWith: null,
-      previousValue: null,
-      materialToPricing: true,
-    });
-  } else if (rumMillionMatch && rumMillionMatch[1]) {
-    rumPageviews = Math.round(parseFloat(rumMillionMatch[1].replace(/,/g, "")) * 1_000_000);
-    rumState = "stated";
-    rumEvidence = rumMillionMatch[0].trim();
-    fields.push({
-      key: "rum_pageviews",
-      label: "RUM Pageviews",
-      group: "applications",
-      value: rumPageviews,
-      unit: "pageviews/month",
-      state: "provided",
-      intakeState: "stated",
-      confidence: 0.95,
-      evidence: rumEvidence,
-      conflictWith: null,
-      previousValue: null,
-      materialToPricing: true,
-    });
-  } else if (rumKMatch && rumKMatch[1]) {
-    rumPageviews = Math.round(parseFloat(rumKMatch[1].replace(/,/g, "")) * 1_000);
-    rumState = "stated";
-    rumEvidence = rumKMatch[0].trim();
-    fields.push({
-      key: "rum_pageviews",
-      label: "RUM Pageviews",
-      group: "applications",
-      value: rumPageviews,
-      unit: "pageviews/month",
-      state: "provided",
-      intakeState: "stated",
-      confidence: 0.95,
-      evidence: rumEvidence,
-      conflictWith: null,
-      previousValue: null,
-      materialToPricing: true,
-    });
-  } else if (rumColonMatch && rumColonMatch[1]) {
-    const rawVal = parseFloat(rumColonMatch[1].replace(/,/g, ""));
-    const unit = (rumColonMatch[2] || "").toLowerCase();
-    if (unit === "million" || unit === "m") {
-      rumPageviews = Math.round(rawVal * 1_000_000);
-    } else if (unit === "thousand" || unit === "k") {
-      rumPageviews = Math.round(rawVal * 1_000);
-    } else {
-      rumPageviews = Math.round(rawVal);
-    }
-    rumState = "stated";
-    rumEvidence = rumColonMatch[0].trim();
-    fields.push({
-      key: "rum_pageviews",
-      label: "RUM Pageviews",
-      group: "applications",
-      value: rumPageviews,
-      unit: "pageviews/month",
-      state: "provided",
-      intakeState: "stated",
-      confidence: 0.95,
-      evidence: rumEvidence,
-      conflictWith: null,
-      previousValue: null,
-      materialToPricing: true,
-    });
-  } else if (rumRawMatch && rumRawMatch[1]) {
-    rumPageviews = parseInt(rumRawMatch[1].replace(/,/g, ""), 10);
-    rumState = "stated";
-    rumEvidence = rumRawMatch[0].trim();
-    fields.push({
-      key: "rum_pageviews",
-      label: "RUM Pageviews",
-      group: "applications",
-      value: rumPageviews,
-      unit: "pageviews/month",
-      state: "provided",
-      intakeState: "stated",
-      confidence: 0.95,
       evidence: rumEvidence,
       conflictWith: null,
       previousValue: null,
@@ -1114,8 +1113,9 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   let applogState: IntakeUnitState = "unknown";
 
   const logMentioned =
-    (/\b(?:applogs?|log\s+management)\b/i.test(text) || /\b(?:logs?)\b/i.test(text)) &&
-    !/logistics|login|dialog|catalog/i.test(text);
+    /\b(?:applogs?|syslog|syslogs?|log\s+management|log\s+ingestion|log\s+aggregation|log\s+storage|log\s+retention)\b/i.test(text) ||
+    /\b\d+\s*(?:gb|gigabytes?|tb|terabytes?)\s*(?:per\s+day|\/day|a\s+day|monthly|per\s+month|\/mo|\/month)?\s*(?:of\s+)?logs?\b/i.test(text) ||
+    /\blogs?\b/i.test(text);
 
   const logMonthlyMatch =
     text.match(/(?:~?\s*(\d[\d,.]*)\s*(?:gb|gigabytes?)\s*(?:monthly|per\s+month|\/mo|\/month))\b/i) ||
@@ -1136,38 +1136,35 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       /(?:applogs?|logs?)\s*(?:volume|storage|size|retention)?\s*(?:of|:|=|,|\||\t)?\s*"?(\d[\d,.]*)"?\s*(?:gb|gigabytes?|tb|terabytes?)/i,
     );
 
+  const hasPositiveLog = Boolean(logMonthlyMatch || logDayMatch || logMatch);
+
   const logNoneMatch = text.match(
     /\b(?:no\s+(?:logs?|applogs?|log\s+management|log\s+ingestion|log\s+aggregation)|without\s+(?:logs?|applogs?|log\s+management|log\s+ingestion|log\s+aggregation)|zero\s+logs?|0\s+logs?|don'?t\s+need\s+logs?|logs?\s*:\s*(?:none|0|no)|no\s+applogs?)\b/i,
   );
 
   const logNone =
     serversOnly ||
-    (noOtherNeeds && !logMentioned) ||
+    (!hasPositiveLog && noOtherNeeds && !logMentioned) ||
     Boolean(logNoneMatch) ||
     Boolean(compoundNegPhrase && /\b(?:logs?|applogs?|log\s+management)\b/i.test(compoundNegInner));
 
-  if (logNone) {
-    applogGb = 0;
-    applogState = "none";
-    applogEvidence = logNoneMatch ? logNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no logs (servers-only)" : "Explicitly stated no logs needed");
-    fields.push({
-      key: "applogs_volume",
-      label: "AppLogs Volume",
-      group: "applications",
-      value: 0,
-      unit: "GB/month",
-      state: "provided",
-      intakeState: "none",
-      confidence: 0.99,
-      evidence: applogEvidence,
-      conflictWith: null,
-      previousValue: null,
-      materialToPricing: true,
-    });
-  } else if (logMonthlyMatch && logMonthlyMatch[1]) {
-    applogGb = parseInt(logMonthlyMatch[1].replace(/,/g, ""), 10);
+  if (hasPositiveLog && !logNoneMatch) {
+    if (logMonthlyMatch && logMonthlyMatch[1]) {
+      applogGb = parseInt(logMonthlyMatch[1].replace(/,/g, ""), 10);
+      applogEvidence = logMonthlyMatch[0].trim();
+    } else if (logDayMatch && logDayMatch[1]) {
+      // GB/day converted to monthly volume (30 days)
+      applogGb = parseInt(logDayMatch[1].replace(/,/g, ""), 10) * 30;
+      applogEvidence = logDayMatch[0].trim();
+    } else if (logMatch && logMatch[1]) {
+      let rawVal = parseFloat(logMatch[1].replace(/,/g, ""));
+      if (logMatch[0].toLowerCase().includes("tb")) {
+        rawVal *= 1000;
+      }
+      applogGb = Math.round(rawVal);
+      applogEvidence = logMatch[0].trim();
+    }
     applogState = "stated";
-    applogEvidence = logMonthlyMatch[0].trim();
     fields.push({
       key: "applogs_volume",
       label: "AppLogs Volume",
@@ -1182,39 +1179,19 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       previousValue: null,
       materialToPricing: true,
     });
-  } else if (logDayMatch && logDayMatch[1]) {
-    // GB/day converted to monthly volume (30 days)
-    applogGb = parseInt(logDayMatch[1].replace(/,/g, ""), 10) * 30;
-    applogState = "stated";
-    applogEvidence = logDayMatch[0].trim();
+  } else if (logNone) {
+    applogGb = 0;
+    applogState = "none";
+    applogEvidence = logNoneMatch ? logNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no logs (servers-only)" : "Explicitly stated no logs needed");
     fields.push({
       key: "applogs_volume",
       label: "AppLogs Volume",
       group: "applications",
-      value: applogGb,
+      value: 0,
       unit: "GB/month",
       state: "provided",
-      intakeState: "stated",
-      confidence: 0.95,
-      evidence: `${applogEvidence} (converted to 30-day monthly volume)`,
-      conflictWith: null,
-      previousValue: null,
-      materialToPricing: true,
-    });
-  } else if (logMatch && logMatch[1]) {
-    const isTb = logMatch[0].toLowerCase().includes("tb") || logMatch[0].toLowerCase().includes("terabyte");
-    applogGb = parseInt(logMatch[1].replace(/,/g, ""), 10) * (isTb ? 1024 : 1);
-    applogState = "stated";
-    applogEvidence = logMatch[0].trim();
-    fields.push({
-      key: "applogs_volume",
-      label: "AppLogs Volume",
-      group: "applications",
-      value: applogGb,
-      unit: "GB/month",
-      state: "provided",
-      intakeState: "stated",
-      confidence: 0.95,
+      intakeState: "none",
+      confidence: 0.99,
       evidence: applogEvidence,
       conflictWith: null,
       previousValue: null,

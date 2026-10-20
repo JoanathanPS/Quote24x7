@@ -672,3 +672,76 @@ test("normalizeRfcMessageId wraps bare local@domain tokens and rejects the rest"
   assert.equal(normalizeRfcMessageId(""), null);
   assert.equal(normalizeRfcMessageId("just-text"), null);
 });
+
+test("Threading: Inbound with In-Reply-To matching our outbound RFC Message-ID resolves to in_reply_to, unrelated ID falls back to subject_fallback", async (t) => {
+  reset();
+  installFakeResendProvider();
+  t.after(() => uninstallFakeResendProvider());
+
+  const senderEmail = `rfc_thread_${Date.now()}@testcorp.example.com`;
+  const subject = "Infrastructure Quote Sizing";
+
+  // Turn 1: Initial inbound inquiry
+  const turn1 = await processInboundEmail({
+    providerMessageId: makeProviderId("rfc_test", 1),
+    messageId: makeRfcId("rfc_test", 1),
+    from: senderEmail,
+    fromName: "DevOps Lead",
+    to: ["quotes@quotes.joanathan.in"],
+    subject,
+    text: "We need monitoring for 20 servers. No other monitoring needed.",
+  });
+
+  assert.equal(turn1.actionTaken, "quoted");
+  const thread = store.getThread(turn1.threadId);
+  assert.ok(thread);
+
+  // Retrieve our outbound message and its real RFC Message-ID
+  const messages = store.getMessages(turn1.threadId);
+  const outbound1 = messages.find((m) => m.direction === "outbound");
+  assert.ok(outbound1, "Outbound quote email must be recorded");
+  assert.ok(outbound1.messageIdHeader, "Outbound message must carry a real RFC Message-ID");
+  const ourOutboundRfcId = outbound1.messageIdHeader;
+
+  // Scenario A: Follow-up carrying our exact outbound RFC Message-ID in In-Reply-To
+  const turn2A = await processInboundEmail({
+    providerMessageId: makeProviderId("rfc_test", 2),
+    messageId: makeRfcId("rfc_test", 2),
+    from: senderEmail,
+    fromName: "DevOps Lead",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: `Re: ${subject}`,
+    headers: {
+      "in-reply-to": ourOutboundRfcId,
+      references: ourOutboundRfcId,
+    },
+    text: "Adjust to 25 servers please.",
+  });
+
+  assert.equal(turn2A.threadId, turn1.threadId, "Must match existing thread");
+  const msgsAfterA = store.getMessages(turn1.threadId);
+  const inbound2A = msgsAfterA.find((m) => m.providerMessageId.includes("rfc_test.2") || m.providerMessageId.includes("rfc_test_2"));
+  assert.ok(inbound2A);
+  assert.equal(inbound2A.threadMatchMethod, "in_reply_to", "Matching our outbound RFC Message-ID must resolve via in_reply_to");
+
+  // Scenario B: Follow-up from same sender with UNRELATED/bogus In-Reply-To falls back to subject_fallback
+  const turn2B = await processInboundEmail({
+    providerMessageId: makeProviderId("rfc_test", 3),
+    messageId: makeRfcId("rfc_test", 3),
+    from: senderEmail,
+    fromName: "DevOps Lead",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: `Re: ${subject}`,
+    headers: {
+      "in-reply-to": "<completely-unrelated-id@randomdomain.com>",
+      references: "<completely-unrelated-id@randomdomain.com>",
+    },
+    text: "Actually make it 30 servers.",
+  });
+
+  assert.equal(turn2B.threadId, turn1.threadId, "Must match existing thread via subject fallback");
+  const msgsAfterB = store.getMessages(turn1.threadId);
+  const inbound2B = msgsAfterB.find((m) => m.providerMessageId.includes("rfc_test.3") || m.providerMessageId.includes("rfc_test_3"));
+  assert.ok(inbound2B);
+  assert.equal(inbound2B.threadMatchMethod, "subject_fallback", "Unrelated In-Reply-To must gracefully fall back to subject_fallback");
+});

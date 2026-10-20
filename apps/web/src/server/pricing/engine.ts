@@ -641,11 +641,17 @@ export function includesStrictlyMore(
 export function describeWhatItAdds(
   alt: Candidate,
   base: Candidate,
-  _demand?: PricingDemand,
+  demand?: PricingDemand,
 ): string[] {
   const adds: string[] = [];
 
   for (const unit of DEMAND_UNITS) {
+    // Only mention capabilities relevant to the buyer's stated needs.
+    // If the buyer explicitly stated 0 or did not request a unit, omit it.
+    if (demand && demand[unit] === 0) {
+      continue;
+    }
+
     const altInc = includedFor(alt.plan, unit) ?? 0;
     const baseInc = includedFor(base.plan, unit) ?? 0;
 

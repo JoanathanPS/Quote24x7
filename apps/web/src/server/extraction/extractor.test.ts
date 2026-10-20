@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs";
+import path from "node:path";
 
 import {
   extractRequirements,
@@ -460,6 +462,215 @@ test("Item D Pre-send checker fails on email missing standard footer or Ref line
 
   const validResult = runPreSendChecks(contentWithFooter, { requireFooter: true });
   assert.equal(validResult.passed, true, "Pre-send check must pass with valid standard footer");
+});
+
+test("Task 3 Regression: Case 1 real email body + PDF attachment end-to-end", async () => {
+  store.reset();
+  const pdfPath = path.resolve(process.cwd(), "test-attachments", "Case-1-Production-Infrastructure.pdf");
+  const pdfBuf = fs.readFileSync(pdfPath);
+
+  // Turn 1: Real Case 1 email body including 'No other monitoring needed.'
+  const turn1 = await processInboundEmail({
+    providerMessageId: `msg_c1_t1_${Date.now()}`,
+    from: "alex.mercer@acmecorp.com",
+    fromName: "Alex Mercer",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Quote Request: Production Infrastructure Monitoring (PDF Scope)",
+    text: [
+      "Hi Site24x7 Team,",
+      "",
+      "Please review the attached PDF document containing our current infrastructure inventory and sizing breakdown.",
+      "We are looking for an annual quote with tier-appropriate add-ons for our servers, network gear, and log aggregation.",
+      "No other monitoring needed.",
+      "",
+      "Thanks,",
+      "Alex Mercer",
+      "DevOps Lead, Acme Corp",
+    ].join("\n"),
+    attachments: [
+      {
+        filename: "Case-1-Production-Infrastructure.pdf",
+        contentType: "application/pdf",
+        content: pdfBuf,
+      },
+    ],
+  });
+
+  assert.equal(turn1.actionTaken, "quoted");
+  assert.ok(turn1.quote);
+  const prof1 = store.getProfile(turn1.threadId);
+  assert.ok(prof1);
+  assert.ok(prof1.intakeRequirements);
+  const intake1 = prof1.intakeRequirements;
+
+  // Assert six units
+  assert.equal(intake1.host_monitor.quantity, 50, "Host servers must be 50");
+  assert.equal(intake1.host_monitor.state, "stated");
+  assert.equal(intake1.network_component.quantity, 8, "Network components must be 8");
+  assert.equal(intake1.network_component.state, "stated");
+  assert.equal(intake1.basic_monitor.quantity, 5, "Basic monitors must be 5 (excluding server fleet)");
+  assert.equal(intake1.basic_monitor.state, "stated");
+  assert.equal(intake1.advanced_monitor.quantity, 2, "Advanced monitors must be 2");
+  assert.equal(intake1.advanced_monitor.state, "stated");
+  assert.equal(intake1.applog_gb.quantity, 600, "Logs must be 600 GB monthly");
+  assert.equal(intake1.applog_gb.state, "stated");
+  assert.equal(intake1.rum_pageview.quantity, 0, "RUM must be 0 (none)");
+  assert.equal(intake1.rum_pageview.state, "none");
+
+  // Hand-calculated golden sum: Professional 47,880 + 1,21,885 + 15,390 + 1,20,270 = 3,05,425
+  const rec1 = turn1.quote.options[0]!;
+  assert.equal(rec1.planName, "Professional");
+  assert.equal(rec1.total, 30542500, "Turn 1 total must equal 3,05,425");
+
+  // Turn 2: Follow-up update
+  const turn2 = await processInboundEmail({
+    providerMessageId: `msg_c1_t2_${Date.now()}`,
+    from: "alex.mercer@acmecorp.com",
+    fromName: "Alex Mercer",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Re: Quote Request: Production Infrastructure Monitoring (PDF Scope)",
+    text: "40 servers instead of 50, no network devices\n\nThanks,\nAlex Mercer",
+  });
+
+  assert.equal(turn2.actionTaken, "quoted");
+  assert.ok(turn2.quote);
+  const prof2 = store.getProfile(turn2.threadId);
+  assert.ok(prof2);
+  assert.ok(prof2.intakeRequirements);
+  const intake2 = prof2.intakeRequirements;
+  assert.equal(intake2.host_monitor.quantity, 40);
+  assert.equal(intake2.network_component.quantity, 0);
+  assert.equal(intake2.basic_monitor.quantity, 5);
+  assert.equal(intake2.advanced_monitor.quantity, 2);
+  assert.equal(intake2.applog_gb.quantity, 600);
+
+  // Turn 2 golden sum: Professional 47,880 + 4 x 25,650 + 15,390 + 1,20,270 = 2,86,140
+  const rec2 = turn2.quote.options[0]!;
+  assert.equal(rec2.planName, "Professional");
+  assert.equal(rec2.total, 28614000, "Turn 2 total must equal 2,86,140");
+});
+
+test("Task 3 Regression: Case 2 real email body + DOCX attachment end-to-end", async () => {
+  store.reset();
+  const docxPath = path.resolve(process.cwd(), "test-attachments", "Case-2-Enterprise-Architecture-Spec.docx");
+  const docxBuf = fs.readFileSync(docxPath);
+
+  // Turn 1: Real Case 2 email body
+  const turn1 = await processInboundEmail({
+    providerMessageId: `msg_c2_t1_${Date.now()}`,
+    from: "marcus.vance@globallogistics.example.com",
+    fromName: "Marcus Vance",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "RFP: Enterprise Architecture Monitoring Spec (DOCX)",
+    text: [
+      "Hello Site24x7 Team,",
+      "",
+      "Attached is our enterprise architecture specification for IT monitoring.",
+      "Please provide an itemized annual proposal.",
+      "No basic website checks needed outside the synthetic monitors.",
+      "",
+      "Thanks,",
+      "Marcus Vance",
+      "Infrastructure Architect, Global Logistics Technologies",
+    ].join("\n"),
+    attachments: [
+      {
+        filename: "Case-2-Enterprise-Architecture-Spec.docx",
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        content: docxBuf,
+      },
+    ],
+  });
+
+  assert.equal(turn1.actionTaken, "quoted", "Case 2 Turn 1 must quote rather than clarify");
+  assert.ok(turn1.quote);
+  const prof1 = store.getProfile(turn1.threadId);
+  assert.ok(prof1);
+  assert.ok(prof1.intakeRequirements);
+  const intake1 = prof1.intakeRequirements;
+
+  assert.equal(intake1.host_monitor.quantity, 80);
+  assert.equal(intake1.network_component.quantity, 16);
+  assert.equal(intake1.basic_monitor.quantity, 0);
+  assert.equal(intake1.advanced_monitor.quantity, 10);
+  assert.equal(intake1.rum_pageview.quantity, 1000000);
+  assert.equal(intake1.applog_gb.quantity, 3000);
+
+  const t1Total = turn1.quote.options[0]!.total;
+  assert.equal(t1Total, 74603500, "Case 2 Turn 1 total must be 7,46,035");
+
+  // Turn 2: Reduced servers and logs
+  const turn2 = await processInboundEmail({
+    providerMessageId: `msg_c2_t2_${Date.now()}`,
+    from: "marcus.vance@globallogistics.example.com",
+    fromName: "Marcus Vance",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Re: RFP: Enterprise Architecture Monitoring Spec (DOCX)",
+    text: "We need 70 servers instead of 80, and reduce log ingestion to 1,500 GB per month.\n\nThanks,\nMarcus Vance",
+  });
+
+  assert.equal(turn2.actionTaken, "quoted");
+  assert.ok(turn2.quote);
+  const t2Total = turn2.quote.options[0]!.total;
+  assert.equal(t2Total, 57437000, "Case 2 Turn 2 total must be 5,74,370");
+  assert.ok(t2Total < t1Total, "Turn 2 total must be less than Turn 1 after reduction");
+});
+
+test("Task 3 Regression: Case 3 real email body + CSV attachment end-to-end", async () => {
+  store.reset();
+  const csvPath = path.resolve(process.cwd(), "test-attachments", "Case-3-Server-Inventory.csv");
+  const csvBuf = fs.readFileSync(csvPath);
+
+  // Turn 1: Partial Scope -> Clarification Requested
+  const turn1 = await processInboundEmail({
+    providerMessageId: `msg_c3_t1_${Date.now()}`,
+    from: "priya.nair@cloudscale.io",
+    fromName: "Priya Nair",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Server Monitoring Sizing Request (CSV Attached)",
+    text: [
+      "Hi Team,",
+      "",
+      "Please find attached our current server inventory CSV with 20 production nodes.",
+      "Can you send us pricing for monitoring these?",
+      "",
+      "Thanks,",
+      "Priya Nair",
+      "DevOps, CloudScale",
+    ].join("\n"),
+    attachments: [
+      {
+        filename: "Case-3-Server-Inventory.csv",
+        contentType: "text/csv",
+        content: csvBuf,
+      },
+    ],
+  });
+
+  assert.equal(turn1.actionTaken, "clarification_requested", "Turn 1 must ask for clarification");
+
+  // Turn 2: Full scope clarification reply -> Quotes Lite at ₹98,800
+  const turn2 = await processInboundEmail({
+    providerMessageId: `msg_c3_t2_${Date.now()}`,
+    from: "priya.nair@cloudscale.io",
+    fromName: "Priya Nair",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Re: Server Monitoring Sizing Request (CSV Attached)",
+    text: [
+      "Hi,",
+      "",
+      "To clarify our full scope: we have 4 network switches, 6 public websites, no synthetic checks, no RUM, and 50 GB logs monthly.",
+      "",
+      "Thanks,",
+      "Priya Nair",
+    ].join("\n"),
+  });
+
+  assert.equal(turn2.actionTaken, "quoted", "Turn 2 must quote successfully");
+  assert.ok(turn2.quote);
+  const rec = turn2.quote.options[0]!;
+  assert.equal(rec.planName, "Lite", "Lite must be recommended");
+  assert.equal(rec.total, 9880000, "Lite total must equal ₹98,800 (10,260 + 10,260 + 51,300 + 11,305 + 15,675)");
 });
 
 

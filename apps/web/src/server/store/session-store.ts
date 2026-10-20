@@ -333,13 +333,11 @@ class SessionStore {
         const mClean = (m.id || "").replace(/[<>]/g, "").trim().toLowerCase();
         const hClean = (m.messageIdHeader || "").replace(/[<>]/g, "").trim().toLowerCase();
         const delClean = (m.deliveryId || "").replace(/[<>]/g, "").trim().toLowerCase();
-        const localPart = cleanId.split("@")[0] || cleanId;
         return (
           pClean === cleanId ||
           mClean === cleanId ||
           hClean === cleanId ||
-          (localPart && pClean === localPart) ||
-          (localPart && delClean === localPart)
+          delClean === cleanId
         );
       });
       if (found) return found;

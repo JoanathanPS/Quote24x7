@@ -335,7 +335,13 @@ test("Follow-up: a model listing a unit as both known and missing keeps the know
     ],
   });
 
-  const result = await decideNextAction(engineerInput(), provider);
+  const result = await decideNextAction(
+    engineerInput({
+      latestMessageText: "We run around 30 servers and worry about website downtime, no other monitoring needed.",
+      cumulativeText: "We run around 30 servers and worry about website downtime, no other monitoring needed.",
+    }),
+    provider,
+  );
 
   assert.equal(result.extraction.demand.host_monitor, 30);
   assert.equal(result.action, "prepare_quote");
