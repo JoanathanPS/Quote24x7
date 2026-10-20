@@ -153,9 +153,9 @@ test("Phase 8 - Quote Template: Complete itemized breakdown, transparent cadence
     threadId: "th_test_quote",
   });
 
-  // 1. Polite greeting with buyer name
-  assert.ok(textContent.includes("Hi Rajesh Verma,"));
-  assert.ok(htmlContent.includes("Hi Rajesh Verma,"));
+  // 1. Polite greeting with buyer first name
+  assert.ok(textContent.includes("Hi Rajesh,"));
+  assert.ok(htmlContent.includes("Hi Rajesh,"));
 
   // 2. Summary of understood requirements
   assert.ok(textContent.includes("Summary of understood requirements:"));
@@ -186,7 +186,7 @@ test("Phase 8 - Quote Template: Complete itemized breakdown, transparent cadence
   assert.ok(htmlContent.includes(formatMoney(primaryOption.total, "INR", { showDecimals: false })));
 
   // 5. Transparent calculation note verbatim
-  const expectedNote = "Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.";
+  const expectedNote = "Add-on prices are Site24x7's per-year prices for this plan.";
   assert.ok(textContent.includes(expectedNote), "Calculation note must be verbatim in text");
   assert.ok(htmlContent.includes(expectedNote), "Calculation note must be verbatim in HTML");
 

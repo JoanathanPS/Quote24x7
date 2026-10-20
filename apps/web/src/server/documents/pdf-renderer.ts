@@ -531,7 +531,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
   y -= 25;
 
   // Calculation note
-  page.drawText("Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.", {
+  page.drawText("Add-on prices are Site24x7's per-year prices for this plan.", {
     x: margin + 4,
     y,
     size: 7,

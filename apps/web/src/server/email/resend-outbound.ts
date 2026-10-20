@@ -796,8 +796,15 @@ export function getWhatItCoversText(item: QuoteLineItem, coverage: CoverageRow[]
     const total = cov?.total ?? (cov ? cov.included + purchased : purchased);
     return `${purchased} more servers (${total} in total)`;
   }
-  if (desc.includes("advanced") || item.unit === "advanced_monitor") {
-    return `${purchased} more advanced monitors`;
+  if (desc.includes("website") || desc.includes("basic") || desc.includes("check") || item.unit === "basic_monitor") {
+    const cov = coverage.find((c) => c.unit === "basic_monitor");
+    const total = cov?.total ?? (cov ? cov.included + purchased : purchased);
+    return `${purchased} more websites (${total} in total)`;
+  }
+  if (desc.includes("advanced") || desc.includes("synthetic") || item.unit === "advanced_monitor") {
+    const cov = coverage.find((c) => c.unit === "advanced_monitor");
+    const total = cov?.total ?? (cov ? cov.included + purchased : purchased);
+    return `${purchased} more advanced monitor${purchased > 1 ? "s" : ""} (${total} in total)`;
   }
   if (desc.includes("log") || item.ruleId.includes("log") || item.unit === "applog_gb") {
     const cov = coverage.find((c) => c.unit === "applog_gb");
@@ -840,8 +847,13 @@ export function renderQuoteEmail(input: {
         input.latestMessageBody
       );
 
-  const greeting = nameRes.name && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(nameRes.name)
-    ? `Hi ${nameRes.name},`
+  let firstName = nameRes.name;
+  if (firstName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(firstName)) {
+    firstName = firstName.trim().split(/\s+/)[0]!;
+  }
+
+  const greeting = firstName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown|there)$/i.test(firstName)
+    ? `Hi ${firstName},`
     : "Hi there,";
 
   const bestValue = input.quote.options[0]!;
@@ -870,30 +882,61 @@ export function renderQuoteEmail(input: {
 
   const changeLine = changeSentences.join(" ");
 
-  // Plain-word requirement summary
+  // Item 3: Summary reflects current state
+  const profile = input.threadId ? store.getProfile(input.threadId) : null;
+  const intakeReqs = profile?.intakeRequirements;
+
   const understoodLines: string[] = [];
-  if (bestValue?.coverage && bestValue.coverage.length > 0) {
-    for (const row of bestValue.coverage) {
-      if (row.required > 0) {
-        const count = row.required.toLocaleString("en-IN");
-        if (row.unit === "host_monitor") {
-          understoodLines.push(`• ${count} servers / virtual machines`);
-        } else if (row.unit === "network_component") {
-          understoodLines.push(`• ${count} network devices (switches, firewalls)`);
-        } else if (row.unit === "basic_monitor") {
-          understoodLines.push(`• ${count} website availability checks`);
-        } else if (row.unit === "advanced_monitor") {
-          understoodLines.push(`• ${count} synthetic browser transactions`);
-        } else if (row.unit === "applog_gb") {
-          understoodLines.push(`• ${count} GB monthly log ingestion`);
-        } else if (row.unit === "rum_pageview") {
-          understoodLines.push(`• ${count} real user monitoring pageviews / month`);
-        } else {
-          understoodLines.push(`• ${count} ${row.label}`);
-        }
-      }
-    }
+  const covMap = new Map((bestValue?.coverage ?? []).map((c) => [c.unit, c]));
+
+  // 1. Servers
+  const hostCov = covMap.get("host_monitor");
+  if (intakeReqs?.host_monitor?.state === "none") {
+    understoodLines.push("• Servers / virtual machines: none");
+  } else if (hostCov && hostCov.required > 0) {
+    understoodLines.push(`• ${hostCov.required.toLocaleString("en-IN")} servers / virtual machines`);
   }
+
+  // 2. Network devices
+  const netCov = covMap.get("network_component");
+  if (intakeReqs?.network_component?.state === "none" || (netCov?.required === 0 && isUpdate)) {
+    understoodLines.push("• Network devices: none");
+  } else if (netCov && netCov.required > 0) {
+    understoodLines.push(`• ${netCov.required.toLocaleString("en-IN")} network devices (switches, firewalls)`);
+  }
+
+  // 3. Websites
+  const basicCov = covMap.get("basic_monitor");
+  if (intakeReqs?.basic_monitor?.state === "none") {
+    understoodLines.push("• Website availability checks: none");
+  } else if (basicCov && basicCov.required > 0) {
+    understoodLines.push(`• ${basicCov.required.toLocaleString("en-IN")} website availability checks`);
+  }
+
+  // 4. Synthetic browser transactions
+  const advCov = covMap.get("advanced_monitor");
+  if (intakeReqs?.advanced_monitor?.state === "none") {
+    understoodLines.push("• Synthetic browser transactions: none");
+  } else if (advCov && advCov.required > 0) {
+    understoodLines.push(`• ${advCov.required.toLocaleString("en-IN")} synthetic browser transactions`);
+  }
+
+  // 5. Logs
+  const logCov = covMap.get("applog_gb");
+  if (intakeReqs?.applog_gb?.state === "none") {
+    understoodLines.push("• Monthly log ingestion: none");
+  } else if (logCov && logCov.required > 0) {
+    understoodLines.push(`• ${logCov.required.toLocaleString("en-IN")} GB monthly log ingestion`);
+  }
+
+  // 6. RUM
+  const rumCov = covMap.get("rum_pageview");
+  if (intakeReqs?.rum_pageview?.state === "none") {
+    understoodLines.push("• Real user monitoring pageviews: none");
+  } else if (rumCov && rumCov.required > 0) {
+    understoodLines.push(`• ${rumCov.required.toLocaleString("en-IN")} real user monitoring pageviews / month`);
+  }
+
   if (understoodLines.length === 0) {
     understoodLines.push("• Sizing parameters provided in your inquiry");
   }
@@ -913,11 +956,23 @@ export function renderQuoteEmail(input: {
       plan?.basePrice ??
       (item.lineTotal ? Math.floor(item.lineTotal / 12) : 0);
     const monthlyStr = formatMoney(monthlyRate, input.quote.currency, { showDecimals: false });
-    const name = isBase
+
+    let name = isBase
       ? `${planName} base subscription (${monthlyStr} per month × 12)`
       : item.description;
-    const purchased = item.purchasedUnits ?? item.quantity * (item.packSize ?? 1);
-    const qty = isBase ? "1" : purchased.toLocaleString("en-IN");
+
+    if (!isBase) {
+      const cleanDesc = item.description
+        .replace(/\s+add-on pack \(annual\)/i, "")
+        .replace(/\s*\(annual\)/i, "")
+        .trim();
+      const hasAddon = /add-?on/i.test(cleanDesc);
+      const baseName = hasAddon ? cleanDesc : `${cleanDesc} add-on`;
+      const packPriceFormatted = formatMoney(item.unitPrice, input.quote.currency, { showDecimals: false });
+      name = `${baseName} (${packPriceFormatted} each)`;
+    }
+
+    const qty = isBase ? "1" : item.quantity.toString();
     const covers = getWhatItCoversText(item, bestValue?.coverage ?? []);
     return {
       name,
@@ -952,8 +1007,40 @@ export function renderQuoteEmail(input: {
         "This replaces the earlier estimate.",
       ]
     : [
-        "Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your estimate.",
+        "Thanks, that's everything I need.",
       ];
+
+  const reqUnits = new Set((bestValue?.coverage ?? []).filter((c) => c.required > 0).map((c) => c.unit));
+  const actualAssumptions: string[] = [];
+  if (reqUnits.has("network_component")) {
+    actualAssumptions.push("1 network device = 1 component");
+  }
+  if (reqUnits.has("advanced_monitor")) {
+    actualAssumptions.push("browser transactions counted as advanced monitors");
+  }
+  if (reqUnits.has("applog_gb")) {
+    actualAssumptions.push("logs counted as monthly ingestion at the plan's default retention");
+  }
+  const assumptionsLine =
+    actualAssumptions.length > 0
+      ? `Assumptions: ${actualAssumptions.join("; ")}.`
+      : null;
+
+  const unmentionedCategories: string[] = [];
+  if (intakeReqs) {
+    if (intakeReqs.rum_pageview?.state === "unknown") unmentionedCategories.push("real-user monitoring page views");
+    if (intakeReqs.advanced_monitor?.state === "unknown") unmentionedCategories.push("synthetic browser transactions");
+    if (intakeReqs.applog_gb?.state === "unknown") unmentionedCategories.push("log management");
+    if (intakeReqs.network_component?.state === "unknown") unmentionedCategories.push("network devices");
+    if (intakeReqs.basic_monitor?.state === "unknown") unmentionedCategories.push("website checks");
+  } else {
+    if (!reqUnits.has("rum_pageview")) unmentionedCategories.push("real-user monitoring page views");
+  }
+
+  const notSizedSentence =
+    unmentionedCategories.length > 0
+      ? `I haven't sized ${unmentionedCategories.join(", ")} because you didn't mention them. If you need any of these, let me know and I'll update the estimate.`
+      : "I haven't sized for custom APM instances, status pages, or extra alert credits. If you need any of these, let me know and I'll update the estimate.";
 
   const textContent = [
     greeting,
@@ -967,10 +1054,11 @@ export function renderQuoteEmail(input: {
     "",
     textTableLines.join("\n"),
     "",
-    "Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.",
-    ...(comparisonLine ? ["", comparisonLine] : []),
+    "Add-on prices are Site24x7's per-year prices for this plan.",
+    ...(assumptionsLine ? ["", assumptionsLine] : []),
+    ...(comparisonLine ? ["", `Alternative: ${comparisonLine}`] : []),
     "",
-    "I haven't sized for custom APM instances, status pages, or extra alert credits. If you need any of these, let me know and I'll update the estimate.",
+    notSizedSentence,
     "",
     `Your estimate document (PDF) is attached: ${pdfFilename}`,
     "",
@@ -1007,7 +1095,7 @@ export function renderQuoteEmail(input: {
           "<p>This replaces the earlier estimate.</p>",
         ]
       : [
-          "<p>Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your estimate.</p>",
+          "<p>Thanks, that's everything I need.</p>",
         ]),
     "<p><strong>Summary of understood requirements:</strong></p>",
     `<ul>${htmlUnderstoodList}</ul>`,
@@ -1026,9 +1114,10 @@ export function renderQuoteEmail(input: {
     `<td style="text-align:right;padding:8px 4px;">${escapeHtml(totalAmount)}</td>`,
     "</tr></tbody>",
     "</table>",
-    "<p>Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.</p>",
+    "<p>Add-on prices are Site24x7's per-year prices for this plan.</p>",
+    ...(assumptionsLine ? [`<p><strong>Assumptions:</strong> ${escapeHtml(actualAssumptions.join("; "))}.</p>`] : []),
     ...(comparisonLine ? [`<p><strong>Alternative:</strong> ${escapeHtml(comparisonLine)}</p>`] : []),
-    "<p>I haven't sized for custom APM instances, status pages, or extra alert credits. If you need any of these, let me know and I'll update the estimate.</p>",
+    `<p>${escapeHtml(notSizedSentence)}</p>`,
     `<p>Your estimate document (PDF) is attached: <em>${escapeHtml(pdfFilename)}</em></p>`,
     "<p>Estimate valid 30 days. Costs in INR; local taxes extra; final price confirmed by Site24x7 at purchase.</p>",
     "<p>Reply to this email if you'd like to adjust counts, add capabilities, or change billing frequency.</p>",

@@ -126,7 +126,7 @@ test("Golden Template PDF Generation: Short ref, no INR prefix, no monospace, cl
 
   // Calculation note & what's included
   assert.ok(
-    pdfText.includes("Add-on rates reflect the plan-specific per-year pricing from the Zoho Store."),
+    pdfText.includes("Add-on prices are Site24x7's per-year prices for this plan."),
     "Must include calculation note"
   );
   assert.ok(pdfText.includes("WHAT'S INCLUDED"), "Must include what's included section");
@@ -238,13 +238,13 @@ DevOps Lead, Acme Corp
   });
 
   // Verify email golden template details
-  assert.ok(emailRendered.textContent.startsWith("Hi Alex Mercer,"), "Greeting must use signature name");
+  assert.ok(emailRendered.textContent.startsWith("Hi Alex,"), "Greeting must use first name only");
   assert.ok(emailRendered.textContent.includes("Professional base subscription (₹3,990 per month × 12)"));
   assert.ok(emailRendered.textContent.includes("₹3,05,425"));
   assert.equal(emailRendered.textContent.includes("quotation"), false, "Must use 'estimate', not 'quotation'");
   assert.equal(emailRendered.textContent.includes("official quotation"), false, "Must not use 'official quotation'");
   assert.equal(emailRendered.textContent.includes("official estimate"), false, "Must not use 'official estimate'");
-  assert.ok(emailRendered.textContent.includes("I haven't sized for custom APM instances, status pages, or extra alert credits."));
+  assert.ok(emailRendered.textContent.includes("I haven't sized real-user monitoring page views because you didn't mention them"));
   assert.ok(emailRendered.textContent.includes("Site24x7-estimate-Q-1042.pdf"));
   assert.ok(emailRendered.textContent.includes("Ref Q-1042"));
 
@@ -364,8 +364,8 @@ test("Requirement 11 - Golden test for the update: 40 servers, no network device
   // Get outbound message 1
   const msgs1 = store.getMessages(res1.threadId);
   const outbound1 = [...msgs1].reverse().find((m) => m.direction === "outbound")!;
-  assert.ok(outbound1.bodyText.startsWith("Hi Alex Mercer,"));
-  assert.ok(outbound1.bodyText.includes("Thank you for contacting us about Site24x7 monitoring."));
+  assert.ok(outbound1.bodyText.startsWith("Hi Alex,"));
+  assert.ok(outbound1.bodyText.includes("Thanks, that's everything I need."));
 
   // 2. Apply reply email in the same thread (no signature)
   const inbound2 = {
@@ -403,7 +403,7 @@ test("Requirement 11 - Golden test for the update: 40 servers, no network device
   assert.ok(outbound2.subject.includes("Pricing for Acme Corp"), "Subject must remain the same");
 
   // Greeting uses saved name (never 'there')
-  assert.ok(outbound2.bodyText.startsWith("Hi Alex Mercer,"), "Greeting must use saved name Alex Mercer");
+  assert.ok(outbound2.bodyText.startsWith("Hi Alex,"), "Greeting must use saved name Alex");
   assert.equal(outbound2.bodyText.startsWith("Hi there,"), false, "Must never overwrite saved name with 'there'");
 
   // Updated-quote email body requirements
