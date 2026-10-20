@@ -16,7 +16,6 @@ import {
   EnvelopeSimple,
   Buildings,
   Calendar,
-  Paperclip,
   CheckCircle,
   Pause,
   PencilSimple,

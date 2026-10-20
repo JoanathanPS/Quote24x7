@@ -472,7 +472,7 @@ export async function parseInboundDocument(
           try {
             const result = await mammoth.extractRawText({ buffer });
             text = (result.value || "").replace(/\r\n/g, "\n").trim();
-          } catch (mammothErr) {
+          } catch {
             text = extractAsciiStrings(buffer);
             if (!text) {
               unparsed = true;
