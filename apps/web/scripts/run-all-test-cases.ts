@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { processInboundEmail } from "../src/server/email/inbound-processor.ts";
 import { store } from "../src/server/store/session-store.ts";
+import type { RequirementProfile, CandidateSummary, IntakeRequirement } from "../src/types/domain.ts";
 
 const ATTACHMENTS_DIR = path.resolve(process.cwd(), "test-attachments");
 
@@ -142,6 +143,25 @@ const TEST_CASES: TestCase[] = [
   },
 ];
 
+function printRequirementTable(profile: RequirementProfile | null | undefined) {
+  console.log(`| Unit | Stated Quantity | State | Evidence |`);
+  console.log(`| :--- | :--- | :--- | :--- |`);
+  const reqs = profile?.intakeRequirements || {};
+  for (const [unit, data] of Object.entries(reqs) as [string, IntakeRequirement][]) {
+    console.log(`| ${unit} | ${data.quantity ?? "N/A"} | ${data.state} | "${data.evidence ?? "none"}" |`);
+  }
+}
+
+function printCandidateTable(candidates: readonly CandidateSummary[] | undefined) {
+  if (!candidates || candidates.length === 0) return;
+  console.log(`| Plan | Annual Total | Status | Rejection Reason |`);
+  console.log(`| :--- | :--- | :--- | :--- |`);
+  for (const c of candidates) {
+    const status = c.valid ? "VALID" : "REJECTED";
+    console.log(`| ${c.planName} | ${c.totalFormatted} | ${status} | ${c.rejectionReason ?? "None"} |`);
+  }
+}
+
 async function runScenario(tc: TestCase) {
   console.log(`\n================================================================================`);
   console.log(`RUNNING: ${tc.name}`);
@@ -169,8 +189,11 @@ async function runScenario(tc: TestCase) {
   }
 
   // --- 1. INITIAL INBOUND EMAIL ---
+  const senderDomain = tc.sender.split("@")[1] || "example.com";
+  const initTimestamp = Date.now();
   const initialPayload = {
-    providerMessageId: `msg_${tc.id}_init_${Date.now()}`,
+    providerMessageId: `msg_${tc.id}_init_${initTimestamp}`,
+    messageId: `<msg-${tc.id}-init-${initTimestamp}@${senderDomain}>`,
     from: tc.sender,
     fromName: tc.senderName,
     to: ["quotes@quotes.joanathan.in"],
@@ -179,80 +202,104 @@ async function runScenario(tc: TestCase) {
     attachments,
   };
 
-  console.log(`\n--- Step 1: Processing Initial Email from ${tc.senderName} <${tc.sender}> ---`);
+  console.log(`\n================================================================================`);
+  console.log(`TURN 1: Initial Buyer Inquiry — ${tc.senderName} <${tc.sender}>`);
+  console.log(`================================================================================`);
   const initResult = await processInboundEmail(initialPayload);
 
-  console.log(`Action Taken: ${initResult.actionTaken}`);
-  console.log(`Thread ID: ${initResult.threadId}`);
-
-  // Fetch initial outbound email
   const threadMsgs1 = store.getMessages(initResult.threadId);
+  const inbound1 = [...threadMsgs1].find((m) => m.direction === "inbound");
   const outbound1 = [...threadMsgs1].reverse().find((m) => m.direction === "outbound");
+  const prof1 = store.getProfile(initResult.threadId);
+
+  console.log(`Thread ID: ${initResult.threadId}`);
+  console.log(`Thread Match Method: ${inbound1?.threadMatchMethod ?? "new"}`);
+  console.log(`Subject: ${outbound1?.subject ?? tc.subject}`);
+  console.log(`In-Reply-To (as sent): ${outbound1?.inReplyTo ?? "None (First Turn)"}`);
+  console.log(`References (as sent): ${outbound1?.references ?? "None (First Turn)"}`);
+  console.log(`\n[Requirement State After Turn 1]:`);
+  printRequirementTable(prof1);
 
   if (initResult.quote) {
     const q1 = initResult.quote;
     const bv1 = q1.options.find((o) => o.optionType === "best_value") || q1.options[0];
-    console.log(`Initial Quote ID: ${q1.id} (Version ${q1.version || 1})`);
-    console.log(`Plan: ${bv1?.planName} | Total: ₹${((bv1?.total || 0) / 100).toLocaleString("en-IN")}`);
-    console.log(`Line Items:`);
-    for (const li of bv1?.lineItems || []) {
-      console.log(`  - ${li.description} | Qty: ${li.quantity} | Total: ₹${(li.lineTotal / 100).toLocaleString("en-IN")}`);
-    }
+    console.log(`\n[Candidate Evaluation Table]:`);
+    printCandidateTable(q1.candidateTable);
+    console.log(`\nInitial Quote ID: ${q1.id} (Version ${q1.version || 1})`);
+    console.log(`Selected Plan: ${bv1?.planName} | Total: ₹${((bv1?.total || 0) / 100).toLocaleString("en-IN")}`);
   } else if (initResult.actionTaken === "clarification_requested") {
-    console.log(`Clarification Requested (Partial Scope):`);
-    const prof = store.getProfile(initResult.threadId);
-    for (const q of prof?.pendingQuestions || []) {
-      console.log(`  ? ${q}`);
+    console.log(`\nAction Taken: clarification_requested (Missing parameters require buyer clarification)`);
+    for (const q of prof1?.pendingQuestions || []) {
+      console.log(`  Question: ${q}`);
     }
   }
 
   if (outbound1) {
-    console.log(`\n[INITIAL OUTBOUND DISPATCHED EMAIL]`);
-    console.log(`Subject: ${outbound1.subject}`);
-    console.log(`Body:\n${outbound1.bodyText.trim()}`);
+    console.log(`\n[FULL OUTBOUND DISPATCHED EMAIL TEXT]:`);
+    console.log(`--------------------------------------------------------------------------------`);
+    console.log(outbound1.bodyText.trim());
+    console.log(`--------------------------------------------------------------------------------`);
   }
 
   // --- 2. FOLLOW-UP REPLY IN SAME THREAD ---
-  console.log(`\n--- Step 2: Processing Buyer Follow-up in Thread ${initResult.threadId} ---`);
+  console.log(`\n================================================================================`);
+  console.log(`TURN 2: Buyer Follow-up in Thread ${initResult.threadId}`);
+  console.log(`================================================================================`);
+  console.log(`[Requirement State Before Turn 2]:`);
+  printRequirementTable(prof1);
+
+  const outbound1Rfc = outbound1?.messageIdHeader || `<msg_outbound1_${Date.now()}@quotes.joanathan.in>`;
+  const followTimestamp = Date.now();
   const followupPayload = {
-    providerMessageId: `msg_${tc.id}_followup_${Date.now()}`,
+    providerMessageId: `msg_${tc.id}_followup_${followTimestamp}`,
+    messageId: `<msg-${tc.id}-followup-${followTimestamp}@${senderDomain}>`,
     from: tc.sender,
     fromName: tc.senderName,
     to: ["quotes@quotes.joanathan.in"],
     subject: `Re: ${tc.subject}`,
     headers: {
-      "in-reply-to": outbound1?.providerMessageId || `<msg_${Date.now()}@quote24x7.com>`,
-      references: outbound1?.providerMessageId || `<msg_${Date.now()}@quote24x7.com>`,
+      "in-reply-to": outbound1Rfc,
+      references: outbound1Rfc,
     },
     text: tc.followupBody,
   };
 
   const followResult = await processInboundEmail(followupPayload);
-  console.log(`Follow-up Action Taken: ${followResult.actionTaken}`);
 
   const threadMsgs2 = store.getMessages(initResult.threadId);
+  const inbound2 = [...threadMsgs2].reverse().find((m) => m.direction === "inbound" && m.id !== inbound1?.id);
   const outbound2 = [...threadMsgs2].reverse().find((m) => m.direction === "outbound" && m.id !== outbound1?.id);
+  const prof2 = store.getProfile(initResult.threadId);
+
+  console.log(`Thread ID: ${initResult.threadId}`);
+  console.log(`Thread Match Method: ${inbound2?.threadMatchMethod ?? "in_reply_to"}`);
+  console.log(`Subject: ${outbound2?.subject ?? `Re: ${tc.subject}`}`);
+  console.log(`In-Reply-To (as sent): ${outbound2?.inReplyTo ?? "None"}`);
+  console.log(`References (as sent): ${outbound2?.references ?? "None"}`);
+  console.log(`\n[Requirement State After Turn 2]:`);
+  printRequirementTable(prof2);
 
   if (followResult.quote) {
     const q2 = followResult.quote;
     const bv2 = q2.options.find((o) => o.optionType === "best_value") || q2.options[0];
-    console.log(`Follow-up Quote ID: ${q2.id} (Version ${q2.version || 2})`);
-    console.log(`Plan: ${bv2?.planName} | Total: ₹${((bv2?.total || 0) / 100).toLocaleString("en-IN")}`);
-    console.log(`Line Items:`);
-    for (const li of bv2?.lineItems || []) {
-      console.log(`  - ${li.description} | Qty: ${li.quantity} | Total: ₹${(li.lineTotal / 100).toLocaleString("en-IN")}`);
-    }
+    console.log(`\n[Candidate Evaluation Table]:`);
+    printCandidateTable(q2.candidateTable);
+    console.log(`\nFollow-up Quote ID: ${q2.id} (Version ${q2.version || 2})`);
+    console.log(`Selected Plan: ${bv2?.planName} | Total: ₹${((bv2?.total || 0) / 100).toLocaleString("en-IN")}`);
 
     if (initResult.quote) {
       const storedV1 = store.getQuote(initResult.quote.id);
       console.log(`V1 Quote (${initResult.quote.id}) Status: ${storedV1?.status} (supersededBy: ${storedV1?.supersededBy})`);
     }
+  } else {
+    console.log(`Follow-up Action Taken: ${followResult.actionTaken}`);
   }
 
   if (outbound2) {
-    console.log(`\n[FOLLOW-UP OUTBOUND DISPATCHED EMAIL]`);
-    console.log(`Subject: ${outbound2.subject}`);
-    console.log(`Body:\n${outbound2.bodyText.trim()}`);
+    console.log(`\n[FULL OUTBOUND DISPATCHED EMAIL TEXT]:`);
+    console.log(`--------------------------------------------------------------------------------`);
+    console.log(outbound2.bodyText.trim());
+    console.log(`--------------------------------------------------------------------------------`);
   }
 }
 

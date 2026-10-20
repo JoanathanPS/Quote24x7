@@ -41,10 +41,10 @@ export const FIELD_KEY_TO_UNIT: Record<string, IntakeUnit> = {
 
 export const UNIT_KEYWORDS: Record<IntakeUnit, string[]> = {
   host_monitor: ["server", "servers", "host", "hosts", "vm", "vms", "node", "nodes", "machine", "machines", "instance", "instances"],
-  basic_monitor: ["website", "websites", "url", "urls", "endpoint", "endpoints", "api", "apis", "uptime", "check", "checks", "basic monitor", "basic monitors"],
-  network_component: ["network", "switch", "switches", "router", "routers", "firewall", "firewalls", "device", "devices", "gear", "component", "components", "network device", "network devices"],
-  advanced_monitor: ["synthetic", "synthetics", "transaction", "transactions", "browser transaction", "browser transactions", "advanced monitor", "advanced monitors", "journey", "journeys", "critical web"],
-  rum_pageview: ["rum", "real user", "pageview", "pageviews", "page view", "page views", "views"],
+  basic_monitor: ["website", "websites", "url", "urls", "endpoint", "endpoints", "api", "apis", "uptime", "website check", "website checks", "web check", "web checks", "uptime check", "uptime checks", "basic monitor", "basic monitors"],
+  network_component: ["network", "switch", "switches", "router", "routers", "firewall", "firewalls", "network device", "network devices", "network component", "network components", "network gear"],
+  advanced_monitor: ["synthetic", "synthetics", "synthetic check", "synthetic checks", "browser transaction", "browser transactions", "advanced monitor", "advanced monitors", "journey", "journeys", "critical web", "synthetic monitor", "synthetic monitors"],
+  rum_pageview: ["rum", "real user", "pageview", "pageviews", "page view", "page views"],
   applog_gb: ["log", "logs", "applog", "applogs", "gb/day", "gb per day", "log ingestion", "log management", "log aggregation", "retention"],
 };
 
@@ -116,7 +116,7 @@ export function triageInboundEmail(
       combined,
     );
   const isNonIndia =
-    /\b(?:us\s+pricing|dollar\s+pricing|usd|\$|in\s+dollars|eur|€|quote\s+in\s+eur|gbp|£|outside\s+india|non-india|united\s+states\s+pricing)\b/i.test(
+    /\b(?:u\.s\.\s+pricing|usa\s+pricing|us\s+dollars?|dollar\s+pricing|usd|\$|in\s+dollars|eur|€|quote\s+in\s+eur|gbp|£|outside\s+india|non-india|united\s+states\s+pricing)\b/i.test(
       combined,
     ) && !/\binr|rupee|₹\b/i.test(combined);
   const isFeatureRequest =
@@ -544,14 +544,14 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     websiteAvailabilityMentioned;
 
   const basicNoneMatch = text.match(
-    /\b(?:no\s+(?:websites?|urls?|apis?|endpoints?|basic(?:\s+monitors?)?|uptime\s+checks?|checks?)|without\s+(?:websites?|urls?|apis?|endpoints?|basic(?:\s+monitors?)?|uptime\s+checks?|checks?)|zero\s+(?:websites?|urls?|apis?)|0\s+(?:websites?|urls?|apis?)|don'?t\s+need\s+(?:websites?|urls?|apis?)|(?:websites?|urls?|apis?)\s*:\s*(?:none|0|no)|no\s+basic\s+website\s+checks)\b/i,
+    /\b(?:no\s+(?:websites?|urls?|apis?|endpoints?|basic(?:\s+monitors?)?|uptime\s+checks?|website\s+checks?|web\s+checks?)|without\s+(?:websites?|urls?|apis?|endpoints?|basic(?:\s+monitors?)?|uptime\s+checks?|website\s+checks?|web\s+checks?)|zero\s+(?:websites?|urls?|apis?)|0\s+(?:websites?|urls?|apis?)|don'?t\s+need\s+(?:websites?|urls?|apis?)|(?:websites?|urls?|apis?)\s*:\s*(?:none|0|no)|no\s+basic\s+website\s+checks)\b/i,
   );
 
   const basicNone =
     serversOnly ||
     (noOtherNeeds && !basicMentioned) ||
     Boolean(basicNoneMatch) ||
-    Boolean(compoundNegPhrase && /\b(?:websites?|urls?|apis?|endpoints?|checks?)\b/i.test(compoundNegInner));
+    Boolean(compoundNegPhrase && /\b(?:websites?|urls?|apis?|endpoints?|basic\s+monitors?|uptime\s+checks?|website\s+checks?|web\s+checks?)\b/i.test(compoundNegInner));
 
   if (basicNone) {
     basicCount = 0;

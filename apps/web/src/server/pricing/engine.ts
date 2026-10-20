@@ -53,12 +53,12 @@ export const UNIT_LABELS: Record<UnitKind, string> = {
 };
 
 export const UNIT_SHORT_UNITS: Record<UnitKind, string> = {
-  basic_monitor: "monitors",
-  advanced_monitor: "monitors",
-  host_monitor: "hosts",
-  network_component: "components",
+  basic_monitor: "websites",
+  advanced_monitor: "advanced monitors",
+  host_monitor: "servers",
+  network_component: "network devices",
   rum_pageview: "pageviews",
-  applog_gb: "GB",
+  applog_gb: "GB logs",
   synthetic_run: "runs",
 };
 
@@ -644,13 +644,13 @@ export function describeWhatItAdds(alt: Candidate, base: Candidate): string[] {
     const altInc = includedFor(alt.plan, unit) ?? 0;
     const baseInc = includedFor(base.plan, unit) ?? 0;
     if (altInc > baseInc) {
-      adds.push(`Includes ${altInc} ${UNIT_SHORT_UNITS[unit]} (${base.plan.name} includes ${baseInc})`);
+      adds.push(`${altInc} ${UNIT_SHORT_UNITS[unit]} (${base.plan.name} includes ${baseInc})`);
     }
   }
 
   for (const cap of alt.plan.capabilities) {
     if (!base.plan.capabilities.includes(cap)) {
-      adds.push(`Includes ${cap}`);
+      adds.push(cap);
     }
   }
 
@@ -658,7 +658,7 @@ export function describeWhatItAdds(alt: Candidate, base: Candidate): string[] {
     alt.plan.pollingFrequency.includes("second") &&
     !base.plan.pollingFrequency.includes("second")
   ) {
-    adds.push(`Faster polling (${alt.plan.pollingFrequency} vs ${base.plan.pollingFrequency})`);
+    adds.push(`faster polling (${alt.plan.pollingFrequency} vs ${base.plan.pollingFrequency})`);
   }
 
   if ((alt.plan.monitoringLocations ?? 0) > (base.plan.monitoringLocations ?? 0)) {
@@ -689,9 +689,9 @@ export function buildComparisonLine(
       : "additional capability";
 
   const diffPaise = alternative.total - lowest.total;
-  const diffFormatted = diffPaise > 0 ? ` (${formatMoney(diffPaise, "INR")} more)` : "";
+  const diffFormatted = diffPaise > 0 ? ` (${formatMoney(diffPaise, "INR", { showDecimals: false })} more)` : "";
 
-  return `${lowest.planName}${addOnsText} costs ${formatMoney(lowest.total, "INR")}/year; ${alternative.planName} includes ${adds} at ${formatMoney(alternative.total, "INR")}/year${diffFormatted}.`;
+  return `${lowest.planName}${addOnsText} costs ${formatMoney(lowest.total, "INR", { showDecimals: false })}/year; ${alternative.planName} includes ${adds} at ${formatMoney(alternative.total, "INR", { showDecimals: false })}/year${diffFormatted}.`;
 }
 
 const RANK_REASONS: Record<OptionType, (candidate: Candidate) => string> = {
