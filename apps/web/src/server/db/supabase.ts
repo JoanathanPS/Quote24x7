@@ -123,6 +123,33 @@ export function rowToThread(r: Record<string, unknown>): EmailThread {
   };
 }
 
+export function deduplicateMessageAttachments(
+  attachments: EmailMessage["attachments"]
+): EmailMessage["attachments"] {
+  if (!attachments || attachments.length <= 1) return attachments || [];
+  const map = new Map<string, EmailMessage["attachments"][0]>();
+  for (const att of attachments) {
+    const key = (att.name || "").toLowerCase().trim();
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, att);
+    } else {
+      const existingScore =
+        (existing.extractedText?.length || 0) +
+        (existing.sizeBytes || 0) +
+        (existing.contentBase64?.length || 0);
+      const currentScore =
+        (att.extractedText?.length || 0) +
+        (att.sizeBytes || 0) +
+        (att.contentBase64?.length || 0);
+      if (currentScore > existingScore) {
+        map.set(key, att);
+      }
+    }
+  }
+  return Array.from(map.values());
+}
+
 export function messageToRow(m: EmailMessage) {
   return {
     id: m.id,
@@ -137,7 +164,7 @@ export function messageToRow(m: EmailMessage) {
     occurred_at: m.occurredAt,
     delivery_id: m.deliveryId,
     security_notes: m.securityNotes,
-    attachments: m.attachments,
+    attachments: deduplicateMessageAttachments(m.attachments),
     message_id_header: m.messageIdHeader ?? null,
     in_reply_to: m.inReplyTo ?? null,
     references: m.references ?? null,
@@ -159,7 +186,9 @@ export function rowToMessage(r: Record<string, unknown>): EmailMessage {
     occurredAt: String(r.occurred_at || new Date().toISOString()),
     deliveryId: r.delivery_id ? String(r.delivery_id) : null,
     securityNotes: Array.isArray(r.security_notes) ? (r.security_notes as string[]) : [],
-    attachments: Array.isArray(r.attachments) ? (r.attachments as EmailMessage["attachments"]) : [],
+    attachments: deduplicateMessageAttachments(
+      Array.isArray(r.attachments) ? (r.attachments as EmailMessage["attachments"]) : []
+    ),
     messageIdHeader: r.message_id_header ? String(r.message_id_header) : null,
     inReplyTo: r.in_reply_to ? String(r.in_reply_to) : null,
     references: r.references ? String(r.references) : null,

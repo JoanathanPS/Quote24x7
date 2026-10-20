@@ -262,3 +262,45 @@ test("End-to-end: inbound email with Excel (.xlsx) inventory generates quotation
   assert.equal(inboundMsg.attachments[0]?.documentKind, "excel");
   assert.ok(inboundMsg.attachments[0]?.extractedText?.includes("Linux servers,80"));
 });
+
+test("processInboundEmail deduplicates duplicate attachments when receiving both downloaded buffer and 0-byte stub", async () => {
+  const providerMessageId = `msg_dedup_test_${Date.now()}`;
+  const pdfBuffer = Buffer.from(
+    "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\nstream\nWe need 40 servers and 10 network devices\nendstream\ntrailer\n<< >>\n%%EOF"
+  );
+
+  const result = await processInboundEmail({
+    providerMessageId,
+    from: `dedup_tester_${Date.now()}@corp.example.com`,
+    fromName: "Tester",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Quotation request with duplicate attachment stubs",
+    text: "Please find our requirements attached.",
+    attachments: [
+      {
+        filename: "Case-1-Production-Infrastructure.pdf",
+        contentType: "application/pdf",
+        content: pdfBuffer,
+        sizeBytes: pdfBuffer.length,
+      },
+      // Duplicate 0-byte stub that Resend webhook metadata previously caused
+      {
+        filename: "Case-1-Production-Infrastructure.pdf",
+        contentType: "application/pdf",
+        content: undefined,
+        sizeBytes: 0,
+      },
+    ],
+  });
+
+  assert.ok(result.threadId);
+  const msgs = store.getMessages(result.threadId);
+  const inboundMsg = msgs.find((m) => m.providerMessageId === providerMessageId);
+  assert.ok(inboundMsg);
+  // Verify exactly 1 attachment is kept and the 0-byte ghost is dropped
+  assert.equal(inboundMsg.attachments.length, 1);
+  assert.equal(inboundMsg.attachments[0]?.name, "Case-1-Production-Infrastructure.pdf");
+  assert.equal(inboundMsg.attachments[0]?.sizeBytes, pdfBuffer.length);
+  assert.ok((inboundMsg.attachments[0]?.sizeBytes || 0) > 0);
+});
+

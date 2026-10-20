@@ -65,17 +65,44 @@ export function MessageAttachmentsList({
   quoteId,
   className,
 }: MessageAttachmentsListProps) {
-  if (!attachments || attachments.length === 0) return null;
+  // Deduplicate attachments by filename: if multiple attachments share the same name,
+  // prefer the one with valid content, size, or extracted text (eliminating 0-byte ghost duplicates).
+  const dedupedAttachments = React.useMemo(() => {
+    if (!attachments || attachments.length <= 1) return attachments || [];
+    const map = new Map<string, MessageAttachment>();
+    for (const att of attachments) {
+      const key = (att.name || "").toLowerCase().trim();
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, att);
+      } else {
+        const existingScore =
+          (existing.extractedText?.length || 0) +
+          (existing.sizeBytes || 0) +
+          (existing.contentBase64?.length || 0);
+        const currentScore =
+          (att.extractedText?.length || 0) +
+          (att.sizeBytes || 0) +
+          (att.contentBase64?.length || 0);
+        if (currentScore > existingScore) {
+          map.set(key, att);
+        }
+      }
+    }
+    return Array.from(map.values());
+  }, [attachments]);
+
+  if (!dedupedAttachments || dedupedAttachments.length === 0) return null;
 
   return (
     <div className={cn("space-y-2 pt-2 border-t border-border/40", className)}>
       <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
         <Paperclip className="h-3 w-3" />
-        <span>Attachments ({attachments.length})</span>
+        <span>Attachments ({dedupedAttachments.length})</span>
       </div>
 
       <div className="flex flex-col gap-2">
-        {attachments.map((att, idx) => (
+        {dedupedAttachments.map((att, idx) => (
           <AttachmentCard key={idx} att={att} quoteId={quoteId} />
         ))}
       </div>

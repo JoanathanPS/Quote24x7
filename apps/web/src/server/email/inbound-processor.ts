@@ -798,7 +798,31 @@ async function doProcessInboundEmail(
   const attachmentTextSections: string[] = [];
 
   if (payload.attachments && payload.attachments.length > 0) {
+    // Deduplicate incoming attachments by filename, prioritizing entries with content over empty stubs
+    const dedupedMap = new Map<string, (typeof payload.attachments)[0]>();
     for (const att of payload.attachments) {
+      const key = (att.filename || "").toLowerCase().trim();
+      const rawContent = att.content ?? (att as { buffer?: Buffer }).buffer;
+      const hasContent = Boolean(
+        rawContent &&
+          (Buffer.isBuffer(rawContent) ? rawContent.length > 0 : String(rawContent).length > 0)
+      );
+      const existing = dedupedMap.get(key);
+      if (!existing) {
+        dedupedMap.set(key, att);
+      } else {
+        const existingRaw = existing.content ?? (existing as { buffer?: Buffer }).buffer;
+        const existingHasContent = Boolean(
+          existingRaw &&
+            (Buffer.isBuffer(existingRaw) ? existingRaw.length > 0 : String(existingRaw).length > 0)
+        );
+        if (!existingHasContent && hasContent) {
+          dedupedMap.set(key, att);
+        }
+      }
+    }
+
+    for (const att of dedupedMap.values()) {
       try {
         const rawContent = att.content ?? (att as { buffer?: Buffer }).buffer;
         let buffer: Buffer;

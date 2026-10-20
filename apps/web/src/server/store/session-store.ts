@@ -28,6 +28,7 @@ import {
   deleteProcessedMessageFromSupabase,
   clearAllEmailDataFromSupabase,
   insertWebhookEventToSupabase,
+  deduplicateMessageAttachments,
 } from "../db/supabase.ts";
 
 export interface PersistedState {
@@ -308,13 +309,19 @@ class SessionStore {
     // One inbound email is one message, even if a provider retry stored it
     // twice under different internal IDs. Keep the earliest copy.
     const seenInbound = new Set<string>();
-    return sorted.filter((m) => {
-      if (m.direction !== "inbound" || !m.providerMessageId) return true;
-      const key = m.providerMessageId.replace(/[<>]/g, "").trim().toLowerCase();
-      if (seenInbound.has(key)) return false;
-      seenInbound.add(key);
-      return true;
-    });
+    return sorted
+      .filter((m) => {
+        if (m.direction !== "inbound" || !m.providerMessageId) return true;
+        const key = m.providerMessageId.replace(/[<>]/g, "").trim().toLowerCase();
+        if (seenInbound.has(key)) return false;
+        seenInbound.add(key);
+        return true;
+      })
+      .map((m) =>
+        m.attachments && m.attachments.length > 1
+          ? { ...m, attachments: deduplicateMessageAttachments(m.attachments) }
+          : m
+      );
   }
 
   getMessageByProviderMessageId(msgId: string): EmailMessage | undefined {
@@ -371,17 +378,21 @@ class SessionStore {
 
   addMessage(message: EmailMessage): void {
     this.ensureInitialized();
-    const existing = this.messages.get(message.threadId) ?? [];
-    existing.push({ ...message });
-    this.messages.set(message.threadId, existing);
-    if (message.providerMessageId) {
-      this.processedMessageIds.add(message.providerMessageId);
-      this.trackWrite(insertProcessedMessageToSupabase(message.providerMessageId));
+    const sanitized: EmailMessage = {
+      ...message,
+      attachments: deduplicateMessageAttachments(message.attachments),
+    };
+    const existing = this.messages.get(sanitized.threadId) ?? [];
+    existing.push(sanitized);
+    this.messages.set(sanitized.threadId, existing);
+    if (sanitized.providerMessageId) {
+      this.processedMessageIds.add(sanitized.providerMessageId);
+      this.trackWrite(insertProcessedMessageToSupabase(sanitized.providerMessageId));
     }
     this.persistToDisk();
-    const parentPromise = this.threadSavePromises.get(message.threadId);
+    const parentPromise = this.threadSavePromises.get(sanitized.threadId);
     const writePromise = (parentPromise ? parentPromise.catch(() => {}) : Promise.resolve()).then(() =>
-      insertMessageToSupabase(message)
+      insertMessageToSupabase(sanitized)
     );
     this.trackWrite(writePromise);
   }

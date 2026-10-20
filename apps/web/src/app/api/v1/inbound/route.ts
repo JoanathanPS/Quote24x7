@@ -111,10 +111,12 @@ export async function POST(request: NextRequest) {
       sizeBytes?: number;
     }> = [];
 
+    let hasFetchedFromResend = false;
     // If metadata-only email.received event (typical for Resend Inbound), fetch full email content
     if (body.type === "email.received" && typeof eventData.email_id === "string" && !eventData.text) {
       const fetched = await fetchInboundEmailContent(eventData.email_id);
       if (fetched) {
+        hasFetchedFromResend = true;
         from = fetched.from;
         fromName = fetched.fromName || null;
         to = fetched.to;
@@ -130,9 +132,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Also support attachments provided directly in JSON payload (simulators, webhooks)
-    if (Array.isArray(eventData.attachments)) {
+    // Only parse eventData.attachments if we did not already fetch full content from Resend,
+    // avoiding re-adding metadata stubs alongside downloaded attachments.
+    if (!hasFetchedFromResend && Array.isArray(eventData.attachments)) {
       for (const item of eventData.attachments as Array<Record<string, unknown>>) {
         if (typeof item.filename === "string") {
+          const fn = item.filename.toLowerCase().trim();
+          if (attachments.some((a) => a.filename.toLowerCase().trim() === fn)) {
+            continue;
+          }
           attachments.push({
             filename: item.filename,
             contentType: typeof item.contentType === "string" ? item.contentType : undefined,
