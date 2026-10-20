@@ -269,3 +269,81 @@ test("Requirement merging: Prior values are preserved when not overridden", () =
   assert.equal(merged.demand.network_component, 5);
 });
 
+test("Item 2 Unit Attachment: '10 website checks, 100 GB logs, no synthetics, no RUM' gives RUM = none", () => {
+  const res = extractRequirements({
+    threadId: "th_test_unit_attach",
+    senderEmail: "buyer@example.com",
+    senderName: "Buyer",
+    subject: "Monitoring quote",
+    bodyText: "10 website checks, 100 GB logs, no synthetics, no RUM",
+  });
+
+  const intake = res.profile.intakeRequirements!;
+  assert.ok(intake);
+  assert.equal(intake.rum_pageview.state, "none", "RUM must be none");
+  assert.equal(intake.rum_pageview.quantity, 0);
+  assert.equal(intake.advanced_monitor.state, "none", "Synthetics must be none");
+  assert.equal(intake.advanced_monitor.quantity, 0);
+  assert.equal(res.demand.basic_monitor, 10, "10 website checks");
+  assert.equal(res.demand.applog_gb, 100, "100 GB logs");
+
+  // Every update has an evidence span containing that unit's keyword
+  assert.match(intake.basic_monitor.evidence || "", /\b(?:website|checks?)\b/i);
+  assert.match(intake.applog_gb.evidence || "", /\blogs?\b/i);
+  assert.match(intake.advanced_monitor.evidence || "", /\bsynthetic/i);
+  assert.match(intake.rum_pageview.evidence || "", /\brum\b/i);
+});
+
+test("Item 2 Unit Attachment: 'Actually, adjust the estimate to 25 servers' with websites = 3 leaves websites = 3", () => {
+  const initial = extractRequirements({
+    threadId: "th_test_unit_isolated",
+    senderEmail: "buyer@example.com",
+    senderName: "Buyer",
+    subject: "Monitoring quote",
+    bodyText: "We need coverage for 15 Linux Servers, 3 Web Endpoints, no network devices, no synthetic checks, no RUM, and 150 GB logs monthly.",
+  });
+
+  assert.equal(initial.demand.basic_monitor, 3);
+  assert.equal(initial.demand.host_monitor, 15);
+  assert.equal(initial.demand.network_component, 0);
+  assert.equal(initial.demand.applog_gb, 150);
+
+  const followUp = mergeRequirements({
+    existingProfile: initial.profile,
+    senderEmail: "buyer@example.com",
+    subject: "Re: Monitoring quote",
+    replyText: "Actually, please adjust the estimate to 25 servers.",
+  });
+
+  const followUpIntake = followUp.profile.intakeRequirements!;
+  assert.ok(followUpIntake);
+
+  // Host monitor updated
+  assert.equal(followUp.demand.host_monitor, 25, "Servers updated to 25");
+  assert.match(followUpIntake.host_monitor.evidence || "", /\bservers?\b/i);
+
+  // Websites completely untouched
+  assert.equal(followUp.demand.basic_monitor, 3, "Websites must remain 3");
+  assert.equal(followUp.demand.network_component, 0, "Network devices must remain 0");
+  assert.equal(followUp.demand.applog_gb, 150, "Logs must remain 150");
+  assert.equal(followUpIntake.advanced_monitor.state, "none");
+  assert.equal(followUpIntake.rum_pageview.state, "none");
+});
+
+test("Item 2 Unit Attachment: compound negation 'No synthetic checks or RUM needed' sets both to none", () => {
+  const res = extractRequirements({
+    threadId: "th_compound_neg",
+    senderEmail: "buyer@example.com",
+    senderName: "Buyer",
+    subject: "Monitoring quote",
+    bodyText: "25 servers, 8 network switches, 10 websites, 100 GB logs per month. No synthetic checks or RUM needed.",
+  });
+
+  const intake = res.profile.intakeRequirements!;
+  assert.ok(intake);
+  assert.equal(intake.advanced_monitor.state, "none");
+  assert.equal(intake.rum_pageview.state, "none");
+  assert.match(intake.advanced_monitor.evidence || "", /\bsynthetic/i);
+  assert.match(intake.rum_pageview.evidence || "", /\brum/i);
+});
+

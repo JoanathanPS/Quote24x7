@@ -39,6 +39,15 @@ export const FIELD_KEY_TO_UNIT: Record<string, IntakeUnit> = {
   applogs_volume: "applog_gb",
 };
 
+export const UNIT_KEYWORDS: Record<IntakeUnit, string[]> = {
+  host_monitor: ["server", "servers", "host", "hosts", "vm", "vms", "node", "nodes", "machine", "machines", "instance", "instances"],
+  basic_monitor: ["website", "websites", "url", "urls", "endpoint", "endpoints", "api", "apis", "uptime", "check", "checks", "basic monitor", "basic monitors"],
+  network_component: ["network", "switch", "switches", "router", "routers", "firewall", "firewalls", "device", "devices", "gear", "component", "components", "network device", "network devices"],
+  advanced_monitor: ["synthetic", "synthetics", "transaction", "transactions", "browser transaction", "browser transactions", "advanced monitor", "advanced monitors", "journey", "journeys", "critical web"],
+  rum_pageview: ["rum", "real user", "pageview", "pageviews", "page view", "page views", "views"],
+  applog_gb: ["log", "logs", "applog", "applogs", "gb/day", "gb per day", "log ingestion", "log management", "log aggregation", "retention"],
+};
+
 export interface ExtractionInput {
   threadId: string;
   senderEmail: string;
@@ -337,15 +346,22 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       lower,
     );
 
+  // Compound negation check: "no synthetic checks or RUM needed", "without servers or network", etc.
+  const compoundNegMatch = text.match(/\b(?:no|without)\s+([a-z\s,/-]+?)\s+(?:needed|required|necessary|wanted)\b/i);
+  const compoundNegPhrase = compoundNegMatch ? compoundNegMatch[0].trim() : null;
+  const compoundNegInner = compoundNegMatch && compoundNegMatch[1] ? compoundNegMatch[1].toLowerCase() : "";
+
   // 1. Servers / Host Monitors
   let serverCount: number | null = null;
   let serverEvidence: string | null = null;
   let serverState: IntakeUnitState = "unknown";
 
+  const serverNoneMatch = text.match(
+    /\b(?:no\s+servers?|without\s+servers?|zero\s+servers?|0\s+servers?|don'?t\s+need\s+servers?|servers?\s*:\s*(?:none|0|no)|no\s+vms?|without\s+vms?)\b/i,
+  );
   const serverNone =
-    /\b(?:no\s+servers?|zero\s+servers?|0\s+servers?|don'?t\s+need\s+servers?|servers?\s*:\s*(?:none|0|no))\b/i.test(
-      lower,
-    );
+    Boolean(serverNoneMatch) ||
+    Boolean(compoundNegPhrase && /\b(?:servers?|hosts?|vms?|instances?|machines?)\b/i.test(compoundNegInner));
   const serverMentioned =
     /\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?)\b/i.test(text);
 
@@ -363,7 +379,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   if (serverNone) {
     serverCount = 0;
     serverState = "none";
-    serverEvidence = "Explicitly stated no servers needed";
+    serverEvidence = serverNoneMatch ? serverNoneMatch[0].trim() : compoundNegPhrase ?? "Explicitly stated no servers needed";
     fields.push({
       key: "servers",
       label: "Server / Host Monitors",
@@ -436,17 +452,20 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       /(?:network(?:\s+devices?)?|switches?|routers?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
     );
 
+  const netNoneMatch = text.match(
+    /\b(?:no\s+network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?|gear))?|without\s+network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?|gear))?|zero\s+network|0\s+network|don'?t\s+need\s+network|network\s*:\s*(?:none|0|no)|no\s+(?:switches|routers|firewalls)|without\s+(?:switches|routers|firewalls)|remove\s+(?:all\s+)?network(?:\s+devices?)?)\b/i,
+  );
+
   const netNone =
     serversOnly ||
     (noOtherNeeds && !netMentioned) ||
-    /\b(?:no\s+network(?:\s+devices?)?|zero\s+network|0\s+network|don'?t\s+need\s+network|network\s*:\s*(?:none|0|no)|no\s+(?:switches|routers|firewalls))\b/i.test(
-      lower,
-    );
+    Boolean(netNoneMatch) ||
+    Boolean(compoundNegPhrase && /\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?)\b/i.test(compoundNegInner));
 
   if (netNone) {
     networkCount = 0;
     networkState = "none";
-    networkEvidence = serversOnly ? "Excluded via servers-only rule" : "Explicitly stated no network devices";
+    networkEvidence = netNoneMatch ? netNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no network devices (servers-only)" : "Explicitly stated no network devices");
     fields.push({
       key: "network_devices",
       label: "Network Devices",
@@ -505,13 +524,13 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const basicCountMatch =
     text.match(
-      /(\d+)[^\S\r\n]*(?:basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?)?|standard(?:\s+monitors?)?|websites?|urls?|web\s+sites?|apis?|api\s+endpoints?|rest\s+apis?|endpoints?|website(?:\s+uptime|\s+availability)?(?:\s+monitors?|\s+checks?)?)\b/i,
+      /(\d+)[^\S\r\n]*(?:[a-z \t]{0,25}?)\b(?:basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?)?|standard(?:\s+monitors?)?|websites?|urls?|web\s+sites?|apis?|api\s+endpoints?|rest\s+apis?|web\s+endpoints?|endpoints?|website(?:\s+uptime|\s+availability)?(?:\s+monitors?|\s+checks?)?)\b/i,
     ) ||
     text.match(
-      /(?:basic|ping|port|website\s+uptime|uptime\s+checks?|websites?|urls?|apis?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
+      /(?:basic|ping|port|website\s+uptime|uptime\s+checks?|websites?|urls?|apis?|endpoints?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
     ) ||
     text.match(
-      /(?:basic|ping|port|standard|websites?|urls?|web\s+sites?|apis?|website(?:\s+uptime)?)\s*(?:monitors?|checks?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
+      /(?:basic|ping|port|standard|websites?|urls?|web\s+sites?|apis?|endpoints?|website(?:\s+uptime)?)\s*(?:monitors?|checks?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
     );
 
   const websiteAvailabilityMentioned =
@@ -521,20 +540,23 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const basicMentioned =
     /\b(?:basic|ping|port|standard)\s*monitors?\b/i.test(text) ||
-    /\b(?:websites?|urls?|apis?)\b/i.test(text) ||
+    /\b(?:websites?|urls?|apis?|endpoints?)\b/i.test(text) ||
     websiteAvailabilityMentioned;
+
+  const basicNoneMatch = text.match(
+    /\b(?:no\s+(?:websites?|urls?|apis?|endpoints?|basic(?:\s+monitors?)?|uptime\s+checks?|checks?)|without\s+(?:websites?|urls?|apis?|endpoints?|basic(?:\s+monitors?)?|uptime\s+checks?|checks?)|zero\s+(?:websites?|urls?|apis?)|0\s+(?:websites?|urls?|apis?)|don'?t\s+need\s+(?:websites?|urls?|apis?)|(?:websites?|urls?|apis?)\s*:\s*(?:none|0|no)|no\s+basic\s+website\s+checks)\b/i,
+  );
 
   const basicNone =
     serversOnly ||
     (noOtherNeeds && !basicMentioned) ||
-    /\b(?:no\s+(?:websites?|urls?|apis?)|zero\s+(?:websites?|urls?|apis?)|0\s+(?:websites?|urls?|apis?)|don'?t\s+need\s+(?:websites?|urls?|apis?)|(?:websites?|urls?|apis?)\s*:\s*(?:none|0|no))\b/i.test(
-      lower,
-    );
+    Boolean(basicNoneMatch) ||
+    Boolean(compoundNegPhrase && /\b(?:websites?|urls?|apis?|endpoints?|checks?)\b/i.test(compoundNegInner));
 
   if (basicNone) {
     basicCount = 0;
     basicState = "none";
-    basicEvidence = serversOnly ? "Excluded via servers-only rule" : "Explicitly stated no websites/APIs";
+    basicEvidence = basicNoneMatch ? basicNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no websites (servers-only)" : "Explicitly stated no websites/APIs");
     fields.push({
       key: "basic_monitors",
       label: "Basic Monitors",
@@ -652,17 +674,20 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       /(?:java|node(?:\.js)?|python|\.net|php|ruby|go|apm)\s*(?:apps?|applications?|instances?)\s*(?:count|total|:|=)\s*(\d+)/i,
     );
 
+  const advNoneMatch = text.match(
+    /\b(?:no\s+(?:synthetics?|synthetic(?:\s+(?:checks?|monitors?|transactions?|web|browser))?|advanced(?:\s+monitors?)?|browser\s+transactions?|transactions?)|without\s+(?:synthetics?|synthetic(?:\s+(?:checks?|monitors?|transactions?|web|browser))?|advanced(?:\s+monitors?)?|browser\s+transactions?|transactions?)|zero\s+synthetic|0\s+synthetic|don'?t\s+need\s+synthetic|synthetic\s*:\s*(?:none|0|no)|no\s+advanced\s+monitors?)\b/i,
+  );
+
   const advNone =
     serversOnly ||
     (noOtherNeeds && !advMentioned && !appApmMatch) ||
-    /\b(?:no\s+synthetic|zero\s+synthetic|0\s+synthetic|don'?t\s+need\s+synthetic|synthetic\s*:\s*(?:none|0|no)|no\s+advanced\s+monitors?)\b/i.test(
-      lower,
-    );
+    Boolean(advNoneMatch) ||
+    Boolean(compoundNegPhrase && /\b(?:synthetics?|synthetic|browser\s+transactions?|transactions?)\b/i.test(compoundNegInner));
 
   if (advNone) {
     advancedCount = 0;
     advancedState = "none";
-    advancedEvidence = serversOnly ? "Excluded via servers-only rule" : "Explicitly stated no synthetic monitors";
+    advancedEvidence = advNoneMatch ? advNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no synthetics (servers-only)" : "Explicitly stated no synthetic monitors");
     fields.push({
       key: "advanced_monitors",
       label: "Advanced / Synthetic Monitors",
@@ -783,17 +808,20 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     /(\d{1,3}(?:,\d{3})+|\d{5,})\s*(?:[a-z\s/]{0,25}?)\b(?:pageviews?|views?|rum)\b/i,
   );
 
+  const rumNoneMatch = text.match(
+    /\b(?:no\s+(?:rum|real\s+user(?:\s+monitoring)?|page\s*views?|views?)|without\s+(?:rum|real\s+user(?:\s+monitoring)?|page\s*views?|views?)|zero\s+rum|0\s+rum|don'?t\s+need\s+rum|rum\s*:\s*(?:none|0|no)|no\s+real\s+user\s+monitoring)\b/i,
+  );
+
   const rumNone =
     serversOnly ||
     (noOtherNeeds && !rumMentioned) ||
-    /\b(?:no\s+rum|zero\s+rum|0\s+rum|don'?t\s+need\s+rum|rum\s*:\s*(?:none|0|no)|no\s+real\s+user\s+monitoring)\b/i.test(
-      lower,
-    );
+    Boolean(rumNoneMatch) ||
+    Boolean(compoundNegPhrase && /\b(?:rum|real\s+user|page\s*views?|views?)\b/i.test(compoundNegInner));
 
   if (rumNone) {
     rumPageviews = 0;
     rumState = "none";
-    rumEvidence = serversOnly ? "Excluded via servers-only rule" : "Explicitly stated no RUM pageviews";
+    rumEvidence = rumNoneMatch ? rumNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no RUM (servers-only)" : "Explicitly stated no RUM pageviews");
     fields.push({
       key: "rum_pageviews",
       label: "RUM Pageviews",
@@ -930,17 +958,20 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       /(?:applogs?|logs?)\s*(?:volume|storage|size|retention)?\s*(?:of|:|=|,|\||\t)?\s*"?(\d+)"?\s*(?:gb|gigabytes?|tb|terabytes?)/i,
     );
 
+  const logNoneMatch = text.match(
+    /\b(?:no\s+(?:logs?|applogs?|log\s+management|log\s+ingestion|log\s+aggregation)|without\s+(?:logs?|applogs?|log\s+management|log\s+ingestion|log\s+aggregation)|zero\s+logs?|0\s+logs?|don'?t\s+need\s+logs?|logs?\s*:\s*(?:none|0|no)|no\s+applogs?)\b/i,
+  );
+
   const logNone =
     serversOnly ||
     (noOtherNeeds && !logMentioned) ||
-    /\b(?:no\s+logs?|zero\s+logs?|0\s+logs?|don'?t\s+need\s+logs?|logs?\s*:\s*(?:none|0|no)|no\s+applogs?)\b/i.test(
-      lower,
-    );
+    Boolean(logNoneMatch) ||
+    Boolean(compoundNegPhrase && /\b(?:logs?|applogs?|log\s+management)\b/i.test(compoundNegInner));
 
   if (logNone) {
     applogGb = 0;
     applogState = "none";
-    applogEvidence = serversOnly ? "Excluded via servers-only rule" : "Explicitly stated no logs needed";
+    applogEvidence = logNoneMatch ? logNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no logs (servers-only)" : "Explicitly stated no logs needed");
     fields.push({
       key: "applogs_volume",
       label: "AppLogs Volume",
@@ -1314,30 +1345,46 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
     }
   }
 
-  // Check if reply answers a pending question directly with a standalone number
-  const pendingUnits = INTAKE_UNITS.filter((u) => mergedIntake[u].state === "unknown");
-  const fallbackNumberMatch = replyText.match(
-    /(?:need|have|want|use|about|around)?\s*(\d+)\s*(?:monitors?|endpoints?|checks?|servers?|hosts?|devices?|views?|pageviews?|gb)?/i,
-  );
-
-  if (pendingUnits.length === 1 && fallbackNumberMatch && fallbackNumberMatch[1]) {
-    const targetUnit = pendingUnits[0]!;
-    if (replyExtraction.intakeRequirements[targetUnit].state === "unknown") {
-      const val = parseInt(fallbackNumberMatch[1], 10);
-      mergedIntake[targetUnit] = {
-        unit: targetUnit,
-        state: "stated",
-        quantity: val,
-        evidence: fallbackNumberMatch[0].trim(),
-      };
-    }
-  }
+  // Merge each unit from reply ONLY if the reply explicitly contains that unit's keyword in its evidence
+  // A follow-up that names one unit changes only that unit!
+  // Global "no other needs" check in reply: e.g. "no other monitoring needed", "nothing else needed"
+  const replyNoOtherNeeds =
+    /\b(?:no\s+other\s+(?:monitoring|needs?|requirements?|checks?|services?)|nothing\s+else|no\s+others?)\b/i.test(
+      replyText,
+    );
 
   // Merge each unit from reply
+  // 1) A follow-up that names a unit updates that unit (needs an evidence span containing that unit's keyword)
+  // 2) If reply explicitly says "no other monitoring needed", any unit still unknown becomes "none"
   for (const unit of INTAKE_UNITS) {
     const fromReply = replyExtraction.intakeRequirements[unit];
     if (fromReply && (fromReply.state === "stated" || fromReply.state === "none")) {
-      mergedIntake[unit] = { ...fromReply };
+      const keywords = UNIT_KEYWORDS[unit];
+      const replyLower = replyText.toLowerCase();
+      const hasKeywordInReply = keywords.some((k) =>
+        new RegExp(`\\b${k.replace(/\s+/g, "\\s+")}\\b`, "i").test(replyLower),
+      );
+      if (
+        hasKeywordInReply &&
+        fromReply.evidence &&
+        keywords.some((k) => new RegExp(`\\b${k.replace(/\s+/g, "\\s+")}\\b`, "i").test(fromReply.evidence!.toLowerCase()))
+      ) {
+        mergedIntake[unit] = { ...fromReply };
+      } else if (replyNoOtherNeeds && mergedIntake[unit].state === "unknown") {
+        mergedIntake[unit] = {
+          unit,
+          state: "none",
+          quantity: 0,
+          evidence: "no other monitoring needed",
+        };
+      }
+    } else if (replyNoOtherNeeds && mergedIntake[unit].state === "unknown") {
+      mergedIntake[unit] = {
+        unit,
+        state: "none",
+        quantity: 0,
+        evidence: "no other monitoring needed",
+      };
     }
   }
 

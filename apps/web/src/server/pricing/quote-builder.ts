@@ -5,6 +5,7 @@ import type {
   Quote,
   QuoteDocument,
   RequirementProfile,
+  IntakeUnit,
 } from "@/types/domain";
 
 import {
@@ -19,6 +20,7 @@ import {
 } from "./engine.ts";
 import { formatMoney } from "./money.ts";
 import { findCitationsForLineItem } from "../knowledge/retriever.ts";
+import { FIELD_KEY_TO_UNIT } from "../extraction/extractor.ts";
 
 /**
  * Assembles a complete `Quote` record from a demand and a catalogue version.
@@ -86,6 +88,16 @@ export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Ca
     valid: c.valid,
     rejectionReason: c.unavailabilityReason ?? (c.valid ? null : "Requirements not satisfied"),
   }));
+
+  console.log("[Pre-Pricing Unit Evidence Audit]");
+  for (const unit of DEMAND_UNITS) {
+    const intake = profile.intakeRequirements?.[unit as IntakeUnit];
+    const field = profile.fields?.find((f) => FIELD_KEY_TO_UNIT[f.key] === unit);
+    const evidence = intake?.evidence ?? field?.evidence ?? "none";
+    const state = intake?.state ?? (demand[unit] > 0 ? "stated" : "none");
+    const qty = demand[unit];
+    console.log(`  - Unit: ${unit} | Quantity: ${qty} | State: ${state} | Evidence: "${evidence}"`);
+  }
 
   console.log("[Pricing Engine] Candidate Evaluation Table:");
   for (const row of candidateTable) {
