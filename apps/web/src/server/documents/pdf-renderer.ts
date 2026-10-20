@@ -1,22 +1,25 @@
 import { PDFDocument, rgb, StandardFonts, type PDFFont } from "pdf-lib";
-import type { Quote, EmailThread, CurrencyCode } from "@/types/domain";
+import type { Quote, EmailThread, CurrencyCode, CoverageRow } from "@/types/domain";
 import { formatMoney } from "../pricing/money.ts";
 import { buildComparisonLine } from "../pricing/engine.ts";
+import { formatShortRef } from "../pricing/quote-builder.ts";
+import { loadActiveCatalogue } from "../catalogue/loader.ts";
 
 export interface RenderPdfOptions {
   quote: Quote;
   thread?: EmailThread;
   selectedOptionType?: "best_value" | "lowest_cost" | "best_coverage";
+  recipientName?: string | null;
 }
 
 function formatPdfMoney(amount: number, currency: string): string {
-  return formatMoney(amount, currency as CurrencyCode).replace(/₹/g, "INR ");
+  return formatMoney(amount, currency as CurrencyCode, { showDecimals: false }).replace(/[^0-9,]/g, "");
 }
 
 function safePdfText(str: string | null | undefined): string {
   if (!str) return "";
   return str
-    .replace(/₹/g, "INR ")
+    .replace(/₹/g, "Rs. ")
     .replace(/[—–]/g, "-")
     .replace(/•/g, "*")
     .replace(/[\u2018\u2019]/g, "'")
@@ -61,12 +64,10 @@ function wrapText(
       } else {
         if (currentLine) {
           resultLines.push(currentLine);
-          // Test if single word fits on a new line
           const wordWidth = font.widthOfTextAtSize(word, fontSize);
           if (wordWidth <= maxWidth) {
             currentLine = word;
           } else {
-            // Very long word/URL: break character by character
             let subWord = "";
             for (const char of word) {
               if (font.widthOfTextAtSize(subWord + char, fontSize) <= maxWidth) {
@@ -79,7 +80,6 @@ function wrapText(
             currentLine = subWord;
           }
         } else {
-          // Empty current line and single word exceeds maxWidth
           let subWord = "";
           for (const char of word) {
             if (font.widthOfTextAtSize(subWord + char, fontSize) <= maxWidth) {
@@ -102,24 +102,64 @@ function wrapText(
   return resultLines;
 }
 
+function getWhatItCovers(
+  item: { ruleId: string; description: string; quantity: number; packSize?: number | null; purchasedUnits?: number | null },
+  coverage: CoverageRow[]
+): string {
+  if (item.ruleId === "RULE-BASE-PRICE") {
+    const parts = coverage
+      .filter((c) => c.included > 0)
+      .map((c) => {
+        if (c.unit === "basic_monitor") return `${c.included} basic`;
+        if (c.unit === "advanced_monitor") return `${c.included} advanced`;
+        if (c.unit === "host_monitor") return `${c.included} hosts`;
+        if (c.unit === "network_component") return `${c.included} network`;
+        if (c.unit === "applog_gb") return `${c.included} GB logs`;
+        if (c.unit === "rum_pageview") return `${c.included.toLocaleString("en-IN")} RUM`;
+        return `${c.included} ${c.label}`;
+      });
+    return parts.length > 0 ? `Includes ${parts.join(", ")} in base` : "Base plan included entitlements";
+  }
+
+  const desc = item.description.toLowerCase();
+  const purchased = item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1));
+
+  if (desc.includes("advanced")) {
+    return `${purchased} synthetic web checks / browser transactions`;
+  }
+  if (desc.includes("host") || desc.includes("server")) {
+    return `${purchased} servers / VMs / hosts`;
+  }
+  if (desc.includes("log") || item.ruleId.includes("log")) {
+    return `${purchased} GB monthly log ingestion (${item.quantity} x ${item.packSize ?? 100} GB packs)`;
+  }
+  if (desc.includes("network") || desc.includes("switch")) {
+    return `${purchased} network devices (switches, routers, firewalls)`;
+  }
+  if (desc.includes("rum") || desc.includes("pageview")) {
+    return `${purchased.toLocaleString("en-IN")} RUM pageviews / month`;
+  }
+  return `${purchased} units (${item.quantity} x ${item.packSize ?? 1} per pack)`;
+}
+
 /**
  * Generates an official publication-quality A4 quotation proposal PDF using pdf-lib.
- * Adheres strictly to Phase 9 and user adaptive formatting requirements:
- * - 1 to 2 pages, modelled on Zoho's quote layout but without logos.
- * - Estimate title, date, expiry (30 days), reference, quote type "New Purchase",
- *   subscription "Yearly" (MSP: Monthly), Bill to (name, email, company), what you asked for.
- * - Line items table, total, what's included, one alternative, assumptions and exclusions, terms.
- * - No engine or catalogue version strings, no capacity matrix, no "[x]", no "..." truncation.
- * - Full multi-line word wrapping with adaptive vertical sizing and line spacing to eliminate cut-offs.
- * - Footer: "Independent estimate based on Site24x7 India public pricing captured <date>. Not an official Zoho document."
- * - Verbatim terms & conditions from Screenshots/quote.png.
- * - Bit-for-bit deterministic bytes for identical inputs.
+ * Adheres strictly to Golden Template & Phase 9 specifications:
+ * - Clean short reference (e.g. Q-1042) everywhere; zero internal IDs.
+ * - Customer name from signature/display name, never "Procurement Contact".
+ * - 3 clean columns: Item | What it covers | Annual.
+ * - No Included/Purchased/Pack size/Packs columns.
+ * - No INR prefix, no monospace font, no .00 decimals.
+ * - Deleted "Unquantified custom APM" line.
+ * - Adaptive vertical sizing ensuring every line is strictly within page margins.
  */
 export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer> {
-  const { quote, thread, selectedOptionType = "best_value" } = options;
+  const { quote, thread, selectedOptionType = "best_value", recipientName } = options;
 
   const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle(`Estimate #${quote.id}`);
+  const shortRef = quote.shortRef || formatShortRef(quote.id);
+
+  pdfDoc.setTitle(`Estimate #${shortRef}`);
   pdfDoc.setAuthor("Quote24x7 Assistant");
   pdfDoc.setSubject("Site24x7 India Commercial Estimate");
 
@@ -131,7 +171,6 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
   const fontSans = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontSansBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontSansOblique = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
-  const fontMono = await pdfDoc.embedFont(StandardFonts.Courier);
 
   const pageWidth = 595.28;
   const pageHeight = 841.89;
@@ -168,8 +207,8 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
     color: rgb(0.35, 0.4, 0.48),
   });
 
-  // Meta details (Right column)
-  const metaRightX = pageWidth - margin - 180;
+  // Meta details (Right column) - Uses shortRef everywhere, no internal IDs
+  const metaRightX = pageWidth - margin - 170;
   const issueDateStr = fixedDate.toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
@@ -184,7 +223,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
 
   const subscriptionType = quote.billingPeriod === "monthly" ? "Monthly" : "Yearly";
 
-  page.drawText(`Estimate #: ${quote.id}`, {
+  page.drawText(`Estimate #: ${shortRef}`, {
     x: metaRightX,
     y: y - 10,
     size: 8.5,
@@ -219,12 +258,11 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
     font: fontSans,
     color: rgb(0.3, 0.35, 0.4),
   });
-  const threadIdVal = thread?.id || quote.threadId;
-  page.drawText(`Reference: #${threadIdVal}`, {
+  page.drawText(`Reference: #${shortRef}`, {
     x: metaRightX,
     y: y - 61,
     size: 8,
-    font: fontMono,
+    font: fontSans,
     color: rgb(0.4, 0.45, 0.5),
   });
 
@@ -240,7 +278,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
 
   y -= 14;
 
-  // 2. Party & Requirements Section (Two-column layout with dynamic height)
+  // 2. Party & Requirements Section (Never "Procurement Contact")
   const partyStartY = y;
 
   // Left Column: BILL TO
@@ -252,7 +290,12 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
     color: rgb(0.35, 0.42, 0.52),
   });
 
-  const customerName = thread?.senderName || "Procurement Contact";
+  // Name rule: explicit recipientName, or thread senderName, or email localpart, NEVER "Procurement Contact"
+  let customerName = (recipientName || thread?.senderName || "").trim();
+  if (!customerName || /^(?:Procurement Contact|Customer|Valued Customer|Unknown)$/i.test(customerName)) {
+    customerName = thread?.senderEmail ? thread.senderEmail.split("@")[0]! : "Customer";
+  }
+
   page.drawText(safePdfText(customerName), {
     x: margin,
     y: partyStartY - 12,
@@ -283,8 +326,8 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
   leftCursorY -= 11;
   const billToHeight = partyStartY - leftCursorY;
 
-  // Right Column: WHAT YOU ASKED FOR (Wrapped lines + Solution)
-  const reqX = margin + 240;
+  // Right Column: WHAT YOU ASKED FOR (Plain-word requirements + Selected Solution)
+  const reqX = margin + 235;
   const reqWidth = pageWidth - margin - reqX;
 
   page.drawText("WHAT YOU ASKED FOR", {
@@ -297,9 +340,18 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
 
   const activeDemands = activeOption.coverage
     .filter((c) => c.required > 0)
-    .map((c) => `${c.label}: ${c.required.toLocaleString("en-IN")}`);
+    .map((c) => {
+      const count = c.required.toLocaleString("en-IN");
+      if (c.unit === "host_monitor") return `${count} servers`;
+      if (c.unit === "network_component") return `${count} network devices`;
+      if (c.unit === "basic_monitor") return `${count} websites`;
+      if (c.unit === "advanced_monitor") return `${count} browser transactions`;
+      if (c.unit === "applog_gb") return `${count} GB logs/mo`;
+      if (c.unit === "rum_pageview") return `${count} RUM pageviews`;
+      return `${count} ${c.label}`;
+    });
   const reqSummaryStr =
-    activeDemands.length > 0 ? activeDemands.join(", ") : "Standard baseline infrastructure monitoring";
+    activeDemands.length > 0 ? activeDemands.join(", ") : "Standard infrastructure monitoring";
 
   const reqLines = wrapText(safePdfText(reqSummaryStr), fontSans, 7.8, reqWidth);
   let rightCursorY = partyStartY - 12;
@@ -326,10 +378,11 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
   rightCursorY -= 11;
   const reqHeight = partyStartY - rightCursorY;
 
-  // Advance past the taller of both columns
+  // Advance past taller column
   y = partyStartY - Math.max(billToHeight, reqHeight) - 14;
 
-  // 3. Itemized Table
+  // 3. Itemized Table (3 Columns: Item | What it covers | Annual)
+  // No Included/Purchased/Pack size/Packs columns, no INR prefix, no monospace
   page.drawText("LINE ITEMS", {
     x: margin,
     y,
@@ -351,86 +404,69 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
 
   const colX = {
     item: margin + 6,
-    included: margin + 210,
-    purchased: margin + 270,
-    packSize: margin + 335,
-    packs: margin + 395,
+    whatItCovers: margin + 195,
     annual: pageWidth - margin - 8,
   };
 
   page.drawText("Item", { x: colX.item, y: y - 11, size: 7.5, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
-  page.drawText("Included", { x: colX.included, y: y - 11, size: 7.5, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
-  page.drawText("Purchased", { x: colX.purchased, y: y - 11, size: 7.5, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
-  page.drawText("Pack size", { x: colX.packSize, y: y - 11, size: 7.5, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
-  page.drawText("Packs", { x: colX.packs, y: y - 11, size: 7.5, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
-  page.drawText("Annual (INR)", { x: colX.annual - 55, y: y - 11, size: 7.5, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
+  page.drawText("What it covers", { x: colX.whatItCovers, y: y - 11, size: 7.5, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
+  page.drawText("Annual", { x: colX.annual - 35, y: y - 11, size: 7.5, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
 
   y -= tableHeaderHeight;
 
-  // Item rows with multi-line wrapping in item column
+  const catalogue = loadActiveCatalogue();
+  const currentPlan = catalogue.plans.find((p) => p.id === activeOption.planId);
+
   for (const item of activeOption.lineItems) {
     const isBase = item.ruleId === "RULE-BASE-PRICE";
-    const itemName = isBase ? `${activeOption.planName} base subscription (${subscriptionType.toLowerCase()})` : item.description;
-    const includedStr = isBase ? "Base entitlements" : String(item.includedQuantity ?? 0);
-    const purchasedStr = String(item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1)));
-    const packSizeStr = String(item.packSize ?? 1);
-    const packsStr = String(item.quantity);
+    const monthlyRate =
+      currentPlan?.priceMonthlyAnnualBilled ??
+      currentPlan?.basePrice ??
+      (item.lineTotal ? Math.floor(item.lineTotal / 12) : 0);
+    const monthlyStr = formatPdfMoney(monthlyRate, quote.currency);
+    const itemName = isBase
+      ? `${activeOption.planName} base subscription (Rs. ${monthlyStr} per month x 12)`
+      : item.description;
+
+    const coversText = getWhatItCovers(item, activeOption.coverage);
     const formattedTotal = formatPdfMoney(item.lineTotal, quote.currency);
 
-    const nameLines = wrapText(safePdfText(itemName), isBase ? fontSansBold : fontSans, 7.2, 195);
-    const rowHeight = Math.max(17, nameLines.length * 10 + 6);
+    const nameLines = wrapText(safePdfText(itemName), isBase ? fontSansBold : fontSans, 7.2, 180);
+    const coversLines = wrapText(safePdfText(coversText), fontSans, 7.2, 205);
+    const maxLineCount = Math.max(nameLines.length, coversLines.length);
+    const rowHeight = Math.max(17, maxLineCount * 10 + 6);
 
-    let itemTextY = y - 10;
+    let nameY = y - 10;
     for (const nLine of nameLines) {
       page.drawText(nLine, {
         x: colX.item,
-        y: itemTextY,
+        y: nameY,
         size: 7.2,
         font: isBase ? fontSansBold : fontSans,
         color: rgb(0.1, 0.15, 0.2),
       });
-      itemTextY -= 10;
+      nameY -= 10;
     }
 
-    const baselineY = y - 10;
-    page.drawText(safePdfText(includedStr), {
-      x: colX.included,
-      y: baselineY,
-      size: 7,
-      font: fontMono,
-      color: rgb(0.35, 0.4, 0.45),
-    });
+    let coversY = y - 10;
+    for (const cLine of coversLines) {
+      page.drawText(cLine, {
+        x: colX.whatItCovers,
+        y: coversY,
+        size: 7.2,
+        font: fontSans,
+        color: rgb(0.25, 0.3, 0.38),
+      });
+      coversY -= 10;
+    }
 
-    page.drawText(safePdfText(purchasedStr), {
-      x: colX.purchased,
-      y: baselineY,
-      size: 7,
-      font: fontMono,
-      color: rgb(0.15, 0.2, 0.25),
-    });
-
-    page.drawText(safePdfText(packSizeStr), {
-      x: colX.packSize,
-      y: baselineY,
-      size: 7,
-      font: fontMono,
-      color: rgb(0.35, 0.4, 0.45),
-    });
-
-    page.drawText(safePdfText(packsStr), {
-      x: colX.packs,
-      y: baselineY,
-      size: 7,
-      font: fontMono,
-      color: rgb(0.15, 0.2, 0.25),
-    });
-
-    const totalWidth = fontMono.widthOfTextAtSize(formattedTotal, 7.5);
+    // Render price using fontSansBold (no monospace, no INR prefix)
+    const totalWidth = fontSansBold.widthOfTextAtSize(formattedTotal, 7.8);
     page.drawText(formattedTotal, {
       x: colX.annual - totalWidth,
-      y: baselineY,
-      size: 7.5,
-      font: fontMono,
+      y: y - 10,
+      size: 7.8,
+      font: fontSansBold,
       color: rgb(0.1, 0.15, 0.2),
     });
 
@@ -444,7 +480,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
     y -= rowHeight;
   }
 
-  // Total Row
+  // Total Row (No INR prefix, no monospace)
   y -= 4;
   page.drawRectangle({
     x: margin,
@@ -456,7 +492,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
     borderWidth: 0.8,
   });
 
-  page.drawText(`TOTAL ${subscriptionType.toUpperCase()} (INR):`, {
+  page.drawText(`TOTAL ${subscriptionType.toUpperCase()}:`, {
     x: margin + 8,
     y: y - 13,
     size: 8,
@@ -465,12 +501,12 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
   });
 
   const grandTotalStr = formatPdfMoney(activeOption.total, quote.currency);
-  const grandTotalWidth = fontMono.widthOfTextAtSize(grandTotalStr, 9);
+  const grandTotalWidth = fontSansBold.widthOfTextAtSize(grandTotalStr, 9.5);
   page.drawText(grandTotalStr, {
     x: colX.annual - grandTotalWidth,
     y: y - 13,
-    size: 9,
-    font: fontMono,
+    size: 9.5,
+    font: fontSansBold,
     color: rgb(0.05, 0.2, 0.6),
   });
 
@@ -488,17 +524,16 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
   y -= 14;
 
   // 4. Adaptive Vertical Sizing & Layout Budgeting for Lower Sections
-  // Available space down to the footer boundary (y = 48)
   const availableBottomSpace = y - 48;
 
-  // Prepare & pre-wrap What's Included
+  // What's Included
   const includedItems = activeOption.coverage
     .filter((c) => c.included > 0)
     .map((c) => `${c.label}: ${c.included.toLocaleString("en-IN")} included in base plan`);
   const includedText = includedItems.length > 0 ? includedItems.join("  *  ") : "Base plan included entitlements";
   const includedLines = wrapText(safePdfText(includedText), fontSans, 7.2, contentWidth - 8);
 
-  // Prepare Alternative (if available)
+  // Alternative (if available)
   const lowestCost = quote.options.find((o) => o.optionType === "lowest_cost");
   let compLines: string[] = [];
   if (lowestCost && lowestCost.planId !== activeOption.planId) {
@@ -506,20 +541,20 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
     compLines = wrapText(safePdfText(compText), fontSansBold, 7.2, contentWidth - 8);
   }
 
-  // Prepare Assumptions & Exclusions
+  // Assumptions & Exclusions (Filtering out engine version and deleted Unquantified custom APM line)
   const sanitizedAssumptions = (quote.assumptions || [])
-    .filter((a) => !/catalogue|engine|version|\d+\.\d+\.\d+/i.test(a))
-    .slice(0, 2);
+    .filter((a) => !/catalogue|engine|version|\d+\.\d+\.\d+|Unquantified custom APM/i.test(a))
+    .slice(0, 4);
   const sanitizedExclusions = (quote.exclusions || [])
-    .filter((e) => !/catalogue|engine|version|\d+\.\d+\.\d+/i.test(e))
-    .slice(0, 2);
+    .filter((e) => !/catalogue|engine|version|\d+\.\d+\.\d+|Unquantified custom APM/i.test(e))
+    .slice(0, 3);
   const notesList = [...sanitizedAssumptions, ...sanitizedExclusions];
   const wrappedNotes = notesList.map((note) =>
     wrapText(safePdfText(note), fontSans, 7.2, contentWidth - 18)
   );
   const totalNotesLines = wrappedNotes.reduce((acc, l) => acc + l.length, 0);
 
-  // Prepare Terms & Conditions (Verbatim from quote.png)
+  // Terms & Conditions (Verbatim from quote.png)
   const termsClauses = [
     "1. Validity prices are open for acceptance for 30 days from quote date. Please re-confirm the prices after the expiry date before sending your purchase order.",
     "2. Payment Terms 100% due to ZOHO Corp after downloading the software with an official software key that is provided by ZOHO Corp. Orders placed through Zoho Store.",
@@ -537,7 +572,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
   const minRequiredHeight = totalBodyLines * 10.5 + totalSections * 15 + termsClauses.length * 4;
   const surplus = Math.max(0, availableBottomSpace - minRequiredHeight);
 
-  // Dynamically budgeted spacing to gracefully fill the sheet without overflow
+  // Dynamically budgeted spacing
   const sectionGap = Math.min(22, Math.max(10, Math.floor(surplus / (totalSections + 1))));
   const bodyLineHeight = Math.min(13.2, Math.max(10.5, 10.5 + surplus * 0.012));
   const termParaGap = Math.min(6, Math.max(3, Math.floor(surplus / 22)));
@@ -611,7 +646,6 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
           color: rgb(0.35, 0.4, 0.45),
         });
       } else {
-        // Hanging indent for wrapped continuation lines
         page.drawText(lineText, {
           x: margin + 13,
           y,
@@ -627,7 +661,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
 
   y -= sectionGap;
 
-  // Section D: TERMS & CONDITIONS (Verbatim from quote.png)
+  // Section D: TERMS & CONDITIONS
   page.drawText("TERMS & CONDITIONS", {
     x: margin,
     y,

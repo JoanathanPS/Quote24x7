@@ -288,6 +288,32 @@ function packsForPlan(
   for (const addOn of catalogue.addOns) {
     if (addOn.unit !== unit) continue;
     if (!plan.allowedAddOnIds.includes(addOn.id)) continue;
+
+    // Requirement 1: Exclude every add-on marked needs_confirmation,
+    // including "10 GB Logs Storage for 6 Months" and "10GB Log Forwarding".
+    if (
+      addOn.id === "addon_logs_10gb_6mo" ||
+      addOn.id === "addon_log_fwd_10gb" ||
+      /needs_confirmation/i.test(addOn.id) ||
+      /needs_confirmation/i.test(addOn.name) ||
+      /Storage for 6 Months/i.test(addOn.name) ||
+      /Log Forwarding/i.test(addOn.name)
+    ) {
+      continue;
+    }
+
+    // The log requirement may use only the "10 GB Logs / 100 GB Logs / 1 TB Logs" family.
+    if (unit === "applog_gb") {
+      const isAllowedLogFamily =
+        addOn.id === "addon_logs_10gb" ||
+        addOn.id === "addon_logs_100gb" ||
+        addOn.id === "addon_logs_1tb" ||
+        /^(?:10|100|1)\s*(?:GB|TB)\s*Logs$/i.test(addOn.name.trim());
+      if (!isAllowedLogFamily) {
+        continue;
+      }
+    }
+
     const pricePaise = planPrices[addOn.id];
     if (pricePaise === undefined || pricePaise === null) continue;
     matching.push({

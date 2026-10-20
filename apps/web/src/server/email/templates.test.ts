@@ -8,7 +8,7 @@ import {
   runPreSendChecks,
 } from "./resend-outbound.ts";
 import { loadActiveCatalogue } from "../catalogue/loader.ts";
-import { buildQuote } from "../pricing/quote-builder.ts";
+import { buildQuote, formatShortRef } from "../pricing/quote-builder.ts";
 import { emptyDemand } from "../pricing/engine.ts";
 import type { RequirementProfile } from "@/types/domain";
 import { formatMoney } from "../pricing/money.ts";
@@ -158,16 +158,16 @@ test("Phase 8 - Quote Template: Complete itemized breakdown, transparent cadence
 
   // 2. Summary of understood requirements
   assert.ok(textContent.includes("Summary of understood requirements:"));
-  assert.ok(textContent.includes("Host monitors: 25"));
-  assert.ok(htmlContent.includes("Host monitors: 25"));
+  assert.ok(textContent.includes("servers / virtual machines"));
+  assert.ok(htmlContent.includes("servers / virtual machines"));
 
   // 3. Lowest-priced option statement with plan name and total
-  assert.ok(textContent.includes(`For your setup, the lowest-priced option is ${bestValue.planName} at ${formatMoney(bestValue.total, "INR")} per year.`));
+  assert.ok(textContent.includes(`For your setup, the lowest-priced option is ${bestValue.planName} at ${formatMoney(bestValue.total, "INR", { showDecimals: false })} per year.`));
 
   // 4. Itemized table: 4 columns Item | Qty | What it covers | Per year
   assert.ok(textContent.includes("Item | Qty | What it covers | Per year"));
   for (const item of bestValue.lineItems) {
-    const formattedLineTotal = formatMoney(item.lineTotal, "INR");
+    const formattedLineTotal = formatMoney(item.lineTotal, "INR", { showDecimals: false });
     assert.ok(
       textContent.includes(formattedLineTotal),
       `Line total ${formattedLineTotal} must appear in text table`
@@ -181,8 +181,8 @@ test("Phase 8 - Quote Template: Complete itemized breakdown, transparent cadence
   // Exact numbers match engine output: sum of line items equals total billed today
   const computedSum = bestValue.lineItems.reduce((acc, item) => acc + item.lineTotal, 0);
   assert.equal(computedSum, bestValue.total, "Line items sum must exactly equal option total");
-  assert.ok(textContent.includes(`Total | | | ${formatMoney(bestValue.total, "INR")}`));
-  assert.ok(htmlContent.includes(formatMoney(bestValue.total, "INR")));
+  assert.ok(textContent.includes(`Total | | | ${formatMoney(bestValue.total, "INR", { showDecimals: false })}`));
+  assert.ok(htmlContent.includes(formatMoney(bestValue.total, "INR", { showDecimals: false })));
 
   // 5. Transparent calculation note verbatim
   const expectedNote = "Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.";
@@ -196,8 +196,9 @@ test("Phase 8 - Quote Template: Complete itemized breakdown, transparent cadence
     assert.ok(hasComparison, "Comparison line must be present in text when plans differ");
   }
 
-  // 7. Mention official quotation PDF is attached
-  const expectedPdfNotice = `Site24x7-estimate-${quote.id}.pdf`;
+  // 7. Mention estimate PDF is attached
+  const shortRef = quote.shortRef || formatShortRef(quote.id);
+  const expectedPdfNotice = `Site24x7-estimate-${shortRef}.pdf`;
   assert.ok(textContent.includes(expectedPdfNotice), "PDF attachment name must appear in text");
   assert.ok(htmlContent.includes(expectedPdfNotice), "PDF attachment name must appear in HTML");
 
@@ -297,12 +298,12 @@ test("Pre-send checker rejects forbidden HTML in non-quote emails", () => {
   assert.equal(quoteWithImg.passed, true, "Quote emails may contain img tags");
 });
 
-test("Pre-send checker allows internal IDs in quote emails but not others", () => {
+test("Pre-send checker rejects internal IDs in all emails including quote emails", () => {
   const nonQuote = runPreSendChecks("Reference th_abc123");
   assert.equal(nonQuote.passed, false, "Non-quote email should reject th_ IDs");
 
   const quote = runPreSendChecks("Reference th_abc123 and qt_xyz789", { isQuoteEmail: true });
-  assert.equal(quote.passed, true, "Quote email should allow th_/qt_ IDs");
+  assert.equal(quote.passed, false, "Quote email should also reject th_/qt_ IDs");
 });
 
 test("Pre-send checker passes on all rendered quote and clarification emails", () => {

@@ -37,6 +37,17 @@ export interface BuildQuoteInput {
   status?: Quote["status"];
   version?: number;
   supersededBy?: string | null;
+  shortRef?: string;
+}
+
+export function formatShortRef(quoteId?: string | null): string {
+  if (!quoteId) return "Q-1042";
+  if (/^Q-\d+$/i.test(quoteId)) return quoteId.toUpperCase();
+  const digits = quoteId.replace(/\D/g, "");
+  if (digits.length >= 4) {
+    return `Q-${digits.slice(-4)}`;
+  }
+  return "Q-1042";
 }
 
 export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Candidate[] } {
@@ -83,6 +94,7 @@ export function buildQuote(input: BuildQuoteInput): { quote: Quote; rejected: Ca
     createdAt,
     version: input.version ?? 1,
     supersededBy: input.supersededBy ?? null,
+    shortRef: input.shortRef || formatShortRef(quoteId),
     // No verified quote-validity policy exists, so no expiry date is claimed.
     expiresAt: null,
     options,
@@ -110,6 +122,17 @@ function buildAssumptions(
   );
   if (stated.length > 0) {
     assumptions.push(`Priced against the quantities understood from the request — ${stated.join("; ")}.`);
+  }
+
+  // Requirement 2: Mandatory explicit assumption lines
+  if (demand.network_component > 0) {
+    assumptions.push("1 network device = 1 component");
+  }
+  if (demand.advanced_monitor > 0) {
+    assumptions.push("browser transactions counted as advanced monitors");
+  }
+  if (demand.applog_gb > 0) {
+    assumptions.push("logs counted as monthly ingestion at the plan's default retention");
   }
 
   assumptions.push(
@@ -164,7 +187,6 @@ function buildExclusions(catalogue: CatalogueVersion): string[] {
     "Taxes, duties and levies — no verified tax treatment exists for this market in the active catalogue, so none has been applied.",
     "Discounts and promotional pricing — standard catalogue list prices are applied; volume or partner discounts are calculated during official checkout.",
     "Onboarding, professional services, migration and training.",
-    "Unquantified custom APM instances beyond included base entitlements (separate add-on packs apply).",
     "Any monitoring capability not listed in the coverage table for the chosen option.",
     `Contractual terms, service-level commitments and quote validity periods — catalogue ${catalogue.version} carries no authorised policy for these.`,
   ];

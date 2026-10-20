@@ -1141,7 +1141,7 @@ test("Public Proposal Links: Localhost URLs are eliminated and public base URLs 
     false,
     "Customer email body must not contain localhost URL"
   );
-  assert.match(outboundQuoteMsg.bodyText, /quotation document/i);
+  assert.match(outboundQuoteMsg.bodyText, /(?:estimate|quotation) document/i);
 });
 
 test("Phase 7 - Webhook Signature & Duplicate Event Suppression", async () => {

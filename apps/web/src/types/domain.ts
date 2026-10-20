@@ -449,6 +449,8 @@ export interface Quote {
   comparisonLine?: string | null;
   version?: number;
   supersededBy?: string | null;
+  /** Short reference e.g. Q-1042 used for public and customer-facing documents. */
+  shortRef?: string;
   /** Source citations tracing pricing and product claims back to approved knowledge documents. */
   sourceCitations?: ProposalSourceCitation[];
 }

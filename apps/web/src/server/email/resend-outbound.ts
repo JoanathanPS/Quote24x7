@@ -1,4 +1,5 @@
-import type { DeliveryRecord, EmailMessage, EmailThread, Quote } from "@/types/domain";
+import zlib from "node:zlib";
+import type { DeliveryRecord, EmailMessage, EmailThread, Quote, CoverageRow, QuoteLineItem } from "@/types/domain";
 import { getAppConfig, isTestRuntime, formatFromEmail } from "../config.ts";
 import { store } from "../store/session-store.ts";
 import { dryRunStore } from "../store/dryrun-store.ts";
@@ -7,6 +8,7 @@ import { loadActiveCatalogue } from "../catalogue/loader.ts";
 import { buildComparisonLine } from "../pricing/engine.ts";
 import { dedupe, extractMessageIds, normalizeRfcMessageId } from "./rfc-message-id.ts";
 import { getResendClient, isFakeResendActive } from "./fake-resend-provider.ts";
+import { formatShortRef } from "../pricing/quote-builder.ts";
 
 const BANNED_PHRASES = [
   /valued customer/i,
@@ -31,13 +33,169 @@ const BANNED_PHRASES = [
 ];
 
 const EMOJI_RE = /\p{Emoji_Presentation}|\p{Extended_Pictographic}/u;
-const INTERNAL_ID_RE = /\b(th_|qt_)\w+/;
+const INTERNAL_ID_RE = /(?:#?th_[a-zA-Z0-9_-]+|#?qt_[a-zA-Z0-9_-]+|Ref\s+qt_[a-zA-Z0-9_-]+|\bqt_\w+|\bth_\w+|#th_)/i;
 const UNFORMATTED_LARGE_INT_RE = /(?<!₹|INR\s|#)(?<![\d,.])(?<!\.)\b\d{5,}\b(?![\d,])(?!\s*(?:paise|cents))/;
 const NON_QUOTE_HTML_FORBIDDEN = /<img\b|<button\b|background-color\s*:/i;
 
 export interface PreSendCheckResult {
   passed: boolean;
   violations: string[];
+}
+
+function decodePdfHexString(hex: string): string {
+  const clean = hex.replace(/\s+/g, "");
+  if (!clean || clean.length % 2 !== 0) return "";
+  try {
+    const buf = Buffer.from(clean, "hex");
+    if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
+      return buf.subarray(2).swap16().toString("utf16le");
+    }
+    return buf.toString("latin1");
+  } catch {
+    return "";
+  }
+}
+
+function unescapePdfLiteral(s: string): string {
+  return s
+    .replace(/\\\\/g, "\\")
+    .replace(/\\([()])/g, "$1")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t");
+}
+
+export function extractPdfText(buffer: Buffer): string {
+  const raw = buffer.toString("latin1");
+  const extractedPieces: string[] = [];
+
+  // 1. Extract metadata from PDF headers/dictionaries
+  const metaRegex = /\/(?:Title|Author|Subject|Keywords|Creator)\s*(?:<([0-9a-fA-F\s]+)>|\(([^)]*)\))/g;
+  let metaMatch;
+  while ((metaMatch = metaRegex.exec(raw)) !== null) {
+    if (metaMatch[1]) {
+      extractedPieces.push(decodePdfHexString(metaMatch[1]));
+    } else if (metaMatch[2]) {
+      extractedPieces.push(unescapePdfLiteral(metaMatch[2]));
+    }
+  }
+
+  // 2. Extract and inflate streams, then extract all text operators (Tj, TJ, ', ")
+  let pos = 0;
+  while ((pos = raw.indexOf("stream", pos)) !== -1) {
+    let start = pos + 6;
+    if (raw[start] === "\r") start++;
+    if (raw[start] === "\n") start++;
+    const end = raw.indexOf("endstream", start);
+    if (end !== -1) {
+      let realEnd = end;
+      if (raw[realEnd - 1] === "\n") realEnd--;
+      if (raw[realEnd - 1] === "\r") realEnd--;
+      const slice = buffer.subarray(start, realEnd);
+      let streamContent = "";
+      try {
+        streamContent = zlib.inflateSync(slice).toString("latin1");
+      } catch {
+        try {
+          streamContent = zlib.unzipSync(slice).toString("latin1");
+        } catch {
+          streamContent = slice.toString("latin1");
+        }
+      }
+
+      if (streamContent) {
+        // Hex strings: <455354494D415445> Tj
+        const hexTjRegex = /<([0-9a-fA-F\s]+)>\s*(?:Tj|'|")/g;
+        let hMatch;
+        while ((hMatch = hexTjRegex.exec(streamContent)) !== null) {
+          extractedPieces.push(decodePdfHexString(hMatch[1]!));
+        }
+
+        // Literal strings: (text) Tj
+        const litTjRegex = /\(([^)]*)\)\s*(?:Tj|'|")/g;
+        let lMatch;
+        while ((lMatch = litTjRegex.exec(streamContent)) !== null) {
+          extractedPieces.push(unescapePdfLiteral(lMatch[1]!));
+        }
+
+        // TJ array operations: [ (text) -10 <hex> ] TJ
+        const tjArrayRegex = /\[([^\]]*)\]\s*TJ/g;
+        let arrMatch;
+        while ((arrMatch = tjArrayRegex.exec(streamContent)) !== null) {
+          const inner = arrMatch[1]!;
+          const elemRegex = /(?:<([0-9a-fA-F\s]+)>|\(([^)]*)\))/g;
+          let elMatch;
+          while ((elMatch = elemRegex.exec(inner)) !== null) {
+            if (elMatch[1]) {
+              extractedPieces.push(decodePdfHexString(elMatch[1]));
+            } else if (elMatch[2]) {
+              extractedPieces.push(unescapePdfLiteral(elMatch[2]));
+            }
+          }
+        }
+      }
+      pos = end + 9;
+    } else {
+      pos = start;
+    }
+  }
+
+  return extractedPieces.filter(Boolean).join(" ");
+}
+
+export function extractSignatureName(body: string | null | undefined): { name: string; evidence: string } | null {
+  if (!body) return null;
+  const cleanBody = body.replace(/\r\n/g, "\n");
+  const lines = cleanBody.split("\n").map((l) => l.trim());
+
+  const signoffRegex = /^(?:Thanks|Thank you|Best regards|Warm regards|Regards|Cheers|Sincerely|Best),?$/i;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (signoffRegex.test(line)) {
+      for (let j = i + 1; j < Math.min(lines.length, i + 4); j++) {
+        const candidate = lines[j]!;
+        if (!candidate) continue;
+        if (
+          /^[A-Z][a-zA-Z'.]+(?:\s+[A-Z][a-zA-Z'.]+){1,2}$/.test(candidate) &&
+          !/(?:team|support|procurement|site24x7|devops|engineer|manager|lead|director|contact|buyer)/i.test(candidate)
+        ) {
+          return {
+            name: candidate,
+            evidence: `${line} ${candidate}`,
+          };
+        }
+      }
+    }
+  }
+
+  const inlineMatch = cleanBody.match(/(?:Thanks|Thank you|Best regards|Warm regards|Regards|Cheers|Sincerely|Best),\s*([A-Z][a-zA-Z'.]+(?:\s+[A-Z][a-zA-Z'.]+){1,2})/i);
+  if (inlineMatch && inlineMatch[1]) {
+    const candidate = inlineMatch[1].trim();
+    if (!/(?:team|support|procurement|site24x7|devops|engineer|manager|lead|director|contact|buyer)/i.test(candidate)) {
+      return {
+        name: candidate,
+        evidence: inlineMatch[0],
+      };
+    }
+  }
+
+  return null;
+}
+
+export function resolveRecipientName(
+  thread?: EmailThread | null,
+  latestMessageBody?: string | null,
+): { name: string; evidence?: string } {
+  if (latestMessageBody) {
+    const sig = extractSignatureName(latestMessageBody);
+    if (sig) return sig;
+  }
+  const displayName = thread?.senderName?.trim();
+  if (displayName && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown)$/i.test(displayName)) {
+    return { name: displayName };
+  }
+  return { name: "" };
 }
 
 export function runPreSendChecks(
@@ -58,8 +216,9 @@ export function runPreSendChecks(
     violations.push(`Emoji found: "${emojiMatch[0]}"`);
   }
 
+  // Requirement 3: Internal IDs banned on ALL emails, quotes included
   const idMatch = content.match(INTERNAL_ID_RE);
-  if (idMatch && !options?.isQuoteEmail) {
+  if (idMatch) {
     violations.push(`Internal ID exposed: "${idMatch[0]}"`);
   }
 
@@ -367,8 +526,26 @@ async function dispatchEmail(input: DispatchInput): Promise<OutboundDispatchResu
   const bodyContent = input.textContent + "\n" + (input.htmlContent ?? "");
   const check = runPreSendChecks(bodyContent, { isQuoteEmail: input.isQuoteEmail });
   const subjectCheck = runPreSendChecks(input.subject, { isQuoteEmail: true });
-  if (!check.passed || !subjectCheck.passed) {
-    const allViolations = [...check.violations, ...subjectCheck.violations];
+
+  const attachmentViolations: string[] = [];
+  if (input.attachments) {
+    for (const att of input.attachments) {
+      const fnameMatch = att.filename.match(INTERNAL_ID_RE);
+      if (fnameMatch) {
+        attachmentViolations.push(`Internal ID exposed in attachment filename: "${fnameMatch[0]}"`);
+      }
+      if (att.content && (att.filename.endsWith(".pdf") || att.content.subarray(0, 5).toString() === "%PDF-")) {
+        const pdfText = extractPdfText(att.content);
+        const pdfIdMatch = pdfText.match(INTERNAL_ID_RE);
+        if (pdfIdMatch) {
+          attachmentViolations.push(`Internal ID exposed in PDF content: "${pdfIdMatch[0]}"`);
+        }
+      }
+    }
+  }
+
+  if (!check.passed || !subjectCheck.passed || attachmentViolations.length > 0) {
+    const allViolations = [...check.violations, ...subjectCheck.violations, ...attachmentViolations];
     const failedRecord: DeliveryRecord = {
       id: deliveryId,
       threadId: input.threadId,
@@ -549,27 +726,89 @@ async function dispatchEmail(input: DispatchInput): Promise<OutboundDispatchResu
   };
 }
 
+function getWhatItCoversText(item: QuoteLineItem, coverage: CoverageRow[]): string {
+  if (item.ruleId === "RULE-BASE-PRICE") {
+    const parts = coverage
+      .filter((c) => c.included > 0)
+      .map((c) => {
+        if (c.unit === "basic_monitor") return `${c.included} basic monitors`;
+        if (c.unit === "advanced_monitor") return `${c.included} advanced monitor`;
+        if (c.unit === "host_monitor") return `${c.included} host monitors`;
+        if (c.unit === "network_component") return `${c.included} network devices`;
+        if (c.unit === "applog_gb") return `${c.included} GB logs`;
+        if (c.unit === "rum_pageview") return `${c.included.toLocaleString("en-IN")} RUM pageviews`;
+        return `${c.included} ${c.label}`;
+      });
+    return parts.length > 0 ? `Includes ${parts.join(", ")} included in base plan` : "Base plan included entitlements";
+  }
+
+  const desc = item.description.toLowerCase();
+  const purchased = item.purchasedUnits ?? (item.quantity * (item.packSize ?? 1));
+
+  if (desc.includes("advanced")) {
+    return `${purchased} synthetic web checks / browser transactions`;
+  }
+  if (desc.includes("host") || desc.includes("server")) {
+    return `${purchased} servers / VMs / hosts`;
+  }
+  if (desc.includes("log") || item.ruleId.includes("log") || item.unit === "applog_gb") {
+    return `${purchased} GB monthly log ingestion (${item.quantity} × ${item.packSize ?? 100} GB packs)`;
+  }
+  if (desc.includes("network") || desc.includes("switch")) {
+    return `${purchased} network devices (switches, routers, firewalls)`;
+  }
+  if (desc.includes("rum") || desc.includes("pageview")) {
+    return `${purchased.toLocaleString("en-IN")} real user monitoring pageviews / month`;
+  }
+  return `${purchased} units (${item.quantity} × ${item.packSize ?? 1} per pack)`;
+}
+
 /**
- * Deterministically renders the plain text and plain HTML quotation email.
+ * Deterministically renders the plain text and plain HTML quotation email from Golden Template.
  * Table columns: Item | Qty | What it covers | Per year.
- * HTML uses only p, br, ul, ol, li, strong, a, table — no logo, banner or coloured boxes.
+ * Zero decimals, plain-word requirements, real coverage description, standard footer.
  */
 export function renderQuoteEmail(input: {
   recipientName?: string | null;
   quote: Quote;
   threadId: string;
   conversationalResponse?: string | null;
+  latestMessageBody?: string | null;
 }): { textContent: string; htmlContent: string } {
-  const greeting = input.recipientName ? `Hi ${input.recipientName},` : "Hi there,";
+  const shortRef = input.quote.shortRef || formatShortRef(input.quote.id);
+  const nameRes = input.recipientName
+    ? { name: input.recipientName }
+    : resolveRecipientName(null, input.latestMessageBody);
+
+  const greeting = nameRes.name && !/^(?:Procurement Contact|Customer|Valued Customer|Unknown)$/i.test(nameRes.name)
+    ? `Hi ${nameRes.name},`
+    : "Hi there,";
+
   const bestValue =
     input.quote.options.find((o) => o.optionType === "best_value") ?? input.quote.options[0];
   const lowestCost = input.quote.options.find((o) => o.optionType === "lowest_cost");
 
+  // Plain-word requirement summary
   const understoodLines: string[] = [];
   if (bestValue?.coverage && bestValue.coverage.length > 0) {
     for (const row of bestValue.coverage) {
       if (row.required > 0) {
-        understoodLines.push(`• ${row.label}: ${row.required.toLocaleString("en-IN")}`);
+        const count = row.required.toLocaleString("en-IN");
+        if (row.unit === "host_monitor") {
+          understoodLines.push(`• ${count} servers / virtual machines`);
+        } else if (row.unit === "network_component") {
+          understoodLines.push(`• ${count} network devices (switches, firewalls)`);
+        } else if (row.unit === "basic_monitor") {
+          understoodLines.push(`• ${count} website availability checks`);
+        } else if (row.unit === "advanced_monitor") {
+          understoodLines.push(`• ${count} synthetic browser transactions`);
+        } else if (row.unit === "applog_gb") {
+          understoodLines.push(`• ${count} GB monthly log ingestion`);
+        } else if (row.unit === "rum_pageview") {
+          understoodLines.push(`• ${count} real user monitoring pageviews / month`);
+        } else {
+          understoodLines.push(`• ${count} ${row.label}`);
+        }
       }
     }
   }
@@ -580,7 +819,9 @@ export function renderQuoteEmail(input: {
   const catalogue = loadActiveCatalogue();
   const plan = catalogue.plans.find((p) => p.id === bestValue?.planId);
   const planName = bestValue?.planName ?? "Recommended Plan";
-  const totalAmount = formatMoney(bestValue?.total ?? 0, input.quote.currency);
+
+  // No .00 decimals
+  const totalAmount = formatMoney(bestValue?.total ?? 0, input.quote.currency, { showDecimals: false });
   const lineItems = bestValue?.lineItems ?? [];
 
   const rows = lineItems.map((item) => {
@@ -589,16 +830,19 @@ export function renderQuoteEmail(input: {
       plan?.priceMonthlyAnnualBilled ??
       plan?.basePrice ??
       (item.lineTotal ? Math.floor(item.lineTotal / 12) : 0);
+    const monthlyStr = formatMoney(monthlyRate, input.quote.currency, { showDecimals: false });
     const name = isBase
-      ? `${planName} plan (${formatMoney(monthlyRate, input.quote.currency)}/mo x 12months)`
+      ? `${planName} base subscription (${monthlyStr} per month × 12)`
       : item.description;
     const purchased = item.purchasedUnits ?? item.quantity * (item.packSize ?? 1);
     const qty = isBase ? "1" : purchased.toLocaleString("en-IN");
-    const packSize = item.packSize ?? 1;
-    const covers = isBase
-      ? "Base entitlements"
-      : `${packSize.toLocaleString("en-IN")} per pack x ${item.quantity}`;
-    return { name, qty, covers, total: formatMoney(item.lineTotal, input.quote.currency) };
+    const covers = getWhatItCoversText(item, bestValue?.coverage ?? []);
+    return {
+      name,
+      qty,
+      covers,
+      total: formatMoney(item.lineTotal, input.quote.currency, { showDecimals: false }),
+    };
   });
 
   const sep = "--------------------------------------------------------------------------------";
@@ -615,12 +859,12 @@ export function renderQuoteEmail(input: {
     comparisonLine = buildComparisonLine(lowestCost, bestValue);
   }
 
-  const pdfFilename = `Site24x7-estimate-${input.quote.id}.pdf`;
+  const pdfFilename = `Site24x7-estimate-${shortRef}.pdf`;
 
   const textContent = [
     greeting,
     "",
-    "Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your quotation.",
+    "Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your estimate.",
     "",
     "Summary of understood requirements:",
     ...understoodLines,
@@ -632,14 +876,17 @@ export function renderQuoteEmail(input: {
     "Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.",
     ...(comparisonLine ? ["", comparisonLine] : []),
     "",
-    `Your official quotation document (PDF) is attached: ${pdfFilename}`,
+    "I haven't sized for custom APM instances, status pages, or extra alert credits. If you need any of these, let me know and I'll update the estimate.",
+    "",
+    `Your estimate document (PDF) is attached: ${pdfFilename}`,
     "",
     "Estimate valid 30 days. Costs in INR; local taxes extra; final price confirmed by Site24x7 at purchase.",
     "",
     "Reply to this email if you'd like to adjust counts, add capabilities, or change billing frequency.",
     "",
+    "Independent estimate based on Site24x7 India public pricing captured 2026-10-16. Not an official Zoho document.",
     "Quote24x7 Assistant",
-    `Ref ${input.quote.id}`,
+    `Ref ${shortRef}`,
   ].join("\n").trim();
 
   const htmlRows = rows
@@ -659,7 +906,7 @@ export function renderQuoteEmail(input: {
     '<meta charset="utf-8">',
     '<body style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;max-width:600px;margin:0 auto;padding:16px;">',
     `<p>${escapeHtml(greeting)}</p>`,
-    "<p>Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your quotation.</p>",
+    "<p>Thank you for contacting us about Site24x7 monitoring. Based on your stated requirements, here is your estimate.</p>",
     "<p><strong>Summary of understood requirements:</strong></p>",
     `<ul>${htmlUnderstoodList}</ul>`,
     `<p>For your setup, the lowest-priced option is <strong>${escapeHtml(planName)}</strong> at <strong>${escapeHtml(totalAmount)}</strong> per year.</p>`,
@@ -679,11 +926,12 @@ export function renderQuoteEmail(input: {
     "</table>",
     "<p>Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.</p>",
     ...(comparisonLine ? [`<p><strong>Alternative:</strong> ${escapeHtml(comparisonLine)}</p>`] : []),
-    `<p>Your official quotation document (PDF) is attached: <em>${escapeHtml(pdfFilename)}</em></p>`,
+    "<p>I haven't sized for custom APM instances, status pages, or extra alert credits. If you need any of these, let me know and I'll update the estimate.</p>",
+    `<p>Your estimate document (PDF) is attached: <em>${escapeHtml(pdfFilename)}</em></p>`,
     "<p>Estimate valid 30 days. Costs in INR; local taxes extra; final price confirmed by Site24x7 at purchase.</p>",
     "<p>Reply to this email if you'd like to adjust counts, add capabilities, or change billing frequency.</p>",
     "<hr>",
-    `<p style="font-size:12px;color:#666;">Quote24x7 Assistant<br>Ref ${escapeHtml(input.quote.id)}</p>`,
+    `<p style="font-size:12px;color:#666;">Independent estimate based on Site24x7 India public pricing captured 2026-10-16. Not an official Zoho document.<br>Quote24x7 Assistant<br>Ref ${escapeHtml(shortRef)}</p>`,
     "</body>",
     "</html>",
   ].join("\n");
@@ -692,13 +940,24 @@ export function renderQuoteEmail(input: {
 }
 
 export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<OutboundDispatchResult> {
-  const subject = resolveThreadSubject(input.thread.subject);
+  let subject = resolveThreadSubject(input.thread.subject);
+  subject = subject.replace(/#?th_[a-zA-Z0-9_-]+/gi, "").replace(/#?qt_[a-zA-Z0-9_-]+/gi, "").trim();
+
+  // Resolve signature name or display name; never "Procurement Contact"
+  const storeMessages = store.getMessages(input.thread.id);
+  const latestInbound = [...storeMessages].reverse().find((m) => m.direction === "inbound");
+  const nameRes = resolveRecipientName(input.thread, latestInbound?.bodyText);
+  const resolvedName = input.recipientName || nameRes.name || null;
+
+  const shortRef = input.quote.shortRef || formatShortRef(input.quote.id);
+  const pdfFilename = `Site24x7-estimate-${shortRef}.pdf`;
 
   const { textContent, htmlContent } = renderQuoteEmail({
-    recipientName: input.recipientName,
+    recipientName: resolvedName,
     quote: input.quote,
     threadId: input.thread.id,
     conversationalResponse: input.conversationalResponse,
+    latestMessageBody: latestInbound?.bodyText,
   });
 
   return dispatchEmail({
@@ -709,12 +968,12 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
     htmlContent,
     attachments: [
       {
-        filename: `Site24x7-estimate-${input.quote.id}.pdf`,
+        filename: pdfFilename,
         content: input.pdfBuffer,
       },
     ],
     quoteId: input.quote.id,
-    prefixTag: input.quote.id,
+    prefixTag: shortRef,
     isQuoteEmail: true,
   });
 }
