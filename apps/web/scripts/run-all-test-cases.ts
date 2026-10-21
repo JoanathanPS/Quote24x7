@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import nodeFs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { processInboundEmail } from "../src/server/email/inbound-processor.ts";
@@ -8,6 +9,33 @@ import { renderQuotePdf } from "../src/server/documents/pdf-renderer.ts";
 import type { RequirementProfile, CandidateSummary, IntakeRequirement } from "../src/types/domain.ts";
 
 const ATTACHMENTS_DIR = path.resolve(process.cwd(), "test-attachments");
+
+// Determine UTF-8 log output file if specified or default
+const logArg = process.argv.find((a) => a.startsWith("--log-file="));
+const logPath = logArg
+  ? logArg.split("=")[1]
+  : process.argv.indexOf("--log-file") !== -1
+  ? process.argv[process.argv.indexOf("--log-file") + 1]
+  : process.env.LOG_FILE || process.env.HARNESS_LOG_FILE || (process.env.DISABLE_AI === "true" ? "harness-ai-off.log" : "harness-ai-on.log");
+
+let logStream: nodeFs.WriteStream | null = null;
+if (logPath) {
+  const resolvedPath = path.resolve(process.cwd(), logPath);
+  logStream = nodeFs.createWriteStream(resolvedPath, { encoding: "utf8", flags: "w" });
+  const origStdout = process.stdout.write.bind(process.stdout);
+  const origStderr = process.stderr.write.bind(process.stderr);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  process.stdout.write = (chunk: any, encoding?: any, callback?: any): boolean => {
+    if (logStream) logStream.write(chunk);
+    return origStdout(chunk, encoding, callback);
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  process.stderr.write = (chunk: any, encoding?: any, callback?: any): boolean => {
+    if (logStream) logStream.write(chunk);
+    return origStderr(chunk, encoding, callback);
+  };
+}
 
 interface TestCase {
   id: string;
@@ -220,7 +248,8 @@ async function runScenario(tc: TestCase) {
   console.log(`Decision Source: ${initResult.decisionSource || "rules"}`);
   console.log(`Decision Model: ${initResult.decisionModel || "none"}`);
   if (process.env.DISABLE_AI !== "true" && initResult.decisionSource !== "gemini" && initResult.decisionSource !== "groq") {
-    console.log(`[AI RUN STATUS: INVALID — AI call failed: ${initResult.aiFailureCategory || "unknown"}]`);
+    const failureMsg = initResult.aiFailureDetail || initResult.aiFailureCategory || "unknown";
+    console.log(`[AI RUN STATUS: INVALID — AI call failed: ${failureMsg}]`);
   }
   console.log(`Subject: ${outbound1?.subject ?? tc.subject}`);
   console.log(`In-Reply-To (as sent): ${outbound1?.inReplyTo ?? "None (First Turn)"}`);
@@ -303,7 +332,8 @@ async function runScenario(tc: TestCase) {
   console.log(`Decision Source: ${followResult.decisionSource || "rules"}`);
   console.log(`Decision Model: ${followResult.decisionModel || "none"}`);
   if (process.env.DISABLE_AI !== "true" && followResult.decisionSource !== "gemini" && followResult.decisionSource !== "groq") {
-    console.log(`[AI RUN STATUS: INVALID — AI call failed: ${followResult.aiFailureCategory || "unknown"}]`);
+    const failureMsg = followResult.aiFailureDetail || followResult.aiFailureCategory || "unknown";
+    console.log(`[AI RUN STATUS: INVALID — AI call failed: ${failureMsg}]`);
   }
   console.log(`Subject: ${outbound2?.subject ?? `Re: ${tc.subject}`}`);
   console.log(`In-Reply-To (as sent): ${outbound2?.inReplyTo ?? "None"}`);
@@ -413,5 +443,24 @@ async function main() {
   console.log("================================================================================");
 }
 
-main().catch(console.error);
+main()
+  .then(() => {
+    if (logStream) {
+      logStream.end(() => {
+        process.exit(0);
+      });
+    } else {
+      process.exit(0);
+    }
+  })
+  .catch((err) => {
+    console.error(err);
+    if (logStream) {
+      logStream.end(() => {
+        process.exit(1);
+      });
+    } else {
+      process.exit(1);
+    }
+  });
 

@@ -57,10 +57,10 @@ interface MockProvider extends AiProvider {
 }
 
 /** Provider that returns a decision and records the context it was given. */
-function mockProvider(result: AiProviderResult | (() => AiProviderResult)): MockProvider {
+function mockProvider(result: AiProviderResult | (() => AiProviderResult), name = "mock"): MockProvider {
   const calls: GenerateDecisionInput[] = [];
   return {
-    name: "mock",
+    name,
     calls,
     async generateDecision(input) {
       calls.push(input);
@@ -512,8 +512,11 @@ test("Fallback: a missing API key routes to the rules engine and records why", a
     assert.equal(result.record.source, "rules_fallback");
     assert.equal(result.record.model, null);
     assert.equal(result.record.failureCategory, "not_configured");
-    assert.match(result.record.failureDetail ?? "", /GEMINI_API_KEY is not configured/);
-    assert.match(result.record.reasoningSummary, /not by Gemini/i);
+    assert.match(
+      result.record.failureDetail ?? "",
+      /neither groq_api_key nor gemini_api_key is configured|gemini_api_key is not configured/i,
+    );
+    assert.match(result.record.reasoningSummary, /not by (?:Gemini|Groq|the AI provider)/i);
     // The rules engine still does its job.
     assert.equal(result.extraction.demand.host_monitor, 25);
     assert.equal(result.action, "prepare_quote");
@@ -899,7 +902,7 @@ test("Pipeline: a provider outage still yields a quote via the rules fallback", 
   const persisted = store.getLatestAiDecision(result.threadId);
   assert.equal(persisted?.source, "rules_fallback");
   assert.equal(persisted?.failureCategory, "timeout");
-  assert.match(persisted?.reasoningSummary ?? "", /not by Gemini/i);
+  assert.match(persisted?.reasoningSummary ?? "", /not by (?:Gemini|Groq|the AI provider)/i);
 });
 
 test("Pipeline: pricing is identical whether Gemini or the rules engine supplied the demand", async () => {
@@ -1070,4 +1073,157 @@ test("Pipeline: the AI decision is reported in system health and integrations", 
   assert.deepEqual(aiIntegration.requiredEnvVars, ["GEMINI_API_KEY", "GEMINI_MODEL"]);
   // Env var names only; never a value.
   assert.ok(!JSON.stringify(aiIntegration).includes("AIza"));
+});
+
+// ---------------------------------------------------------------------------
+// Multi-provider fallback chain (Groq & Gemini)
+// ---------------------------------------------------------------------------
+
+test("Provider chain: Groq succeeds and produces decision with source 'groq'", async () => {
+  const groq = mockProvider(
+    {
+      ok: true,
+      decision: decision({
+        customerSummary: "Groq sized customer",
+        knownRequirements: [
+          { unit: "host_monitor", quantity: 25, basis: "stated", evidence: "25 Linux servers", confidence: 0.95 },
+        ],
+      }),
+      model: "openai/gpt-oss-120b",
+      latencyMs: 320,
+      attempts: 1,
+    },
+    "groq",
+  );
+
+  const gemini = mockProvider(
+    {
+      ok: true,
+      decision: decision(),
+      model: "gemini-3.8-flash",
+      latencyMs: 500,
+      attempts: 1,
+    },
+    "gemini",
+  );
+
+  const result = await decideNextAction(engineerInput(), { groq, gemini });
+  assert.equal(result.record.source, "groq");
+  assert.equal(result.record.model, "openai/gpt-oss-120b");
+  assert.equal(result.record.failureCategory, null);
+  assert.equal(result.record.failureDetail, null);
+  assert.equal(result.action, "prepare_quote");
+  assert.equal(groq.calls.length, 1);
+  assert.equal(gemini.calls.length, 0, "Gemini must not be called when Groq succeeds");
+});
+
+test("Provider chain: Groq fails then Gemini succeeds with source 'gemini'", async () => {
+  const groq = mockProvider(
+    {
+      ok: false,
+      category: "rate_limited",
+      detail: "Groq rate limit reached: TPM limit 8000 exceeded",
+      model: "openai/gpt-oss-120b",
+      latencyMs: 150,
+      attempts: 2,
+    },
+    "groq",
+  );
+
+  const gemini = mockProvider(
+    {
+      ok: true,
+      decision: decision({
+        customerSummary: "Gemini sized customer after Groq fail",
+        knownRequirements: [
+          { unit: "host_monitor", quantity: 25, basis: "stated", evidence: "25 Linux servers", confidence: 0.95 },
+        ],
+      }),
+      model: "gemini-3.8-flash",
+      latencyMs: 450,
+      attempts: 1,
+    },
+    "gemini",
+  );
+
+  const result = await decideNextAction(engineerInput(), { groq, gemini });
+  assert.equal(result.record.source, "gemini");
+  assert.equal(result.record.model, "gemini-3.8-flash");
+  assert.equal(result.record.failureCategory, null);
+  assert.equal(result.action, "prepare_quote");
+  assert.equal(groq.calls.length, 1);
+  assert.equal(gemini.calls.length, 1, "Gemini must be called as fallback after Groq fails");
+});
+
+test("Provider chain: both fail and BOTH errors are recorded in failureDetail with no API keys", async () => {
+  const groq = mockProvider(
+    {
+      ok: false,
+      category: "rate_limited",
+      detail: "Groq 429 TPM limit exceeded with key gsk_1234567890abcdefghijklmn",
+      model: "openai/gpt-oss-120b",
+      latencyMs: 180,
+      attempts: 2,
+    },
+    "groq",
+  );
+
+  const gemini = mockProvider(
+    {
+      ok: false,
+      category: "provider_error",
+      detail: "Gemini 503 service unavailable with key AIzaSyD1234567890abcdefghijklmn",
+      model: "gemini-3.8-flash",
+      latencyMs: 350,
+      attempts: 2,
+    },
+    "gemini",
+  );
+
+  const result = await decideNextAction(engineerInput(), { groq, gemini });
+  assert.equal(result.record.source, "rules_fallback");
+  assert.equal(result.record.failureCategory, "rate_limited");
+  assert.ok(result.record.failureDetail, "failureDetail must be populated");
+
+  // Assert both providers are in failureDetail
+  assert.match(result.record.failureDetail, /groq:\s*rate_limited/i);
+  assert.match(result.record.failureDetail, /gemini:\s*provider_error/i);
+
+  // Assert API keys are never included in failureDetail
+  assert.ok(!result.record.failureDetail.includes("gsk_1234567890"));
+  assert.ok(!result.record.failureDetail.includes("AIzaSyD1234567890"));
+  assert.match(result.record.failureDetail, /\[REDACTED_KEY\]/);
+
+  // Assert both providers were invoked
+  assert.equal(groq.calls.length, 1);
+  assert.equal(gemini.calls.length, 1);
+  assert.equal(result.action, "prepare_quote");
+});
+
+test("Provider chain: Groq returns malformed JSON and falls back with neutral provider naming", async () => {
+  // Test parseDecisionResponse with Groq provider name
+  const malformedOutput = parseDecisionResponse("{ malformed json output :::", "Groq");
+  assert.equal(malformedOutput.ok, false);
+  assert.equal(malformedOutput.category, "invalid_output");
+  assert.match(malformedOutput.detail, /^Groq response was not valid JSON/);
+  assert.ok(!malformedOutput.detail.includes("Gemini"));
+
+  // Test full decideNextAction with invalid JSON from Groq
+  const groq = mockProvider(
+    {
+      ok: false,
+      category: "invalid_output",
+      detail: "Groq response was not valid JSON: Unexpected token at pos 2",
+      model: "openai/gpt-oss-120b",
+      latencyMs: 200,
+      attempts: 2,
+    },
+    "groq",
+  );
+
+  const result = await decideNextAction(engineerInput(), { groq, gemini: null });
+  assert.equal(result.record.source, "rules_fallback");
+  assert.equal(result.record.failureCategory, "invalid_output");
+  assert.match(result.record.failureDetail ?? "", /groq:\s*invalid_output/i);
+  assert.match(result.record.reasoningSummary, /not by Groq/i);
 });

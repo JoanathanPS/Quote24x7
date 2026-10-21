@@ -83,6 +83,7 @@ export interface InboundProcessingResult {
   decisionModel?: string | null;
   /** Set when the AI path was attempted and could not be used. */
   aiFailureCategory?: AiFailureCategory | null;
+  aiFailureDetail?: string | null;
 }
 
 const inFlightMessageIds = new Set<string>();
@@ -1039,6 +1040,7 @@ async function doProcessInboundEmail(
     decisionSource: decision.record.source,
     decisionModel: decision.record.model,
     aiFailureCategory: decision.record.failureCategory,
+    aiFailureDetail: decision.record.failureDetail,
   } as const;
 
   if (extraction.organization && !thread.organisation) {

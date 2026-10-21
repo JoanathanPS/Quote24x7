@@ -128,34 +128,41 @@ export const groqProvider: AiProvider = {
     for (let attempt = 1; attempt <= config.aiMaxAttempts; attempt += 1) {
       attemptsMade = attempt;
       try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        const isReasoningModel = model.includes("gpt-oss") || model.includes("120b") || model.includes("deepseek") || model.includes("r1");
+        const requestPayload: Record<string, unknown> = {
+          model,
+          messages: [
+            {
+              role: "system",
+              content: input.systemInstruction,
+            },
+            {
+              role: "user",
+              content: input.userPrompt,
+            },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "ai_decision",
+              schema: buildResponseJsonSchema(),
+            },
+          },
+          temperature: 0,
+          max_tokens: 8192,
+        };
+        if (isReasoningModel) {
+          requestPayload.reasoning_effort = "low";
+        }
+        const requestBodyText = JSON.stringify(requestPayload);
+
+        const response: Response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${config.groqApiKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            model,
-            messages: [
-              {
-                role: "system",
-                content: input.systemInstruction,
-              },
-              {
-                role: "user",
-                content: input.userPrompt,
-              },
-            ],
-            response_format: {
-              type: "json_schema",
-              json_schema: {
-                name: "ai_decision",
-                schema: buildResponseJsonSchema(),
-              },
-            },
-            temperature: 0,
-            max_tokens: 4096,
-          }),
+          body: requestBodyText,
           signal: AbortSignal.timeout(config.aiTimeoutMs),
         });
 
@@ -168,18 +175,65 @@ export const groqProvider: AiProvider = {
           } catch {
             // keep raw text
           }
+
+          let retryWaitMs: number | null = null;
+          if (response.status === 429) {
+            const rateLimitHeaders: Record<string, string> = {};
+            response.headers.forEach((val, key) => {
+              const lowerKey = key.toLowerCase();
+              if (lowerKey.startsWith("x-ratelimit-") || lowerKey === "retry-after") {
+                rateLimitHeaders[lowerKey] = val;
+              }
+            });
+            console.warn(
+              `[Groq 429] Request body size: ${requestBodyText.length} bytes | Rate limits: ${JSON.stringify(rateLimitHeaders)}`,
+            );
+
+            const retryAfterHeader = response.headers.get("retry-after");
+            if (retryAfterHeader) {
+              const parsedSeconds = parseFloat(retryAfterHeader);
+              if (Number.isFinite(parsedSeconds) && parsedSeconds > 0) {
+                retryWaitMs = Math.min(Math.round(parsedSeconds * 1000), 20_000);
+              }
+            } else {
+              const resetHeader =
+                response.headers.get("x-ratelimit-reset-tokens") ||
+                response.headers.get("x-ratelimit-reset-requests");
+              if (resetHeader) {
+                const match = resetHeader.match(/([\d.]+)\s*s?/);
+                if (match) {
+                  const parsedSeconds = parseFloat(match[1]!);
+                  if (Number.isFinite(parsedSeconds) && parsedSeconds > 0) {
+                    retryWaitMs = Math.min(Math.round(parsedSeconds * 1000), 20_000);
+                  }
+                }
+              }
+            }
+          }
+
           lastFailure = classifyGroqError(response.status, parsedMsg, response.headers.get("retry-after"));
           if (!lastFailure.retryable || attempt === config.aiMaxAttempts) break;
-          await sleep(backoffDelayMs(attempt));
+
+          const waitMs = retryWaitMs ?? backoffDelayMs(attempt);
+          if (response.status === 429 && retryWaitMs) {
+            console.warn(
+              `[Groq] Rate limited (429). Waiting ${waitMs}ms (capped at 20s) before retry attempt ${attempt + 1}/${config.aiMaxAttempts}...`,
+            );
+          }
+          await sleep(waitMs);
           continue;
         }
 
         const data = (await response.json()) as {
-          choices?: Array<{ message?: { content?: string } }>;
+          choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
         };
-        const rawContent = data.choices?.[0]?.message?.content;
+        const choice = data.choices?.[0];
+        if (choice?.finish_reason === "length") {
+          console.warn("[Groq] Response was truncated due to max_tokens limit (finish_reason: length).");
+        }
+        const rawContent = choice?.message?.content;
 
-        const parsed = parseDecisionResponse(rawContent);
+        const parsed = parseDecisionResponse(rawContent, "Groq");
         if (parsed.ok) {
           return {
             ok: true,

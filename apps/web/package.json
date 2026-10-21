@@ -2,6 +2,7 @@
   "name": "@quote24x7/web",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Quote24x7 operational console — independent Site24x7 pricing assistant (internship project, not an official Zoho or Site24x7 product).",
   "scripts": {
     "dev": "next dev",

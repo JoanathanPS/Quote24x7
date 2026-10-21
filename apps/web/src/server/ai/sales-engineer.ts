@@ -125,7 +125,7 @@ export function getAiAvailability(): AiAvailability {
       available: false,
       category: "not_configured",
       detail:
-        "Neither GROQ_API_KEY nor GEMINI_API_KEY is configured (GEMINI_API_KEY is not configured); the rules-based engine decided this thread.",
+        "Neither GROQ_API_KEY nor GEMINI_API_KEY is configured; the rules-based engine decided this thread.",
     };
   }
   if (process.env.DISABLE_AI === "true") {
@@ -147,6 +147,22 @@ export function getAiAvailability(): AiAvailability {
   return { available: true, category: null, detail: null };
 }
 
+export interface ProviderChainOptions {
+  groq?: AiProvider | null;
+  gemini?: AiProvider | null;
+}
+
+function sanitizeFailureText(text: string): string {
+  const config = getAppConfig();
+  let sanitized = text;
+  if (config.groqApiKey) sanitized = sanitized.split(config.groqApiKey).join("[REDACTED_KEY]");
+  if (config.geminiApiKey) sanitized = sanitized.split(config.geminiApiKey).join("[REDACTED_KEY]");
+  return sanitized
+    .replace(/gsk_[0-9A-Za-z_-]{15,}/g, "[REDACTED_KEY]")
+    .replace(/AIza[0-9A-Za-z_-]{15,}/g, "[REDACTED_KEY]")
+    .replace(/AQ\.[0-9A-Za-z_-]{15,}/g, "[REDACTED_KEY]");
+}
+
 /**
  * Runs the sales engineer for one inbound message.
  *
@@ -159,7 +175,8 @@ export function getAiAvailability(): AiAvailability {
  */
 export async function decideNextAction(
   input: SalesEngineerInput,
-  provider?: AiProvider,
+  provider?: AiProvider | ProviderChainOptions,
+  fallbackProvider?: AiProvider,
 ): Promise<SalesDecision> {
   // Always compute the deterministic result. It is both the fallback and the
   // source of the commercial metadata the AI schema does not cover.
@@ -193,22 +210,32 @@ export async function decideNextAction(
     attachments: input.attachments,
   });
 
-  if (provider) {
-    const result = await provider.generateDecision({
+  const isChainOptions = Boolean(provider && typeof provider === "object" && ("groq" in provider || "gemini" in provider));
+  const explicitChain: ProviderChainOptions | null = isChainOptions
+    ? (provider as ProviderChainOptions)
+    : provider && fallbackProvider
+    ? { groq: provider as AiProvider, gemini: fallbackProvider }
+    : null;
+
+  if (provider && !isChainOptions && !fallbackProvider) {
+    const single = provider as AiProvider;
+    const result = await single.generateDecision({
       systemInstruction: context.systemInstruction,
       userPrompt: context.userPrompt,
     });
 
     if (!result.ok) {
-      return buildFallbackDecision(input, rulesResult, result.category, result.detail, result.latencyMs);
+      const sanitizedDetail = sanitizeFailureText(result.detail);
+      const provName = single.name && single.name !== "mock" ? single.name : "the AI provider";
+      return buildFallbackDecision(input, rulesResult, result.category, sanitizedDetail, result.latencyMs, provName);
     }
 
-    const source: DecisionSource = provider.name === "groq" ? "groq" : "gemini";
+    const source: DecisionSource = single.name === "groq" ? "groq" : "gemini";
     return buildAiDecision(input, rulesResult, result.decision, result.model, result.latencyMs, source);
   }
 
   const availability = getAiAvailability();
-  if (!availability.available) {
+  if (!availability.available && !explicitChain) {
     return buildFallbackDecision(
       input,
       rulesResult,
@@ -218,10 +245,15 @@ export async function decideNextAction(
   }
 
   const config = getAppConfig();
+  const primaryProvider = explicitChain ? explicitChain.groq : (config.groqApiKey ? groqProvider : null);
+  const secondaryProvider = explicitChain ? explicitChain.gemini : (config.geminiApiKey ? geminiProvider : null);
 
-  // Primary: Groq (ultra-fast LPU inference, generous free tier limits)
-  if (config.groqApiKey) {
-    const groqResult = await groqProvider.generateDecision({
+  let groqFailure: { category: AiFailureCategory; detail: string; latencyMs: number | null } | null = null;
+  let geminiFailure: { category: AiFailureCategory; detail: string; latencyMs: number | null } | null = null;
+
+  // 1. Primary: Groq
+  if (primaryProvider) {
+    const groqResult = await primaryProvider.generateDecision({
       systemInstruction: context.systemInstruction,
       userPrompt: context.userPrompt,
     });
@@ -237,15 +269,16 @@ export async function decideNextAction(
       );
     }
 
-    // If Groq fails and Gemini is not configured, fall back to rules
-    if (!config.geminiApiKey) {
-      return buildFallbackDecision(input, rulesResult, groqResult.category, groqResult.detail, groqResult.latencyMs);
-    }
+    groqFailure = {
+      category: groqResult.category,
+      detail: sanitizeFailureText(groqResult.detail),
+      latencyMs: groqResult.latencyMs,
+    };
   }
 
-  // Secondary: Gemini
-  if (config.geminiApiKey) {
-    const geminiResult = await geminiProvider.generateDecision({
+  // 2. Secondary: Gemini
+  if (secondaryProvider) {
+    const geminiResult = await secondaryProvider.generateDecision({
       systemInstruction: context.systemInstruction,
       userPrompt: context.userPrompt,
     });
@@ -261,16 +294,54 @@ export async function decideNextAction(
       );
     }
 
+    geminiFailure = {
+      category: geminiResult.category,
+      detail: sanitizeFailureText(geminiResult.detail),
+      latencyMs: geminiResult.latencyMs,
+    };
+  }
+
+  // If both providers failed, record both in failureDetail
+  if (groqFailure && geminiFailure) {
+    const combinedDetail = `groq: ${groqFailure.category} - ${groqFailure.detail} (${groqFailure.latencyMs ?? 0}ms) | gemini: ${geminiFailure.category} - ${geminiFailure.detail} (${geminiFailure.latencyMs ?? 0}ms)`;
+    const totalLatency = (groqFailure.latencyMs ?? 0) + (geminiFailure.latencyMs ?? 0);
     return buildFallbackDecision(
       input,
       rulesResult,
-      geminiResult.category,
-      geminiResult.detail,
-      geminiResult.latencyMs,
+      groqFailure.category,
+      combinedDetail,
+      totalLatency,
+      "Groq / Gemini",
     );
   }
 
-  return buildFallbackDecision(input, rulesResult, "not_configured", "No AI provider configured.");
+  // If only Groq was attempted and failed
+  if (groqFailure) {
+    const groqDetail = `groq: ${groqFailure.category} - ${groqFailure.detail} (${groqFailure.latencyMs ?? 0}ms)`;
+    return buildFallbackDecision(
+      input,
+      rulesResult,
+      groqFailure.category,
+      groqDetail,
+      groqFailure.latencyMs,
+      "Groq",
+    );
+  }
+
+  // If only Gemini was attempted and failed
+  if (geminiFailure) {
+    const geminiDetail = `gemini: ${geminiFailure.category} - ${geminiFailure.detail} (${geminiFailure.latencyMs ?? 0}ms)`;
+    return buildFallbackDecision(
+      input,
+      rulesResult,
+      geminiFailure.category,
+      geminiDetail,
+      geminiFailure.latencyMs,
+      "Gemini",
+    );
+  }
+
+  return buildFallbackDecision(input, rulesResult, "not_configured", "No AI provider configured.", null, "the AI provider");
 }
 
 // ---------------------------------------------------------------------------
@@ -638,6 +709,7 @@ function buildFallbackDecision(
   category: AiFailureCategory,
   detail: string,
   latencyMs: number | null = null,
+  providerName = "the AI provider",
 ): SalesDecision {
   const roundsSpent = input.existingProfile?.clarificationRound ?? 0;
   const humanReviewReasons: string[] = [];
@@ -673,7 +745,7 @@ function buildFallbackDecision(
     assumptions: [],
     followUpQuestions: rulesResult.suggestedQuestion ? [rulesResult.suggestedQuestion.question] : [],
     reasoningSummary:
-      `Decided by the deterministic rules engine, not by Gemini. ${truncateForLog(detail, 200)} ` +
+      `Decided by the deterministic rules engine, not by ${providerName}. ${truncateForLog(detail, 200)} ` +
       `Pattern extraction found ${rulesResult.missingMaterialFields.length} unresolved material field(s).`,
     confidence: null,
     humanReviewReasons,

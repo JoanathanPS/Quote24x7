@@ -102,22 +102,27 @@ export const aiDecisionSchema = z.object({
   missingRequirements: z
     .array(missingRequirementSchema)
     .max(12)
+    .default([])
     .describe("Quantities that are genuinely unknown. Never list a unit that already appears in knownRequirements."),
   assumptions: z
     .array(z.string().max(300))
     .max(10)
+    .default([])
     .describe("Assumptions you made that the customer should be able to check and correct."),
   recommendedProductCategories: z
     .array(z.enum(PRODUCT_CATEGORIES))
     .max(8)
+    .default([])
     .describe("Monitoring categories this customer needs. Only categories the supplied catalogue supports."),
   referencedPlanIds: z
     .array(z.string().max(80))
     .max(6)
+    .default([])
     .describe("Plan ids from the supplied catalogue that look like a fit. Advisory only; the pricing engine ranks plans itself."),
   followUpQuestions: z
     .array(z.string().max(300))
     .max(4)
+    .default([])
     .describe(
       "Only questions whose answers change the configuration or price. Empty unless action is ask_follow_up. Never ask for anything already in knownRequirements or in the conversation history. Never ask for a budget.",
     ),
@@ -130,6 +135,7 @@ export const aiDecisionSchema = z.object({
   humanReviewReasons: z
     .array(z.string().max(300))
     .max(6)
+    .default([])
     .describe("Why a human is needed. Empty unless action is human_review."),
   conversationalResponse: z
     .string()

@@ -236,9 +236,10 @@ export function extractJsonObject(text: string): string | null {
  */
 export function parseDecisionResponse(
   text: string | undefined,
+  providerName = "AI provider",
 ): { ok: true; decision: AiDecisionOutput } | { ok: false; category: AiFailureCategory; detail: string } {
   if (!text || text.trim().length === 0) {
-    return { ok: false, category: "invalid_output", detail: "Gemini returned an empty response body." };
+    return { ok: false, category: "invalid_output", detail: `${providerName} returned an empty response body.` };
   }
 
   const jsonText = extractJsonObject(text);
@@ -246,7 +247,7 @@ export function parseDecisionResponse(
     return {
       ok: false,
       category: "invalid_output",
-      detail: `Gemini response contained no JSON object (received ${text.length} characters of prose).`,
+      detail: `${providerName} response contained no JSON object (received ${text.length} characters of prose).`,
     };
   }
 
@@ -257,7 +258,7 @@ export function parseDecisionResponse(
     return {
       ok: false,
       category: "invalid_output",
-      detail: `Gemini response was not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      detail: `${providerName} response was not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 
@@ -270,7 +271,7 @@ export function parseDecisionResponse(
     return {
       ok: false,
       category: "schema_violation",
-      detail: `Gemini output failed schema validation: ${issues}`,
+      detail: `${providerName} output failed schema validation: ${issues}`,
     };
   }
 
@@ -338,7 +339,7 @@ export const geminiProvider: AiProvider = {
           },
         });
 
-        const parsed = parseDecisionResponse(response.text);
+        const parsed = parseDecisionResponse(response.text, "Gemini");
         if (parsed.ok) {
           return {
             ok: true,
