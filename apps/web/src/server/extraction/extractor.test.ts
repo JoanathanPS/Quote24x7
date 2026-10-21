@@ -761,5 +761,121 @@ test("Item 1: Evidence Integrity validator with Case 1 body and PDF", async () =
   assert.notEqual(intake.rum_pageview.evidence, "Explicitly stated no RUM pageviews");
 });
 
+test("Regression 1: '4 websites' (no qualifier) alongside servers is read as 4 basic monitors", () => {
+  const res = extractRequirements({
+    threadId: "th_reg_1",
+    senderEmail: "buyer@example.com",
+    subject: "Quote",
+    bodyText: "We run 30 Linux servers and 3 firewalls, and we want to monitor 4 websites. No synthetics or RUM.",
+  });
+  assert.equal(res.demand.basic_monitor, 4);
+  assert.equal(res.demand.host_monitor, 30);
+  assert.equal(res.demand.network_component, 3);
+});
+
+test("Regression 2: '250k pageviews per month on 2 websites' gives 2 basic monitors and 250,000 RUM", () => {
+  const res = extractRequirements({
+    threadId: "th_reg_2",
+    senderEmail: "buyer@example.com",
+    subject: "Quote",
+    bodyText: "We need 250k pageviews per month on 2 websites. No servers, no network, no logs, no synthetics.",
+  });
+  assert.equal(res.demand.basic_monitor, 2);
+  assert.equal(res.demand.rum_pageview, 250_000);
+});
+
+test("Regression 3: 'charged us 3000 per server per year' with 10 servers gives 10 host monitors (price ignored)", () => {
+  const res = extractRequirements({
+    threadId: "th_reg_3",
+    senderEmail: "buyer@example.com",
+    subject: "Quote",
+    bodyText: "Our previous vendor charged us 3000 per server per year. We currently have 10 servers and nothing else.",
+  });
+  assert.equal(res.demand.host_monitor, 10);
+});
+
+test("Regression 4: two groups of same unit are added together", () => {
+  // Servers
+  const resServers = extractRequirements({
+    threadId: "th_reg_4a",
+    senderEmail: "buyer@example.com",
+    subject: "Quote",
+    bodyText: "We have 8 database servers and 22 application servers. Nothing else.",
+  });
+  assert.equal(resServers.demand.host_monitor, 30);
+
+  // Network devices: 40 switches and 6 routers
+  const resNet = extractRequirements({
+    threadId: "th_reg_4b",
+    senderEmail: "buyer@example.com",
+    subject: "Quote",
+    bodyText: "We need monitoring for 40 switches and 6 routers. No other monitoring needed.",
+  });
+  assert.equal(resNet.demand.network_component, 46);
+
+  // Websites / basic monitors: 12 websites and 3 TCP port checks
+  const resWeb = extractRequirements({
+    threadId: "th_reg_4c",
+    senderEmail: "buyer@example.com",
+    subject: "Quote",
+    bodyText: "We have 12 websites and 3 TCP port checks. No servers or logs.",
+  });
+  assert.equal(resWeb.demand.basic_monitor, 15);
+});
+
+test("Regression 5: CIDR suffix, ports, tickets, phone numbers do not become quantities", () => {
+  const res = extractRequirements({
+    threadId: "th_reg_5",
+    senderEmail: "buyer@example.com",
+    subject: "Quote",
+    bodyText: "Ticket #84920: Check subnet 10.0.4.0/24 listening on port 8080. Call me on 9876543210. We have 5 servers only.",
+  });
+  assert.equal(res.demand.advanced_monitor, 0);
+  assert.equal(res.demand.host_monitor, 5);
+});
+
+test("Regression 6: word numbers ('twenty-five servers') and '1.5 TB' are parsed as 25 hosts and 1536 GB logs", () => {
+  const res = extractRequirements({
+    threadId: "th_reg_6",
+    senderEmail: "buyer@example.com",
+    subject: "Quote",
+    bodyText: "We have twenty-five servers, eight websites, and 1.5 TB of logs monthly. No network or RUM.",
+  });
+  assert.equal(res.demand.host_monitor, 25);
+  assert.equal(res.demand.basic_monitor, 8);
+  assert.equal(res.demand.applog_gb, 1536);
+});
+
+test("Regression 7: corrections in later turns override earlier values", () => {
+  // '40 servers instead of 50'
+  const resInstead = extractRequirements({
+    threadId: "th_reg_7a",
+    senderEmail: "buyer@example.com",
+    subject: "Quote",
+    bodyText: "We have 50 servers.\n\nUpdate: it is 40 servers instead of 50, and no network devices.",
+  });
+  assert.equal(resInstead.demand.host_monitor, 40);
+
+  // 'Correction: the 20 websites should be 25'
+  const resWebCorr = extractRequirements({
+    threadId: "th_reg_7b",
+    senderEmail: "buyer@example.com",
+    subject: "Quote",
+    bodyText: "Quote for 100 servers and 20 websites, nothing else.\n\nCorrection: the 20 websites should be 25. Servers unchanged.",
+  });
+  assert.equal(resWebCorr.demand.basic_monitor, 25);
+  assert.equal(resWebCorr.demand.host_monitor, 100);
+
+  // 'Actually make that 45 servers'
+  const resMakeThat = extractRequirements({
+    threadId: "th_reg_7c",
+    senderEmail: "buyer@example.com",
+    subject: "Quote",
+    bodyText: "I need monitoring for around 60 servers.\n\nActually make that 45 servers. I forgot 2 firewalls. No other monitoring needed.",
+  });
+  assert.equal(resMakeThat.demand.host_monitor, 45);
+  assert.equal(resMakeThat.demand.network_component, 2);
+});
+
 
 

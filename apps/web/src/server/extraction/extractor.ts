@@ -339,7 +339,61 @@ export function maskModelTokens(text: string): string {
     .replace(/\b(?:Windows\s+Server|Windows)\s+\d+\b/gi, "Windows_Server_OS")
     .replace(/\bUbuntu\s+\d+(?:\.\d+)?\b/gi, "Ubuntu_OS")
     .replace(/\b[cmr]\d+\.[a-zA-Z0-9]+\b/gi, "CLOUD_INSTANCE")
-    .replace(/\b(?:c5|m5|r5|t3|t4g)\.[a-zA-Z0-9]+\b/gi, "CLOUD_INSTANCE");
+    .replace(/\b(?:c5|m5|r5|t3|t4g)\.[a-zA-Z0-9]+\b/gi, "CLOUD_INSTANCE")
+    .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d+\b/gi, "CIDR_BLOCK")
+    .replace(/\b(?:port|ports)\s+\d+\b/gi, "PORT_NUMBER")
+    .replace(/\b(?:ticket|case|issue|ref)\s*#?\s*\d+\b/gi, "TICKET_NUMBER")
+    .replace(/\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/gi, "PHONE_NUMBER")
+    .replace(/\b\d{10,12}\b/gi, "PHONE_NUMBER")
+    .replace(/\b(?:charged\s+(?:us\s+)?|costs?|paying|rate|price|fee|budget\s*(?:of|is|:)?)\s*(?:[$€£₹]|\b(?:rs\.?|inr|usd)\b)?\s*\d[\d,.]*(?:\s*(?:per|\/)\s*[a-z]+)*/gi, "PRICE_TOKEN")
+    .replace(/(?:[$€£₹]|\b(?:rs\.?|inr|usd)\s*)\d[\d,.]*(?:\s*(?:per|\/)\s*[a-z]+)*/gi, "PRICE_TOKEN")
+    .replace(/\b\d[\d,.]*\s*(?:per|\/)\s*(?:server|host|device|switch|router|vm|month|year|annum|hr|hour|day|user|seat|gb|tb)\b(?:\s*(?:per|\/)\s*[a-z]+)*/gi, "PRICE_TOKEN");
+}
+
+const WORD_TO_INT: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
+  eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70,
+  eighty: 80, ninety: 90, hundred: 100,
+};
+
+const TENS_WORDS = "twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety";
+const ONES_WORDS = "one|two|three|four|five|six|seven|eight|nine";
+const TEENS_WORDS = "ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen";
+const ALL_NUM_WORDS = `${TENS_WORDS}|${ONES_WORDS}|${TEENS_WORDS}|hundred`;
+const WORD_NUMBER_REGEX_PART = `(?:(?:${TENS_WORDS})[\\s-]+(?:${ONES_WORDS})|${ALL_NUM_WORDS})`;
+
+function parseWordNumber(str: string): number | null {
+  const clean = str.toLowerCase().trim().replace(/-/g, " ");
+  const parts = clean.split(/\s+/);
+  if (parts.length === 1) {
+    return WORD_TO_INT[parts[0]] ?? null;
+  }
+  if (parts.length === 2) {
+    const tens = WORD_TO_INT[parts[0]];
+    const ones = WORD_TO_INT[parts[1]];
+    if (tens !== undefined && ones !== undefined) {
+      return tens + ones;
+    }
+  }
+  return null;
+}
+
+function extractCombinedEvidence(rawText: string, matches: RegExpMatchArray[]): string {
+  if (matches.length === 0) return "";
+  if (matches.length === 1) return matches[0][0].trim();
+  const firstStr = matches[0][0].trim();
+  const lastStr = matches[matches.length - 1][0].trim();
+  const lower = rawText.toLowerCase();
+  const idx1 = lower.indexOf(firstStr.toLowerCase());
+  const idx2 = lower.lastIndexOf(lastStr.toLowerCase());
+  if (idx1 !== -1 && idx2 !== -1 && idx2 >= idx1) {
+    const end = idx2 + lastStr.length;
+    if (end - idx1 <= 150) {
+      return rawText.slice(idx1, end).trim();
+    }
+  }
+  return firstStr;
 }
 
 /**
@@ -400,7 +454,23 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   const serverChangeMatch =
     text.match(/(?:reduce|lower|increase|change|adjust)\s*(?:servers?|hosts?|vms?)\s*to\s*(\d+)/i) ||
     text.match(/(\d+)\s*(?:servers?|hosts?|vms?)?\s*instead\s+of\s*(\d+)/i) ||
-    text.match(/make\s+it\s+(\d+)\s*(?:servers?|hosts?|vms?)/i);
+    text.match(/(?:make\s+(?:it|that)|should\s+be)\s+(\d+)\s*(?:servers?|hosts?|vms?)/i);
+
+  const inlineServerMatches = [
+    ...text.matchAll(
+      /(\d+)\s*(?:[a-z\s]{0,25}?)\b(servers?|hosts?|vms?|instances?|nodes?|machines?)\b/gi,
+    ),
+  ].filter(
+    (m) =>
+      !m[0].toLowerCase().includes("per ") &&
+      !m[0].toLowerCase().includes("instead of") &&
+      !m[0].toLowerCase().includes("reduce to") &&
+      !m[0].toLowerCase().includes("change to"),
+  );
+  let inlineHostSum = 0;
+  if (!authoritativeHostMatch && !serverChangeMatch && inlineServerMatches.length > 1) {
+    inlineHostSum = inlineServerMatches.reduce((acc, m) => acc + parseInt(m[1]!, 10), 0);
+  }
 
   const itemLineServerMatches = [...text.matchAll(/(?:^|\n)[^\S\r\n]*[•\-\*]?\s*(\d+)\s+([^\n\r]*?\b(?:Linux|Windows|Ubuntu|Database|Active\s+Directory|Hosts?|Servers?|Nodes?|VMs?)\b[^\n\r]*)/gi)];
   let itemLineHostSum = 0;
@@ -429,6 +499,10 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     text.match(
       /(?:servers?|hosts?|nodes?|instances?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
     );
+
+  const wordServerMatch = text.match(
+    new RegExp(`\\b(${WORD_NUMBER_REGEX_PART})\\s*(?:production\\s+|prod\\s+|linux\\s+|windows\\s+|database\\s+|app\\s+|application\\s+|web\\s+|virtual\\s+|cloud\\s+)?\\b(servers?|hosts?|vms?|instances?|nodes?|machines?)\\b`, "i"),
+  );
 
   if (serverNone) {
     serverCount = 0;
@@ -502,10 +576,46 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       previousValue: null,
       materialToPricing: true,
     });
+  } else if (inlineHostSum > 0) {
+    serverCount = inlineHostSum;
+    serverState = "stated";
+    serverEvidence = extractCombinedEvidence(rawText, inlineServerMatches);
+    fields.push({
+      key: "servers",
+      label: "Server / Host Monitors",
+      group: "infrastructure",
+      value: serverCount,
+      unit: "servers",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.95,
+      evidence: serverEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
   } else if (serverMatch && serverMatch[1]) {
     serverCount = parseInt(serverMatch[1], 10);
     serverState = "stated";
     serverEvidence = serverMatch[0].trim();
+    fields.push({
+      key: "servers",
+      label: "Server / Host Monitors",
+      group: "infrastructure",
+      value: serverCount,
+      unit: "servers",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.98,
+      evidence: serverEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
+  } else if (wordServerMatch && wordServerMatch[1] && parseWordNumber(wordServerMatch[1]) !== null) {
+    serverCount = parseWordNumber(wordServerMatch[1])!;
+    serverState = "stated";
+    serverEvidence = wordServerMatch[0].trim();
     fields.push({
       key: "servers",
       label: "Server / Host Monitors",
@@ -549,9 +659,23 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     rawText.match(/Total\s+(?:Network\s+)?Component\s+Requirement\s*[:=]\s*(\d+)/i);
 
   const netChangeMatch =
-    text.match(/(?:reduce|lower|increase|change|adjust)\s*(?:network|switches?|devices?)\s*to\s*(\d+)/i) ||
-    text.match(/(\d+)\s*(?:network\s+devices?|switches?|routers?)?\s*instead\s+of\s*(\d+)/i) ||
-    text.match(/make\s+it\s+(\d+)\s*(?:network\s+devices?|switches?)/i);
+    text.match(/(?:reduce|lower|increase|change|adjust)\s*(?:network|switches?|devices?|routers?|firewalls?)\s*to\s*(\d+)/i) ||
+    text.match(/(\d+)\s*(?:network\s+devices?|switches?|routers?|firewalls?)?\s*instead\s+of\s*(\d+)/i) ||
+    text.match(/(?:make\s+(?:it|that)|should\s+be)\s+(\d+)\s*(?:network\s+devices?|switches?|routers?|firewalls?)/i);
+
+  const inlineNetMatches = [
+    ...text.matchAll(
+      /(\d+)\s*(?:[a-z\s]{0,25}?)\b(switches?|routers?|firewalls?|network\s+(?:devices?|components?|gear)?)\b/gi,
+    ),
+  ].filter(
+    (m) =>
+      !m[0].toLowerCase().includes("per ") &&
+      !m[0].toLowerCase().includes("instead of"),
+  );
+  let inlineNetSum = 0;
+  if (!authoritativeNetMatch && !netChangeMatch && inlineNetMatches.length > 1) {
+    inlineNetSum = inlineNetMatches.reduce((acc, m) => acc + parseInt(m[1]!, 10), 0);
+  }
 
   const itemLineNetMatches = [...text.matchAll(/(?:^|\n)[^\S\r\n]*[•\-\*]?\s*(\d+)\s+([^\n\r]*?\b(?:Catalyst|FortiGate|Switches?|Routers?|Firewalls?|Network\s+Devices?)\b[^\n\r]*)/gi)];
   let itemLineNetSum = 0;
@@ -576,6 +700,10 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     text.match(
       /(?:network(?:\s+devices?)?|switches?|routers?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
     );
+
+  const wordNetMatch = text.match(
+    new RegExp(`\\b(${WORD_NUMBER_REGEX_PART})\\s*(?:network\\s+|core\\s+|access\\s+|cisco\\s+)?\\b(switches?|routers?|firewalls?|network(?:\\s+devices?)?)\\b`, "i"),
+  );
 
   const netNoneMatch = text.match(
     /\b(?:no\s+network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?|gear))?|without\s+network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?|gear))?|zero\s+network|0\s+network|don'?t\s+need\s+network|network\s*:\s*(?:none|0|no)|no\s+(?:switches|routers|firewalls)|without\s+(?:switches|routers|firewalls)|remove\s+(?:all\s+)?network(?:\s+devices?)?)\b/i,
@@ -659,10 +787,46 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       previousValue: null,
       materialToPricing: true,
     });
+  } else if (inlineNetSum > 0) {
+    networkCount = inlineNetSum;
+    networkState = "stated";
+    networkEvidence = extractCombinedEvidence(rawText, inlineNetMatches);
+    fields.push({
+      key: "network_devices",
+      label: "Network Devices",
+      group: "infrastructure",
+      value: networkCount,
+      unit: "devices",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.95,
+      evidence: networkEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
   } else if (netMatch && netMatch[1]) {
     networkCount = parseInt(netMatch[1], 10);
     networkState = "stated";
     networkEvidence = netMatch[0].trim();
+    fields.push({
+      key: "network_devices",
+      label: "Network Devices",
+      group: "infrastructure",
+      value: networkCount,
+      unit: "devices",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.95,
+      evidence: networkEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
+  } else if (wordNetMatch && wordNetMatch[1] && parseWordNumber(wordNetMatch[1]) !== null) {
+    networkCount = parseWordNumber(wordNetMatch[1])!;
+    networkState = "stated";
+    networkEvidence = wordNetMatch[0].trim();
     fields.push({
       key: "network_devices",
       label: "Network Devices",
@@ -708,25 +872,25 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     /^\s*\d+\.\s+[A-Za-z]/i.test(line.trim());
 
   let basicCountCandidate: { quantity: number; evidence: string } | null = null;
+
+  const websiteChangeMatch =
+    text.match(/(?:the\s+)?(?:\d+\s+)?(?:websites?|urls?)\s+should\s+be\s+(\d+)/i) ||
+    text.match(/(?:make\s+(?:it|that)|change\s+to|update\s+to)\s+(\d+)\s*(?:websites?|urls?)/i) ||
+    text.match(/(\d+)\s*(?:websites?|urls?)?\s*instead\s+of\s*(\d+)/i);
+
+  if (websiteChangeMatch && websiteChangeMatch[1]) {
+    basicCountCandidate = {
+      quantity: parseInt(websiteChangeMatch[1], 10),
+      evidence: websiteChangeMatch[0].trim(),
+    };
+  }
+
   const itemLineBasicMatches = [
     ...text.matchAll(/(?:^|\n)[^\S\r\n]*[•\-\*]?\s*(\d+)[^\S\r\n]*([^\n\r]*?\b(?:basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?)?|standard(?:\s+monitors?)?|websites?|urls?|web\s+sites?|apis?|api\s+endpoints?|rest\s+apis?|web\s+endpoints?|endpoints?|website(?:\s+uptime|\s+availability)?(?:\s+monitors?|\s+checks?)?)\b[^\n\r]*)/gi),
   ];
-  for (const m of itemLineBasicMatches) {
-    if (!isServerLine(m[0]) && !isSectionHeading(m[0])) {
-      basicCountCandidate = {
-        quantity: parseInt(m[1]!, 10),
-        evidence: m[0].trim(),
-      };
-      break;
-    }
-  }
-
   if (!basicCountCandidate) {
-    const inlineBasicMatches = [
-      ...text.matchAll(/(\d+)[^\S\r\n]*(?:[a-z0-9 \t/-]{0,35}?)\b(?:basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?)?|standard(?:\s+monitors?)?|websites?|urls?|web\s+sites?|api\s+endpoints?|rest\s+apis?|web\s+endpoints?|website(?:\s+uptime|\s+availability)(?:\s+monitors?|\s+checks?)?)\b/gi),
-    ];
-    for (const m of inlineBasicMatches) {
-      if (!isServerLine(m[0])) {
+    for (const m of itemLineBasicMatches) {
+      if (!isServerLine(m[0]) && !isSectionHeading(m[0])) {
         basicCountCandidate = {
           quantity: parseInt(m[1]!, 10),
           evidence: m[0].trim(),
@@ -737,11 +901,48 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   }
 
   if (!basicCountCandidate) {
+    const inlineBasicMatches = [
+      ...text.matchAll(
+        /(\d+)\s*(?:public\s+|external\s+|internal\s+|secure\s+|monitored\s+|active\s+)?\b(websites?|urls?|web\s+sites?|api\s+endpoints?|rest\s+apis?|web\s+endpoints?|endpoints?|basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?|\s+checks?)?|uptime(?:\s+monitors?|\s+checks?)?|tcp\s+port\s+checks?)\b/gi,
+      ),
+    ].filter((m) => {
+      const raw = m[0].toLowerCase();
+      if (raw.includes("pageview") || raw.includes("rum") || raw.includes("million")) return false;
+      return true;
+    });
+
+    if (inlineBasicMatches.length > 1) {
+      const sum = inlineBasicMatches.reduce((acc, m) => acc + parseInt(m[1]!, 10), 0);
+      basicCountCandidate = {
+        quantity: sum,
+        evidence: extractCombinedEvidence(rawText, inlineBasicMatches),
+      };
+    } else if (inlineBasicMatches.length === 1) {
+      basicCountCandidate = {
+        quantity: parseInt(inlineBasicMatches[0]![1]!, 10),
+        evidence: inlineBasicMatches[0]![0].trim(),
+      };
+    }
+  }
+
+  if (!basicCountCandidate) {
     const mColon = text.match(/(?:basic|ping|port|website\s+uptime|uptime\s+checks?|websites?|urls?|apis?|endpoints?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i);
     if (mColon && mColon[1] && !isServerLine(mColon[0])) {
       basicCountCandidate = {
         quantity: parseInt(mColon[1], 10),
         evidence: mColon[0].trim(),
+      };
+    }
+  }
+
+  if (!basicCountCandidate) {
+    const wordBasicMatch = text.match(
+      new RegExp(`\\b(${WORD_NUMBER_REGEX_PART})\\s*(?:public\\s+|external\\s+|internal\\s+|secure\\s+|monitored\\s+|active\\s+)?\\b(websites?|urls?|web\\s+sites?|api\\s+endpoints?|rest\\s+apis?|web\\s+endpoints?|endpoints?|basic(?:\\s+monitors?)?|uptime\\s+checks?|website\\s+checks?|tcp\\s+port\\s+checks?)\\b`, "i"),
+    );
+    if (wordBasicMatch && wordBasicMatch[1] && parseWordNumber(wordBasicMatch[1]) !== null) {
+      basicCountCandidate = {
+        quantity: parseWordNumber(wordBasicMatch[1])!,
+        evidence: wordBasicMatch[0].trim(),
       };
     }
   }
@@ -884,7 +1085,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const appApmMatch =
     text.match(
-      /(\d+)\s*(?:[a-z\s]{0,15}?)\b(?:java|node(?:\.js)?|python|\.net|php|ruby|go)?\s*(?:apps?|applications?|apm(?:\s+instances?|\s+monitors?)?)\b/i,
+      /(\d+)\s*(?:[a-z\s]{0,15}?)\b(?:java|node(?:\.js)?|python|\.net|php|ruby|go)?\s*(?:apps?|applications?|apm(?:\s+instances?|\s+monitors?)?)(?!\s*(?:servers?|hosts?|vms?|nodes?|instances?|machines?))\b/i,
     ) ||
     text.match(
       /(?:java|node(?:\.js)?|python|\.net|php|ruby|go|apm)\s*(?:apps?|applications?|instances?)\s*(?:count|total|:|=)\s*(\d+)/i,
@@ -1133,8 +1334,9 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     /(\d[\d,.]*)\s*(?:gb|gigabytes?)\s*(?:\/|\s+per\s+|\s+a\s+)\s*day(?:\s*\(x30\))?\b/i,
   );
   const logMatch =
+    text.match(/(?:logs?|applogs?)\s*(?:are\s+around|is\s+around|are|is)?\s*(\d+(?:[.,]\d+)?)\s*(tb|terabytes?|gb|gigabytes?)/i) ||
     text.match(
-      /(\d[\d,.]*)[^\S\r\n]*(?:gb|gigabytes?|tb|terabytes?)[^\S\r\n]*(?:[a-z \t/]{0,20}?)\b(?:applogs?|logs?)\b/i,
+      /(\d[\d,.]*)[^\S\r\n]*(gb|gigabytes?|tb|terabytes?)[^\S\r\n]*(?:[a-z \t/]{0,20}?)\b(?:applogs?|logs?)\b/i,
     ) ||
     text.match(
       /(?:applogs?|logs?|log\s+management)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d[\d,.]*)"?\s*(?:gb|gigabytes?|tb|terabytes?)?/i,
@@ -1165,8 +1367,8 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       applogEvidence = logDayMatch[0].trim();
     } else if (logMatch && logMatch[1]) {
       let rawVal = parseFloat(logMatch[1].replace(/,/g, ""));
-      if (logMatch[0].toLowerCase().includes("tb")) {
-        rawVal *= 1000;
+      if (logMatch[0].toLowerCase().includes("tb") || logMatch[0].toLowerCase().includes("terabyte")) {
+        rawVal *= 1024;
       }
       applogGb = Math.round(rawVal);
       applogEvidence = logMatch[0].trim();
