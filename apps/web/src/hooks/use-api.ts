@@ -158,3 +158,35 @@ export function useKnowledgeDocuments(params?: {
     refetchInterval: 5000,
   });
 }
+
+// ---------------------------------------------------------------------------
+// AI Provider Configuration & Small Model Dataset
+// ---------------------------------------------------------------------------
+
+export interface AiProviderConfig {
+  activeProvider: "groq" | "ollama" | "gemini" | "rules";
+  providers: {
+    groq: { id: string; name: string; model: string; configured: boolean; description: string };
+    ollama: { id: string; name: string; model: string; baseUrl: string; configured: boolean; description: string };
+    gemini: { id: string; name: string; model: string; configured: boolean; description: string };
+    rules: { id: string; name: string; model: string; configured: boolean; description: string };
+  };
+  dataset: {
+    loaded: boolean;
+    title: string;
+    version: string;
+    collectedAt: string;
+    plansCount: number;
+    addonsCount: number;
+    rulesCount: number;
+    examplesCount: number;
+  };
+}
+
+export function useAiProviderConfig() {
+  return useQuery({
+    queryKey: ["ai-provider-config"],
+    queryFn: () => apiGet<AiProviderConfig>("/api/v1/ai/provider"),
+    refetchInterval: 4000,
+  });
+}

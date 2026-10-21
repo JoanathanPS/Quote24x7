@@ -7,14 +7,16 @@ import { toMarkdown } from "../src/server/benchmark/report.ts";
 import { groqProvider } from "../src/server/ai/groq-provider.ts";
 import { cerebrasProvider } from "../src/server/ai/cerebras-provider.ts";
 import { geminiProvider } from "../src/server/ai/gemini-provider.ts";
+import { ollamaProvider } from "../src/server/ai/ollama-provider.ts";
 
 /**
  * Usage (from apps/web):
  *   node --env-file=.env.local --experimental-strip-types scripts/run-benchmark.ts --provider rules
  *   node --env-file=.env.local --experimental-strip-types scripts/run-benchmark.ts --provider groq --delay-ms 4000
  *   node --env-file=.env.local --experimental-strip-types scripts/run-benchmark.ts --provider cerebras --delay-ms 2000
+ *   node --env-file=.env.local --experimental-strip-types scripts/run-benchmark.ts --provider ollama
  *
- * Options: --provider rules|groq|cerebras|gemini  --repeats N  --limit N  --ids a,b  --category x,y
+ * Options: --provider rules|groq|cerebras|gemini|ollama  --repeats N  --limit N  --ids a,b  --category x,y
  *          --delay-ms N  --out DIR  --export-dataset FILE  --log-file FILE
  */
 function arg(name: string): string | undefined {
@@ -99,8 +101,10 @@ async function main() {
       ? cerebrasProvider
       : providerName === "gemini"
       ? geminiProvider
+      : providerName === "ollama"
+      ? ollamaProvider
       : null;
-  if (providerName !== "rules" && !provider) throw new Error(`Unknown provider "${providerName}". Use rules, groq, cerebras or gemini.`);
+  if (providerName !== "rules" && !provider) throw new Error(`Unknown provider "${providerName}". Use rules, groq, cerebras, gemini or ollama.`);
 
   console.log(`\n=== Running Quote24x7 Benchmark: Provider=${providerName} ===\n`);
 

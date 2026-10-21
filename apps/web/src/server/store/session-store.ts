@@ -58,6 +58,7 @@ class SessionStore {
   private processedMessageIds: Set<string> = new Set(); // for idempotency
   private webhookEvents: Set<string> = new Set(); // for webhook event idempotency (provider:eventId)
   private outboundSendingPaused = false;
+  private activeAiProvider: "groq" | "ollama" | "cerebras" | "gemini" | "rules" | null = null;
   private initialized = false;
   private pendingWrites: Promise<unknown>[] = [];
   private threadSavePromises: Map<string, Promise<unknown>> = new Map();
@@ -121,6 +122,18 @@ class SessionStore {
         // Ignore file errors
       }
     }
+  }
+
+  public getActiveAiProvider(): "groq" | "ollama" | "cerebras" | "gemini" | "rules" {
+    this.ensureInitialized();
+    if (this.activeAiProvider) return this.activeAiProvider;
+    const config = getAppConfig();
+    return config.activeAiProvider;
+  }
+
+  public setActiveAiProvider(provider: "groq" | "ollama" | "cerebras" | "gemini" | "rules"): void {
+    this.ensureInitialized();
+    this.activeAiProvider = provider;
   }
 
   private isTestEnvironment(): boolean {
@@ -1009,6 +1022,15 @@ class SessionStore {
           ? `Model ${config.groqModel}. High-speed LPU inference with generous free-tier limits.`
           : "No GROQ_API_KEY. Add GROQ_API_KEY to apps/web/.env.local for ultra-fast LPU inference.",
         requiredEnvVars: ["GROQ_API_KEY", "GROQ_MODEL"],
+        docsPath: "docs/integrations/ai-provider.md",
+      },
+      {
+        id: "int_ai_ollama",
+        name: `Local Ollama (${config.ollamaModel})`,
+        category: "ai",
+        state: "configured",
+        detail: `Local Ollama engine at ${config.ollamaBaseUrl} using model ${config.ollamaModel}. Zero cloud egress, fully private local execution.`,
+        requiredEnvVars: ["OLLAMA_BASE_URL", "OLLAMA_MODEL"],
         docsPath: "docs/integrations/ai-provider.md",
       },
       {

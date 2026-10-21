@@ -15,6 +15,7 @@
     "check": "npm run catalogue:build && npm run lint && npm run typecheck && npm run test",
     "benchmark": "node --env-file=.env.local --experimental-strip-types scripts/run-benchmark.ts",
     "benchmark:rules": "node --experimental-strip-types scripts/run-benchmark.ts --provider rules",
+    "benchmark:ollama": "node --env-file=.env.local --experimental-strip-types scripts/run-benchmark.ts --provider ollama",
     "benchmark:export": "node --experimental-strip-types scripts/run-benchmark.ts --export-dataset benchmark-dataset-v1.json",
     "mail:preview": "echo 'Start the dev server (npm run dev) then visit http://localhost:3000/api/v1/preview?threadId=<ID>&type=quote|clarification'",
     "diag:inbound": "node --experimental-strip-types scripts/diag-inbound.mjs"
@@ -40,6 +41,7 @@
     "motion": "14.1.1",
     "next": "15.5.27",
     "next-themes": "0.4.6",
+    "openai": "^7.39.0",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^1.1.1",
     "react": "19.3.0",

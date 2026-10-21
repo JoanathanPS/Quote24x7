@@ -12,10 +12,14 @@ import {
   Cpu,
   Database,
   FilePdf,
+  BookOpen,
+  Lightning,
+  Robot,
+  Brain,
 } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { useSystemHealth } from "@/hooks/use-api";
+import { useIntegrations, useSystemHealth, useAiProviderConfig } from "@/hooks/use-api";
 import { cn } from "@/lib/utils";
 
 import {
@@ -51,6 +55,72 @@ export default function SettingsPage() {
   // Unchecked = Dispatch Paused (kill switch engaged)
   const [dispatchActive, setDispatchActive] = React.useState<boolean>(true);
   const [switchFeedback, setSwitchFeedback] = React.useState<string | null>(null);
+
+  const { data: aiConfig, refetch: refetchAiConfig } = useAiProviderConfig();
+  const { refetch: refetchIntegrations } = useIntegrations();
+  const [selectedAiProvider, setSelectedAiProvider] = React.useState<string>("groq");
+  const [aiFeedback, setAiFeedback] = React.useState<string | null>(null);
+  const [, setIsSwitchingAi] = React.useState<boolean>(false);
+  const [pingingOllama, setPingingOllama] = React.useState<boolean>(false);
+  const [ollamaPingResult, setOllamaPingResult] = React.useState<{
+    ok: boolean;
+    latencyMs?: number | null;
+    configuredModel?: string;
+    modelsAvailable?: string[];
+    error?: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    if (aiConfig?.activeProvider) {
+      setSelectedAiProvider(aiConfig.activeProvider);
+    }
+  }, [aiConfig?.activeProvider]);
+
+  const handleSelectAiProvider = async (provider: "groq" | "ollama" | "gemini" | "rules") => {
+    setIsSwitchingAi(true);
+    setSelectedAiProvider(provider);
+    try {
+      const res = await fetch("/api/v1/ai/provider", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAiFeedback(data.message || `Switched active AI engine to ${provider}.`);
+        refetchAiConfig();
+        refetchIntegrations();
+      } else {
+        setAiFeedback(`Failed to switch provider: ${data.error || "Unknown error"}`);
+      }
+    } catch (err) {
+      setAiFeedback(`Failed to switch provider: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsSwitchingAi(false);
+      setTimeout(() => setAiFeedback(null), 5000);
+    }
+  };
+
+  const handlePingOllama = async () => {
+    setPingingOllama(true);
+    setOllamaPingResult(null);
+    try {
+      const res = await fetch("/api/v1/ai/test-ollama", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      setOllamaPingResult(data);
+    } catch (err) {
+      setOllamaPingResult({
+        ok: false,
+        error: `Could not reach local endpoint: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    } finally {
+      setPingingOllama(false);
+    }
+  };
 
   // Sync initial health value once loaded
   React.useEffect(() => {
@@ -184,6 +254,251 @@ export default function SettingsPage() {
           </Button>
         </div>
       </div>
+
+      {/* AI Sales Engineer Engine Selection Card */}
+      <Card className="border-border bg-surface shadow-xs">
+        <CardContent className="p-5 sm:p-6 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Brain className="h-5 w-5 text-primary" weight="bold" />
+                <h3 className="text-base font-semibold text-foreground">
+                  AI Sales Engineer Engine Selection
+                </h3>
+                <Badge variant="primary" className="text-xs font-mono font-semibold">
+                  Active: {aiConfig?.activeProvider?.toUpperCase() ?? selectedAiProvider.toUpperCase()}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Choose which model interprets customer emails and sizes configurations. Sizing decisions are always audited, and pricing calculations are strictly owned by the deterministic engine.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pingingOllama}
+                onClick={handlePingOllama}
+                className="h-8 text-xs gap-1.5"
+              >
+                {pingingOllama ? (
+                  <ArrowsClockwise className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Cpu className="h-3.5 w-3.5 text-primary" weight="bold" />
+                )}
+                Test Ollama Connection
+              </Button>
+            </div>
+          </div>
+
+          {/* Provider Selection Options */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Groq Cloud */}
+            <div
+              onClick={() => handleSelectAiProvider("groq")}
+              className={cn(
+                "cursor-pointer rounded-xl border p-4 transition-all relative flex flex-col justify-between",
+                selectedAiProvider === "groq"
+                  ? "border-primary bg-primary-soft/30 ring-1 ring-primary/40 shadow-xs"
+                  : "border-border hover:border-border-strong hover:bg-surface-soft/40"
+              )}
+            >
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Lightning className="h-4 w-4 text-warning" weight="fill" />
+                    <span className="font-semibold text-sm">Groq LPU (Cloud)</span>
+                  </div>
+                  {selectedAiProvider === "groq" && (
+                    <Badge variant="success" className="text-[10px] py-0 px-1.5 font-bold">ACTIVE</Badge>
+                  )}
+                </div>
+                <div className="text-[11px] font-mono text-muted-foreground">
+                  {aiConfig?.providers.groq.model || "openai/gpt-oss-120b"}
+                </div>
+                <p className="text-xs text-muted-foreground leading-snug">
+                  High-speed cloud inference with generous free-tier limits. Primary production model.
+                </p>
+              </div>
+              <div className="mt-3 pt-2 border-t border-border/30 flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">Status:</span>
+                <span className={aiConfig?.providers.groq.configured ? "text-success font-medium" : "text-muted-foreground italic"}>
+                  {aiConfig?.providers.groq.configured ? "API Key Configured" : "No Key (Fallback)"}
+                </span>
+              </div>
+            </div>
+
+            {/* Local Ollama */}
+            <div
+              onClick={() => handleSelectAiProvider("ollama")}
+              className={cn(
+                "cursor-pointer rounded-xl border p-4 transition-all relative flex flex-col justify-between",
+                selectedAiProvider === "ollama"
+                  ? "border-primary bg-primary-soft/30 ring-1 ring-primary/40 shadow-xs"
+                  : "border-border hover:border-border-strong hover:bg-surface-soft/40"
+              )}
+            >
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="h-4 w-4 text-primary" weight="fill" />
+                    <span className="font-semibold text-sm">Local Ollama</span>
+                  </div>
+                  {selectedAiProvider === "ollama" && (
+                    <Badge variant="success" className="text-[10px] py-0 px-1.5 font-bold">ACTIVE</Badge>
+                  )}
+                </div>
+                <div className="text-[11px] font-mono text-primary font-medium">
+                  {aiConfig?.providers.ollama.model || "llama3.2:1b"}
+                </div>
+                <p className="text-xs text-muted-foreground leading-snug">
+                  Private on-premise inference on http://localhost:11434. Zero cloud egress.
+                </p>
+              </div>
+              <div className="mt-3 pt-2 border-t border-border/30 flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">Endpoint:</span>
+                <span className="font-mono text-[10px] text-foreground font-medium">localhost:11434</span>
+              </div>
+            </div>
+
+            {/* Google Gemini */}
+            <div
+              onClick={() => handleSelectAiProvider("gemini")}
+              className={cn(
+                "cursor-pointer rounded-xl border p-4 transition-all relative flex flex-col justify-between",
+                selectedAiProvider === "gemini"
+                  ? "border-primary bg-primary-soft/30 ring-1 ring-primary/40 shadow-xs"
+                  : "border-border hover:border-border-strong hover:bg-surface-soft/40"
+              )}
+            >
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Robot className="h-4 w-4 text-info" weight="fill" />
+                    <span className="font-semibold text-sm">Google Gemini</span>
+                  </div>
+                  {selectedAiProvider === "gemini" && (
+                    <Badge variant="success" className="text-[10px] py-0 px-1.5 font-bold">ACTIVE</Badge>
+                  )}
+                </div>
+                <div className="text-[11px] font-mono text-muted-foreground">
+                  {aiConfig?.providers.gemini.model || "gemini-3.8-flash"}
+                </div>
+                <p className="text-xs text-muted-foreground leading-snug">
+                  Google multimodal cloud model. Secondary cloud fallback.
+                </p>
+              </div>
+              <div className="mt-3 pt-2 border-t border-border/30 flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">Status:</span>
+                <span className={aiConfig?.providers.gemini.configured ? "text-success font-medium" : "text-muted-foreground italic"}>
+                  {aiConfig?.providers.gemini.configured ? "Key Configured" : "Not Set"}
+                </span>
+              </div>
+            </div>
+
+            {/* Rules Fallback */}
+            <div
+              onClick={() => handleSelectAiProvider("rules")}
+              className={cn(
+                "cursor-pointer rounded-xl border p-4 transition-all relative flex flex-col justify-between",
+                selectedAiProvider === "rules"
+                  ? "border-primary bg-primary-soft/30 ring-1 ring-primary/40 shadow-xs"
+                  : "border-border hover:border-border-strong hover:bg-surface-soft/40"
+              )}
+            >
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="h-4 w-4 text-neutral" weight="bold" />
+                    <span className="font-semibold text-sm">Rules Engine</span>
+                  </div>
+                  {selectedAiProvider === "rules" && (
+                    <Badge variant="success" className="text-[10px] py-0 px-1.5 font-bold">ACTIVE</Badge>
+                  )}
+                </div>
+                <div className="text-[11px] font-mono text-muted-foreground">
+                  deterministic-v1
+                </div>
+                <p className="text-xs text-muted-foreground leading-snug">
+                  0-token regex and policy engine. Guarantees deterministic parsing without LLM calls.
+                </p>
+              </div>
+              <div className="mt-3 pt-2 border-t border-border/30 flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">Offline:</span>
+                <span className="text-success font-medium">Always Ready</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Feedback Banner */}
+          {aiFeedback && (
+            <div className="flex items-center gap-2 p-3 rounded-lg border border-primary/30 bg-primary-soft text-xs text-primary-soft-foreground animate-fade-in">
+              <CheckCircle className="h-4 w-4 shrink-0 text-primary" weight="fill" />
+              <span>{aiFeedback}</span>
+            </div>
+          )}
+
+          {/* Ollama Live Ping Result */}
+          {ollamaPingResult && (
+            <div className={cn(
+              "flex items-start gap-2.5 p-3 rounded-lg border text-xs animate-fade-in",
+              ollamaPingResult.ok
+                ? "border-success/30 bg-success-soft text-success"
+                : "border-warning/30 bg-warning-soft text-warning"
+            )}>
+              {ollamaPingResult.ok ? (
+                <CheckCircle className="h-4 w-4 shrink-0 mt-0.5" weight="fill" />
+              ) : (
+                <XCircle className="h-4 w-4 shrink-0 mt-0.5 text-danger" weight="fill" />
+              )}
+              <div className="space-y-1">
+                <div className="font-semibold">
+                  {ollamaPingResult.ok
+                    ? `Local Ollama is ONLINE (${ollamaPingResult.latencyMs}ms)`
+                    : "Local Ollama Connection Check"}
+                </div>
+                <div className="text-[11px] leading-relaxed">
+                  {ollamaPingResult.ok ? (
+                    <span>
+                      Connected to endpoint <span className="font-mono font-medium">{aiConfig?.providers.ollama.baseUrl}</span> with model <span className="font-mono font-medium">{ollamaPingResult.configuredModel}</span>.
+                      {ollamaPingResult.modelsAvailable && ollamaPingResult.modelsAvailable.length > 0 && (
+                        <span> (Installed in local Ollama: {ollamaPingResult.modelsAvailable.join(", ")})</span>
+                      )}
+                    </span>
+                  ) : (
+                    <span>{ollamaPingResult.error}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Small Model Recommendation Pricing Dataset Status */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg border border-border/60 bg-surface-soft/40">
+            <div className="flex items-center gap-2.5">
+              <BookOpen className="h-4 w-4 text-primary shrink-0" weight="bold" />
+              <div>
+                <div className="text-xs font-semibold text-foreground flex items-center gap-2">
+                  <span>Site24x7 Small Model Recommendation Pricing Dataset</span>
+                  <Badge variant="neutral" className="text-[10px] font-mono py-0 px-1.5">v{aiConfig?.dataset.version || "1.0.0"}</Badge>
+                </div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  {aiConfig?.dataset.title} (Catalog updated {aiConfig?.dataset.collectedAt})
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 text-[11px] font-mono text-muted-foreground shrink-0">
+              <span>{aiConfig?.dataset.plansCount ?? 12} plans</span>
+              <span>•</span>
+              <span>{aiConfig?.dataset.addonsCount ?? 98} add-on packs</span>
+              <span>•</span>
+              <span>{aiConfig?.dataset.rulesCount ?? 7} license rules</span>
+              <span>•</span>
+              <span>{aiConfig?.dataset.examplesCount ?? 10} examples</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Global Outbound Dispatch Switch Card */}
       <Card className={cn(

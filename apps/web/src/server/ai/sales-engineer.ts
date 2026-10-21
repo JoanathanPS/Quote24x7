@@ -25,6 +25,8 @@ import { QUANTITY_BOUNDS, type AiDecisionOutput } from "./decision-schema.ts";
 import { geminiProvider, type AiProvider } from "./gemini-provider.ts";
 import { groqProvider } from "./groq-provider.ts";
 import { cerebrasProvider } from "./cerebras-provider.ts";
+import { ollamaProvider } from "./ollama-provider.ts";
+import { store } from "../store/session-store.ts";
 import type { DecisionSource } from "@/types/domain";
 
 /**
@@ -217,13 +219,22 @@ export interface AiAvailability {
 
 export function getAiAvailability(): AiAvailability {
   const config = getAppConfig();
+  const active = store.getActiveAiProvider();
 
-  if (!config.groqApiKey && !config.cerebrasApiKey && !config.geminiApiKey) {
+  if (active === "rules") {
+    return {
+      available: false,
+      category: "disabled_by_flag",
+      detail: "Deterministic rules engine is selected as the active provider.",
+    };
+  }
+
+  if (!config.groqApiKey && !config.cerebrasApiKey && !config.geminiApiKey && active !== "ollama") {
     return {
       available: false,
       category: "not_configured",
       detail:
-        "Neither GROQ_API_KEY nor GEMINI_API_KEY is configured; the rules-based engine decided this thread.",
+        "Neither GROQ_API_KEY nor GEMINI_API_KEY is configured and local Ollama is not active; the rules-based engine decided this thread.",
     };
   }
   if (process.env.DISABLE_AI === "true") {
@@ -248,6 +259,7 @@ export function getAiAvailability(): AiAvailability {
 export interface ProviderChainOptions {
   groq?: AiProvider | null;
   cerebras?: AiProvider | null;
+  ollama?: AiProvider | null;
   gemini?: AiProvider | null;
 }
 
@@ -331,7 +343,14 @@ export async function decideNextAction(
       return buildFallbackDecision(input, rulesResult, result.category, sanitizedDetail, result.latencyMs, provName);
     }
 
-    const source: DecisionSource = single.name === "groq" ? "groq" : single.name === "cerebras" ? "cerebras" : "gemini";
+    const source: DecisionSource =
+      single.name === "groq"
+        ? "groq"
+        : single.name === "cerebras"
+        ? "cerebras"
+        : single.name === "ollama"
+        ? "ollama"
+        : "gemini";
     return buildAiDecision(input, rulesResult, result.decision, result.model, result.latencyMs, source);
   }
 
@@ -346,110 +365,89 @@ export async function decideNextAction(
   }
 
   const config = getAppConfig();
-  const primaryProvider = explicitChain ? explicitChain.groq : (config.groqApiKey ? groqProvider : null);
-  const secondaryProvider = explicitChain ? explicitChain.cerebras : (config.cerebrasApiKey ? cerebrasProvider : null);
-  const tertiaryProvider = explicitChain ? explicitChain.gemini : (config.geminiApiKey ? geminiProvider : null);
+  const activePreference = store.getActiveAiProvider();
 
-  let groqFailure: { category: AiFailureCategory; detail: string; latencyMs: number | null } | null = null;
-  let cerebrasFailure: { category: AiFailureCategory; detail: string; latencyMs: number | null } | null = null;
-  let geminiFailure: { category: AiFailureCategory; detail: string; latencyMs: number | null } | null = null;
-
-  // 1. Primary: Groq
-  if (primaryProvider) {
-    const groqResult = await primaryProvider.generateDecision({
-      systemInstruction: context.systemInstruction,
-      userPrompt: context.userPrompt,
-    });
-
-    if (groqResult.ok) {
-      return buildAiDecision(
-        input,
-        rulesResult,
-        groqResult.decision,
-        groqResult.model,
-        groqResult.latencyMs,
-        "groq",
-      );
-    }
-
-    groqFailure = {
-      category: groqResult.category,
-      detail: sanitizeFailureText(groqResult.detail),
-      latencyMs: groqResult.latencyMs,
-    };
-  }
-
-  // 2. Secondary: Cerebras
-  if (secondaryProvider) {
-    const cerebrasResult = await secondaryProvider.generateDecision({
-      systemInstruction: context.systemInstruction,
-      userPrompt: context.userPrompt,
-    });
-
-    if (cerebrasResult.ok) {
-      return buildAiDecision(
-        input,
-        rulesResult,
-        cerebrasResult.decision,
-        cerebrasResult.model,
-        cerebrasResult.latencyMs,
-        "cerebras",
-      );
-    }
-
-    cerebrasFailure = {
-      category: cerebrasResult.category,
-      detail: sanitizeFailureText(cerebrasResult.detail),
-      latencyMs: cerebrasResult.latencyMs,
-    };
-  }
-
-  // 3. Tertiary: Gemini
-  if (tertiaryProvider) {
-    const geminiResult = await tertiaryProvider.generateDecision({
-      systemInstruction: context.systemInstruction,
-      userPrompt: context.userPrompt,
-    });
-
-    if (geminiResult.ok) {
-      return buildAiDecision(
-        input,
-        rulesResult,
-        geminiResult.decision,
-        geminiResult.model,
-        geminiResult.latencyMs,
-        "gemini",
-      );
-    }
-
-    geminiFailure = {
-      category: geminiResult.category,
-      detail: sanitizeFailureText(geminiResult.detail),
-      latencyMs: geminiResult.latencyMs,
-    };
-  }
-
-  // If providers were attempted and failed, record combined details
-  const attemptedFailures = [
-    groqFailure ? { name: "groq", ...groqFailure } : null,
-    cerebrasFailure ? { name: "cerebras", ...cerebrasFailure } : null,
-    geminiFailure ? { name: "gemini", ...geminiFailure } : null,
-  ].filter((f): f is { name: string; category: AiFailureCategory; detail: string; latencyMs: number | null } => f !== null);
-
-  if (attemptedFailures.length > 0) {
-    const combinedDetail = attemptedFailures
-      .map((f) => `${f.name}: ${f.category} - ${f.detail} (${f.latencyMs ?? 0}ms)`)
-      .join(" | ");
-    const totalLatency = attemptedFailures.reduce((acc, f) => acc + (f.latencyMs ?? 0), 0);
-    const primaryCat = attemptedFailures[0]!.category;
-    const providerNames = attemptedFailures.map((f) => f.name.charAt(0).toUpperCase() + f.name.slice(1)).join(" / ");
+  // If rules explicitly selected
+  if (activePreference === "rules" && !explicitChain) {
     return buildFallbackDecision(
       input,
       rulesResult,
-      primaryCat,
+      "disabled_by_flag",
+      "Deterministic rules engine selected as active provider.",
+    );
+  }
+
+  // Determine provider sequence based on active preference
+  const providerChain: Array<{ provider: AiProvider; source: DecisionSource; name: string }> = [];
+
+  if (explicitChain) {
+    if (explicitChain.ollama) providerChain.push({ provider: explicitChain.ollama, source: "ollama", name: "Ollama" });
+    if (explicitChain.groq) providerChain.push({ provider: explicitChain.groq, source: "groq", name: "Groq" });
+    if (explicitChain.cerebras) providerChain.push({ provider: explicitChain.cerebras, source: "cerebras", name: "Cerebras" });
+    if (explicitChain.gemini) providerChain.push({ provider: explicitChain.gemini, source: "gemini", name: "Gemini" });
+  } else if (activePreference === "ollama") {
+    providerChain.push({ provider: ollamaProvider, source: "ollama", name: "Local Ollama" });
+    if (config.groqApiKey) providerChain.push({ provider: groqProvider, source: "groq", name: "Groq" });
+    if (config.cerebrasApiKey) providerChain.push({ provider: cerebrasProvider, source: "cerebras", name: "Cerebras" });
+    if (config.geminiApiKey) providerChain.push({ provider: geminiProvider, source: "gemini", name: "Gemini" });
+  } else if (activePreference === "cerebras") {
+    if (config.cerebrasApiKey) providerChain.push({ provider: cerebrasProvider, source: "cerebras", name: "Cerebras" });
+    if (config.groqApiKey) providerChain.push({ provider: groqProvider, source: "groq", name: "Groq" });
+    providerChain.push({ provider: ollamaProvider, source: "ollama", name: "Local Ollama" });
+    if (config.geminiApiKey) providerChain.push({ provider: geminiProvider, source: "gemini", name: "Gemini" });
+  } else if (activePreference === "gemini") {
+    if (config.geminiApiKey) providerChain.push({ provider: geminiProvider, source: "gemini", name: "Gemini" });
+    if (config.groqApiKey) providerChain.push({ provider: groqProvider, source: "groq", name: "Groq" });
+    if (config.cerebrasApiKey) providerChain.push({ provider: cerebrasProvider, source: "cerebras", name: "Cerebras" });
+    providerChain.push({ provider: ollamaProvider, source: "ollama", name: "Local Ollama" });
+  } else {
+    // Default: Groq primary
+    if (config.groqApiKey) providerChain.push({ provider: groqProvider, source: "groq", name: "Groq" });
+    if (config.cerebrasApiKey) providerChain.push({ provider: cerebrasProvider, source: "cerebras", name: "Cerebras" });
+    providerChain.push({ provider: ollamaProvider, source: "ollama", name: "Local Ollama" });
+    if (config.geminiApiKey) providerChain.push({ provider: geminiProvider, source: "gemini", name: "Gemini" });
+  }
+
+  const failures: Array<{ name: string; category: AiFailureCategory; detail: string; latencyMs: number | null }> = [];
+
+  for (const item of providerChain) {
+    const res = await item.provider.generateDecision({
+      systemInstruction: context.systemInstruction,
+      userPrompt: context.userPrompt,
+    });
+
+    if (res.ok) {
+      return buildAiDecision(
+        input,
+        rulesResult,
+        res.decision,
+        res.model,
+        res.latencyMs,
+        item.source,
+      );
+    }
+
+    failures.push({
+      name: item.name,
+      category: res.category,
+      detail: sanitizeFailureText(res.detail),
+      latencyMs: res.latencyMs,
+    });
+  }
+
+  // All attempted providers failed
+  if (failures.length > 0) {
+    const combinedDetail = failures
+      .map((f) => `${f.name.toLowerCase()}: ${f.category} - ${f.detail} (${f.latencyMs ?? 0}ms)`)
+      .join(" | ");
+    const totalLatency = failures.reduce((sum, f) => sum + (f.latencyMs ?? 0), 0);
+    return buildFallbackDecision(
+      input,
+      rulesResult,
+      failures[0]?.category ?? "provider_error",
       combinedDetail,
       totalLatency,
-      providerNames,
+      failures.map((f) => f.name).join(" / "),
     );
   }
 

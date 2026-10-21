@@ -10,10 +10,15 @@ import {
   Moon,
   SunHorizon,
   CaretRight,
+  Cpu,
+  Lightning,
+  Robot,
+  SlidersHorizontal,
 } from "@phosphor-icons/react";
 
 import { useUIStore } from "@/stores/ui-store";
 import { Quote24x7Logo } from "@/components/ui/logo";
+import { useAiProviderConfig } from "@/hooks/use-api";
 
 interface BreadcrumbItem {
   label: string;
@@ -81,6 +86,7 @@ export function TopBar() {
   }, []);
 
   const breadcrumbs = getBreadcrumbs(pathname);
+  const { data: aiConfig } = useAiProviderConfig();
 
   const cycleTheme = () => {
     if (theme === "light") {
@@ -142,8 +148,38 @@ export function TopBar() {
         </nav>
       </div>
 
-      {/* Right section: Theme Toggle */}
+      {/* Right section: AI Indicator & Theme Toggle */}
       <div className="flex items-center gap-2.5">
+        {mounted && aiConfig && (
+          <Link
+            href="/settings"
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium border border-border/80 bg-surface-soft/60 hover:bg-surface-soft hover:border-primary/40 transition-colors"
+            title="Active AI Sales Engineer Engine (Click to change in Settings)"
+          >
+            {aiConfig.activeProvider === "ollama" ? (
+              <>
+                <Cpu className="h-3.5 w-3.5 text-primary" weight="fill" />
+                <span className="text-foreground">Ollama ({aiConfig.providers.ollama.model})</span>
+              </>
+            ) : aiConfig.activeProvider === "groq" ? (
+              <>
+                <Lightning className="h-3.5 w-3.5 text-warning" weight="fill" />
+                <span className="text-foreground">Groq (LPU)</span>
+              </>
+            ) : aiConfig.activeProvider === "gemini" ? (
+              <>
+                <Robot className="h-3.5 w-3.5 text-info" weight="fill" />
+                <span className="text-foreground">Gemini</span>
+              </>
+            ) : (
+              <>
+                <SlidersHorizontal className="h-3.5 w-3.5 text-neutral" weight="bold" />
+                <span className="text-foreground">Rules Engine</span>
+              </>
+            )}
+          </Link>
+        )}
+
         {/* Theme Toggle Button */}
         <button
           type="button"

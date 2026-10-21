@@ -35,6 +35,14 @@ export interface AppConfig {
   geminiApiKey: string | null;
   /** Configured Gemini model identifier (e.g. "gemini-3.8-flash") */
   geminiModel: string;
+  /** Selected AI provider preference ("groq", "ollama", "gemini", or "rules") */
+  activeAiProvider: "groq" | "ollama" | "cerebras" | "gemini" | "rules";
+  /** Local Ollama engine base URL (e.g. "http://localhost:11434/v1") */
+  ollamaBaseUrl: string;
+  /** Local Ollama model identifier (e.g. "llama3.2:1b") */
+  ollamaModel: string;
+  /** Local Ollama API key / token (placeholder for OpenAI SDK compatibility) */
+  ollamaApiKey: string;
   /** Whether the AI sales engineer can be attempted. False forces the rules-based fallback. */
   isAiEnabled: boolean;
   /** Hard timeout for a single AI provider request, in milliseconds */
@@ -57,6 +65,11 @@ export const DEFAULT_CEREBRAS_MODEL = "llama-3.3-70b";
 
 /** Default model used only when GEMINI_MODEL is absent. Never a silent substitution for a configured value. */
 export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
+
+/** Default local Ollama endpoint, model, and placeholder key */
+export const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1";
+export const DEFAULT_OLLAMA_MODEL = "llama3.2:1b";
+export const DEFAULT_OLLAMA_API_KEY = "ollama-local-key";
 
 /**
  * Whether this process is an automated test run.
@@ -137,12 +150,31 @@ export function getAppConfig(): AppConfig {
   const cerebrasModel = process.env.CEREBRAS_MODEL?.trim() || DEFAULT_CEREBRAS_MODEL;
   const geminiApiKey = process.env.GEMINI_API_KEY?.trim() || null;
   const geminiModel = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
+
+  // Ollama local AI configuration
+  const ollamaBaseUrl = process.env.OLLAMA_BASE_URL?.trim() || DEFAULT_OLLAMA_BASE_URL;
+  const ollamaModel = process.env.OLLAMA_MODEL?.trim() || DEFAULT_OLLAMA_MODEL;
+  const ollamaApiKey = process.env.OLLAMA_API_KEY?.trim() || DEFAULT_OLLAMA_API_KEY;
+
+  // Active AI provider selection
+  const rawProvider = (process.env.AI_PROVIDER || process.env.DEFAULT_AI_PROVIDER || "").toLowerCase().trim();
+  const activeAiProvider: "groq" | "ollama" | "cerebras" | "gemini" | "rules" =
+    rawProvider === "ollama" || rawProvider === "local"
+      ? "ollama"
+      : rawProvider === "gemini"
+      ? "gemini"
+      : rawProvider === "rules"
+      ? "rules"
+      : "groq";
+
   // An explicit opt-out so the rules fallback can be exercised without removing keys.
   const aiDisabledByFlag = process.env.DISABLE_AI === "true";
   // Automated tests never reach the live provider unless explicitly allowed.
   const aiBlockedByTestRuntime = isTestRuntime() && process.env.ALLOW_AI_IN_TESTS !== "true";
   const isAiEnabled =
-    (Boolean(groqApiKey) || Boolean(cerebrasApiKey) || Boolean(geminiApiKey)) && !aiDisabledByFlag && !aiBlockedByTestRuntime;
+(Boolean(groqApiKey) || Boolean(cerebrasApiKey) || Boolean(geminiApiKey) || activeAiProvider === "ollama") &&
+    !aiDisabledByFlag &&
+    !aiBlockedByTestRuntime;
   const aiTimeoutMs = Number.parseInt(process.env.AI_TIMEOUT_MS ?? "", 10) || 30_000;
   const aiMaxAttempts = Number.parseInt(process.env.AI_MAX_ATTEMPTS ?? "", 10) || 3;
 
@@ -166,6 +198,10 @@ export function getAppConfig(): AppConfig {
     cerebrasModel,
     geminiApiKey,
     geminiModel,
+    activeAiProvider,
+    ollamaBaseUrl,
+    ollamaModel,
+    ollamaApiKey,
     isAiEnabled,
     aiTimeoutMs,
     aiMaxAttempts,
