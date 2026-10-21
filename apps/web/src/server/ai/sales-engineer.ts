@@ -24,6 +24,7 @@ import { buildSalesContext, deriveSupportedCategories } from "./context-builder.
 import { QUANTITY_BOUNDS, type AiDecisionOutput } from "./decision-schema.ts";
 import { geminiProvider, type AiProvider } from "./gemini-provider.ts";
 import { groqProvider } from "./groq-provider.ts";
+import { cerebrasProvider } from "./cerebras-provider.ts";
 import type { DecisionSource } from "@/types/domain";
 
 /**
@@ -217,7 +218,7 @@ export interface AiAvailability {
 export function getAiAvailability(): AiAvailability {
   const config = getAppConfig();
 
-  if (!config.groqApiKey && !config.geminiApiKey) {
+  if (!config.groqApiKey && !config.cerebrasApiKey && !config.geminiApiKey) {
     return {
       available: false,
       category: "not_configured",
@@ -246,6 +247,7 @@ export function getAiAvailability(): AiAvailability {
 
 export interface ProviderChainOptions {
   groq?: AiProvider | null;
+  cerebras?: AiProvider | null;
   gemini?: AiProvider | null;
 }
 
@@ -253,9 +255,11 @@ function sanitizeFailureText(text: string): string {
   const config = getAppConfig();
   let sanitized = text;
   if (config.groqApiKey) sanitized = sanitized.split(config.groqApiKey).join("[REDACTED_KEY]");
+  if (config.cerebrasApiKey) sanitized = sanitized.split(config.cerebrasApiKey).join("[REDACTED_KEY]");
   if (config.geminiApiKey) sanitized = sanitized.split(config.geminiApiKey).join("[REDACTED_KEY]");
   return sanitized
     .replace(/gsk_[0-9A-Za-z_-]{15,}/g, "[REDACTED_KEY]")
+    .replace(/csk-[0-9A-Za-z_-]{15,}/g, "[REDACTED_KEY]")
     .replace(/AIza[0-9A-Za-z_-]{15,}/g, "[REDACTED_KEY]")
     .replace(/AQ\.[0-9A-Za-z_-]{15,}/g, "[REDACTED_KEY]");
 }
@@ -307,7 +311,7 @@ export async function decideNextAction(
     attachments: input.attachments,
   });
 
-  const isChainOptions = Boolean(provider && typeof provider === "object" && ("groq" in provider || "gemini" in provider));
+  const isChainOptions = Boolean(provider && typeof provider === "object" && ("groq" in provider || "cerebras" in provider || "gemini" in provider));
   const explicitChain: ProviderChainOptions | null = isChainOptions
     ? (provider as ProviderChainOptions)
     : provider && fallbackProvider
@@ -327,7 +331,7 @@ export async function decideNextAction(
       return buildFallbackDecision(input, rulesResult, result.category, sanitizedDetail, result.latencyMs, provName);
     }
 
-    const source: DecisionSource = single.name === "groq" ? "groq" : "gemini";
+    const source: DecisionSource = single.name === "groq" ? "groq" : single.name === "cerebras" ? "cerebras" : "gemini";
     return buildAiDecision(input, rulesResult, result.decision, result.model, result.latencyMs, source);
   }
 
@@ -343,9 +347,11 @@ export async function decideNextAction(
 
   const config = getAppConfig();
   const primaryProvider = explicitChain ? explicitChain.groq : (config.groqApiKey ? groqProvider : null);
-  const secondaryProvider = explicitChain ? explicitChain.gemini : (config.geminiApiKey ? geminiProvider : null);
+  const secondaryProvider = explicitChain ? explicitChain.cerebras : (config.cerebrasApiKey ? cerebrasProvider : null);
+  const tertiaryProvider = explicitChain ? explicitChain.gemini : (config.geminiApiKey ? geminiProvider : null);
 
   let groqFailure: { category: AiFailureCategory; detail: string; latencyMs: number | null } | null = null;
+  let cerebrasFailure: { category: AiFailureCategory; detail: string; latencyMs: number | null } | null = null;
   let geminiFailure: { category: AiFailureCategory; detail: string; latencyMs: number | null } | null = null;
 
   // 1. Primary: Groq
@@ -373,9 +379,34 @@ export async function decideNextAction(
     };
   }
 
-  // 2. Secondary: Gemini
+  // 2. Secondary: Cerebras
   if (secondaryProvider) {
-    const geminiResult = await secondaryProvider.generateDecision({
+    const cerebrasResult = await secondaryProvider.generateDecision({
+      systemInstruction: context.systemInstruction,
+      userPrompt: context.userPrompt,
+    });
+
+    if (cerebrasResult.ok) {
+      return buildAiDecision(
+        input,
+        rulesResult,
+        cerebrasResult.decision,
+        cerebrasResult.model,
+        cerebrasResult.latencyMs,
+        "cerebras",
+      );
+    }
+
+    cerebrasFailure = {
+      category: cerebrasResult.category,
+      detail: sanitizeFailureText(cerebrasResult.detail),
+      latencyMs: cerebrasResult.latencyMs,
+    };
+  }
+
+  // 3. Tertiary: Gemini
+  if (tertiaryProvider) {
+    const geminiResult = await tertiaryProvider.generateDecision({
       systemInstruction: context.systemInstruction,
       userPrompt: context.userPrompt,
     });
@@ -398,43 +429,27 @@ export async function decideNextAction(
     };
   }
 
-  // If both providers failed, record both in failureDetail
-  if (groqFailure && geminiFailure) {
-    const combinedDetail = `groq: ${groqFailure.category} - ${groqFailure.detail} (${groqFailure.latencyMs ?? 0}ms) | gemini: ${geminiFailure.category} - ${geminiFailure.detail} (${geminiFailure.latencyMs ?? 0}ms)`;
-    const totalLatency = (groqFailure.latencyMs ?? 0) + (geminiFailure.latencyMs ?? 0);
+  // If providers were attempted and failed, record combined details
+  const attemptedFailures = [
+    groqFailure ? { name: "groq", ...groqFailure } : null,
+    cerebrasFailure ? { name: "cerebras", ...cerebrasFailure } : null,
+    geminiFailure ? { name: "gemini", ...geminiFailure } : null,
+  ].filter((f): f is { name: string; category: AiFailureCategory; detail: string; latencyMs: number | null } => f !== null);
+
+  if (attemptedFailures.length > 0) {
+    const combinedDetail = attemptedFailures
+      .map((f) => `${f.name}: ${f.category} - ${f.detail} (${f.latencyMs ?? 0}ms)`)
+      .join(" | ");
+    const totalLatency = attemptedFailures.reduce((acc, f) => acc + (f.latencyMs ?? 0), 0);
+    const primaryCat = attemptedFailures[0]!.category;
+    const providerNames = attemptedFailures.map((f) => f.name.charAt(0).toUpperCase() + f.name.slice(1)).join(" / ");
     return buildFallbackDecision(
       input,
       rulesResult,
-      groqFailure.category,
+      primaryCat,
       combinedDetail,
       totalLatency,
-      "Groq / Gemini",
-    );
-  }
-
-  // If only Groq was attempted and failed
-  if (groqFailure) {
-    const groqDetail = `groq: ${groqFailure.category} - ${groqFailure.detail} (${groqFailure.latencyMs ?? 0}ms)`;
-    return buildFallbackDecision(
-      input,
-      rulesResult,
-      groqFailure.category,
-      groqDetail,
-      groqFailure.latencyMs,
-      "Groq",
-    );
-  }
-
-  // If only Gemini was attempted and failed
-  if (geminiFailure) {
-    const geminiDetail = `gemini: ${geminiFailure.category} - ${geminiFailure.detail} (${geminiFailure.latencyMs ?? 0}ms)`;
-    return buildFallbackDecision(
-      input,
-      rulesResult,
-      geminiFailure.category,
-      geminiDetail,
-      geminiFailure.latencyMs,
-      "Gemini",
+      providerNames,
     );
   }
 

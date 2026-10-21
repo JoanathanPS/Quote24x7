@@ -219,7 +219,7 @@ export default function CataloguePage() {
                   </CardHeader>
                   <CardContent className="pt-4 space-y-4">
                     {/* Operational parameters */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-muted/40 p-2.5 rounded-md border border-border/30">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs bg-muted/40 p-2.5 rounded-md border border-border/30">
                       <div>
                         <span className="text-muted-foreground block text-[11px]">Polling Frequency</span>
                         <span className="font-medium text-foreground">{plan.pollingFrequency}</span>
@@ -228,12 +228,6 @@ export default function CataloguePage() {
                         <span className="text-muted-foreground block text-[11px]">Locations</span>
                         <span className="font-medium text-foreground">
                           {plan.monitoringLocations ? `${plan.monitoringLocations} locations` : "Global / N/A"}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground block text-[11px]">Source Reference</span>
-                        <span className="font-mono text-muted-foreground truncate block" title={plan.sourceId}>
-                          {plan.sourceId}
                         </span>
                       </div>
                       <div>
@@ -329,7 +323,6 @@ export default function CataloguePage() {
                   <TableHead>Pack Sizing</TableHead>
                   <TableHead numeric>Pack Price</TableHead>
                   <TableHead>Applies To</TableHead>
-                  <TableHead>Source</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -399,11 +392,6 @@ export default function CataloguePage() {
                             ))}
                           </div>
                         )}
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-xs text-muted-foreground truncate max-w-[140px] block" title={addOn.sourceId}>
-                          {addOn.sourceId}
-                        </span>
                       </TableCell>
                     </TableRow>
                   );
