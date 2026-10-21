@@ -128,12 +128,16 @@ export function extractPdfText(buffer: Buffer): string {
           const inner = arrMatch[1]!;
           const elemRegex = /(?:<([0-9a-fA-F\s]+)>|\(([^)]*)\))/g;
           let elMatch;
+          const tjPieces: string[] = [];
           while ((elMatch = elemRegex.exec(inner)) !== null) {
             if (elMatch[1]) {
-              extractedPieces.push(decodePdfHexString(elMatch[1]));
+              tjPieces.push(decodePdfHexString(elMatch[1]));
             } else if (elMatch[2]) {
-              extractedPieces.push(unescapePdfLiteral(elMatch[2]));
+              tjPieces.push(unescapePdfLiteral(elMatch[2]));
             }
+          }
+          if (tjPieces.length > 0) {
+            extractedPieces.push(tjPieces.join(""));
           }
         }
       }
@@ -1199,7 +1203,9 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
   const emailTotalRupees = emailTotalMatch ? parseInt(emailTotalMatch[1]!.replace(/,/g, ""), 10) : null;
 
   const pdfExtractedText = extractPdfText(input.pdfBuffer);
-  const pdfHasTotal = pdfExtractedText.includes(formattedRupees);
+  const pdfHasTotal =
+    pdfExtractedText.includes(formattedRupees) ||
+    pdfExtractedText.replace(/\s+/g, "").includes(formattedRupees.replace(/\s+/g, ""));
 
   if (
     recOption.total !== minValidPaise ||

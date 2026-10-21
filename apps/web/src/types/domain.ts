@@ -331,6 +331,7 @@ export interface RequirementProfile {
   intakeRequirements?: Record<IntakeUnit, IntakeRequirement>;
   optionalParameters?: OptionalRequirementParameters;
   triageCategory?: EmailTriageCategory;
+  rawText?: string;
 }
 
 export interface ClarificationQuestion {

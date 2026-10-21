@@ -366,21 +366,27 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   const missingMaterialFields: string[] = [];
 
   // Global "just servers" / "only servers" check
-  const serversOnly =
-    /\b(?:only\s+(?:need\s+)?servers?|just\s+servers?|servers?\s+only|solely\s+servers?|strictly\s+servers?|all\s+we\s+need\s+is\s+servers?)\b/i.test(
-      lower,
-    );
+  const serversOnlyMatch = rawText.match(
+    /\b(?:only\s+(?:need\s+)?servers?|just\s+servers?|servers?\s+only|solely\s+servers?|strictly\s+servers?|all\s+we\s+need\s+is\s+servers?)\b/i,
+  );
+  const serversOnly = Boolean(serversOnlyMatch);
 
   // Global "no other needs" check
-  const noOtherNeeds =
-    /\b(?:no\s+other\s+(?:monitoring|needs?|requirements?|checks?|services?)|nothing\s+else|no\s+others?)\b/i.test(
-      lower,
-    );
+  const noOtherNeedsMatch = rawText.match(
+    /\b(?:no\s+other\s+(?:monitoring|needs?|requirements?|checks?|services?)|nothing\s+else|no\s+others?)\b/i,
+  );
+  const noOtherNeeds = Boolean(noOtherNeedsMatch);
 
   // Compound negation check: "no synthetic checks or RUM needed", "without servers or network", etc.
   const compoundNegMatch = text.match(/\b(?:no|without)\s+([a-z\s,/-]+?)\s+(?:needed|required|necessary|wanted)\b/i);
   const compoundNegPhrase = compoundNegMatch ? compoundNegMatch[0].trim() : null;
   const compoundNegInner = compoundNegMatch && compoundNegMatch[1] ? compoundNegMatch[1].toLowerCase() : "";
+
+  const generalCloserEvidence = noOtherNeedsMatch
+    ? noOtherNeedsMatch[0].trim()
+    : serversOnlyMatch
+      ? serversOnlyMatch[0].trim()
+      : null;
 
   // 1. Servers / Host Monitors
   let serverCount: number | null = null;
@@ -427,7 +433,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   if (serverNone) {
     serverCount = 0;
     serverState = "none";
-    serverEvidence = serverNoneMatch ? serverNoneMatch[0].trim() : compoundNegPhrase ?? "Explicitly stated no servers needed";
+    serverEvidence = serverNoneMatch ? serverNoneMatch[0].trim() : compoundNegPhrase ?? generalCloserEvidence ?? (serverMatch ? serverMatch[0].trim() : "servers");
     fields.push({
       key: "servers",
       label: "Server / Host Monitors",
@@ -481,7 +487,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   } else if (itemLineHostSum > 0) {
     serverCount = itemLineHostSum;
     serverState = "stated";
-    serverEvidence = itemLineServerMatches.map((m) => m[0].trim()).join("; ");
+    serverEvidence = itemLineServerMatches[0]![0].trim();
     fields.push({
       key: "servers",
       label: "Server / Host Monitors",
@@ -584,7 +590,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   if (netNone) {
     networkCount = 0;
     networkState = "none";
-    networkEvidence = netNoneMatch ? netNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no network devices (servers-only)" : "Explicitly stated no network devices");
+    networkEvidence = netNoneMatch ? netNoneMatch[0].trim() : compoundNegPhrase ?? generalCloserEvidence ?? (netMatch ? netMatch[0].trim() : "network");
     fields.push({
       key: "network_devices",
       label: "Network Devices",
@@ -638,7 +644,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   } else if (itemLineNetSum > 0) {
     networkCount = itemLineNetSum;
     networkState = "stated";
-    networkEvidence = itemLineNetMatches.map((m) => m[0].trim()).join("; ");
+    networkEvidence = itemLineNetMatches[0]![0].trim();
     fields.push({
       key: "network_devices",
       label: "Network Devices",
@@ -783,7 +789,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   } else if (basicNone) {
     basicCount = 0;
     basicState = "none";
-    basicEvidence = basicNoneMatch ? basicNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no websites (servers-only)" : "Explicitly stated no websites/APIs");
+    basicEvidence = basicNoneMatch ? basicNoneMatch[0].trim() : compoundNegPhrase ?? generalCloserEvidence ?? "websites";
     fields.push({
       key: "basic_monitors",
       label: "Basic Monitors",
@@ -804,7 +810,8 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     const webMatch = text.match(
       /\b(?:website(?:\s+is|\s+being)?\s+accessible|website\s+uptime|website\s+availability|website\s+accessibility|monitor(?:\s+whether)?\s+(?:our\s+)?website)\b/i,
     );
-    basicEvidence = webMatch ? webMatch[0].trim() : "website accessibility monitoring";
+    const siteMatch = rawText.match(/\bwebsites?\b/i);
+    basicEvidence = webMatch ? webMatch[0].trim() : (siteMatch ? siteMatch[0].trim() : "website");
     fields.push({
       key: "basic_monitors",
       label: "Basic Monitors",
@@ -896,7 +903,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   if (advNone) {
     advancedCount = 0;
     advancedState = "none";
-    advancedEvidence = advNoneMatch ? advNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no synthetics (servers-only)" : "Explicitly stated no synthetic monitors");
+    advancedEvidence = advNoneMatch ? advNoneMatch[0].trim() : compoundNegPhrase ?? generalCloserEvidence ?? (advMatch ? advMatch[0].trim() : "synthetic");
     fields.push({
       key: "advanced_monitors",
       label: "Advanced / Synthetic Monitors",
@@ -1073,7 +1080,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   } else if (rumNone) {
     rumPageviews = 0;
     rumState = "none";
-    rumEvidence = rumNoneMatch ? rumNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no RUM (servers-only)" : "Explicitly stated no RUM pageviews");
+    rumEvidence = rumNoneMatch ? rumNoneMatch[0].trim() : compoundNegPhrase ?? generalCloserEvidence ?? (rumRawMatch ? rumRawMatch[0].trim() : "RUM");
     fields.push({
       key: "rum_pageviews",
       label: "RUM Pageviews",
@@ -1182,7 +1189,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   } else if (logNone) {
     applogGb = 0;
     applogState = "none";
-    applogEvidence = logNoneMatch ? logNoneMatch[0].trim() : compoundNegPhrase ?? (serversOnly ? "no logs (servers-only)" : "Explicitly stated no logs needed");
+    applogEvidence = logNoneMatch ? logNoneMatch[0].trim() : compoundNegPhrase ?? generalCloserEvidence ?? (logMatch ? logMatch[0].trim() : "logs");
     fields.push({
       key: "applogs_volume",
       label: "AppLogs Volume",
@@ -1440,6 +1447,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     intakeRequirements,
     optionalParameters,
     triageCategory,
+    rawText,
   };
 
   const clarificationQuestions =
@@ -1453,7 +1461,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     triageCategory !== "ignored_automated" &&
     isSubstantiveEmail(input.bodyText);
 
-  return {
+  const result: ExtractionResult = {
     profile,
     demand,
     isComplete,
@@ -1468,6 +1476,13 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     intakeRequirements,
     optionalParameters,
   };
+
+  const integrity = validateEvidenceIntegrity(result, rawText);
+  if (!integrity.valid) {
+    throw new Error(`Evidence integrity violation: ${integrity.errors.join("; ")}`);
+  }
+
+  return result;
 }
 
 export interface MergeRequirementsInput {
@@ -1476,6 +1491,7 @@ export interface MergeRequirementsInput {
   senderEmail: string;
   senderName?: string | null;
   subject: string;
+  cumulativeText?: string;
 }
 
 /**
@@ -1521,10 +1537,11 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
   // Merge each unit from reply ONLY if the reply explicitly contains that unit's keyword in its evidence
   // A follow-up that names one unit changes only that unit!
   // Global "no other needs" check in reply: e.g. "no other monitoring needed", "nothing else needed"
-  const replyNoOtherNeeds =
-    /\b(?:no\s+other\s+(?:monitoring|needs?|requirements?|checks?|services?)|nothing\s+else|no\s+others?)\b/i.test(
-      replyText,
-    );
+  const replyNoOtherNeedsMatch = replyText.match(
+    /\b(?:no\s+other\s+(?:monitoring|needs?|requirements?|checks?|services?)|nothing\s+else|no\s+others?)\b/i,
+  );
+  const replyNoOtherNeeds = Boolean(replyNoOtherNeedsMatch);
+  const replyCloserEvidence = replyNoOtherNeedsMatch ? replyNoOtherNeedsMatch[0].trim() : "no other monitoring needed";
 
   // Merge each unit from reply
   // 1) A follow-up that names a unit updates that unit (needs an evidence span containing that unit's keyword)
@@ -1548,7 +1565,7 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
           unit,
           state: "none",
           quantity: 0,
-          evidence: "no other monitoring needed",
+          evidence: replyCloserEvidence,
         };
       }
     } else if (replyNoOtherNeeds && mergedIntake[unit].state === "unknown") {
@@ -1556,7 +1573,7 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
         unit,
         state: "none",
         quantity: 0,
-        evidence: "no other monitoring needed",
+        evidence: replyCloserEvidence,
       };
     }
   }
@@ -1593,7 +1610,7 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
         state: "provided",
         intakeState: "none",
         confidence: 0.99,
-        evidence: intake.evidence || "Excluded from scope",
+        evidence: intake.evidence || existingField?.evidence || null,
         conflictWith: null,
         previousValue: existingField && existingField.value !== 0 ? existingField.value : existingField?.previousValue ?? null,
         materialToPricing: true,
@@ -1701,6 +1718,7 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
       ...replyExtraction.optionalParameters,
     },
     triageCategory: replyExtraction.triageCategory,
+    rawText: `${existingProfile.rawText || ""}\n${input.cumulativeText || ""}\n${existingProfile.fields?.map((f) => f.evidence).filter(Boolean).join("\n") || ""}\n${input.subject}\n${replyText}`,
   };
 
   const isSubstantive = isSubstantiveEmail(replyText, existingProfile);
@@ -1710,7 +1728,7 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
       ? buildClarificationQuestions(remainingUnknowns, true)
       : [];
 
-  return {
+  const result: ExtractionResult = {
     profile,
     demand,
     isComplete,
@@ -1724,5 +1742,60 @@ export function mergeRequirements(input: MergeRequirementsInput): ExtractionResu
     isSubstantive,
     intakeRequirements: mergedIntake,
     optionalParameters: profile.optionalParameters || {},
+  };
+
+  const integrity = validateEvidenceIntegrity(result, profile.rawText!);
+  if (!integrity.valid) {
+    throw new Error(`Evidence integrity violation in mergeRequirements: ${integrity.errors.join("; ")}`);
+  }
+
+  return result;
+}
+
+/**
+ * Validates that every extracted requirement's evidence string is a verbatim,
+ * case-insensitive substring of the source email and attachment text.
+ * Synthetic strings like "no RUM requested" are strictly forbidden.
+ */
+export function validateEvidenceIntegrity(
+  result: ExtractionResult,
+  sourceText: string,
+): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  const lowerSource = sourceText.toLowerCase();
+  const unitFieldKeys = new Set([
+    "servers",
+    "network_devices",
+    "basic_monitors",
+    "advanced_monitors",
+    "rum_pageviews",
+    "applogs_volume",
+  ]);
+
+  for (const field of result.profile.fields) {
+    if (unitFieldKeys.has(field.key) && field.evidence) {
+      const cleanEv = field.evidence.toLowerCase().trim();
+      if (!lowerSource.includes(cleanEv)) {
+        errors.push(
+          `Unit field "${field.key}" has non-verbatim evidence "${field.evidence}" not found in source text.`
+        );
+      }
+    }
+  }
+
+  for (const [unit, intake] of Object.entries(result.intakeRequirements)) {
+    if (intake.evidence) {
+      const cleanEv = intake.evidence.toLowerCase().trim();
+      if (!lowerSource.includes(cleanEv)) {
+        errors.push(
+          `Intake unit "${unit}" has non-verbatim evidence "${intake.evidence}" not found in source text.`
+        );
+      }
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
   };
 }

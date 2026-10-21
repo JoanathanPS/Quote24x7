@@ -11,6 +11,7 @@ import {
   buildClarificationQuestions,
   isSubstantiveEmail,
   INTAKE_UNITS,
+  validateEvidenceIntegrity,
 } from "./extractor.ts";
 import { processInboundEmail } from "../email/inbound-processor.ts";
 import { runPreSendChecks } from "../email/resend-outbound.ts";
@@ -672,5 +673,93 @@ test("Task 3 Regression: Case 3 real email body + CSV attachment end-to-end", as
   assert.equal(rec.planName, "Lite", "Lite must be recommended");
   assert.equal(rec.total, 9880000, "Lite total must equal ₹98,800 (10,260 + 10,260 + 51,300 + 11,305 + 15,675)");
 });
+
+test("Item 1: Evidence Integrity validator with Case 1 body and PDF", async () => {
+  store.reset();
+  const pdfPath = path.resolve(process.cwd(), "test-attachments", "Case-1-Production-Infrastructure.pdf");
+  const pdfBuf = fs.readFileSync(pdfPath);
+
+  const turn = await processInboundEmail({
+    providerMessageId: `msg_evidence_integrity_${Date.now()}`,
+    from: "alex.mercer@acmecorp.com",
+    fromName: "Alex Mercer",
+    to: ["quotes@quotes.joanathan.in"],
+    subject: "Quote Request: Production Infrastructure Monitoring (PDF Scope)",
+    text: [
+      "Hi Site24x7 Team,",
+      "",
+      "Please review the attached PDF document containing our current infrastructure inventory and sizing breakdown.",
+      "We are looking for an annual quote with tier-appropriate add-ons for our servers, network gear, and log aggregation.",
+      "No other monitoring needed.",
+      "",
+      "Thanks,",
+      "Alex Mercer",
+      "DevOps Lead, Acme Corp",
+    ].join("\n"),
+    attachments: [
+      {
+        filename: "Case-1-Production-Infrastructure.pdf",
+        contentType: "application/pdf",
+        content: pdfBuf,
+      },
+    ],
+  });
+
+  assert.equal(turn.actionTaken, "quoted");
+  const profile = store.getProfile(turn.threadId);
+  assert.ok(profile);
+  assert.ok(profile.intakeRequirements);
+  const intake = profile.intakeRequirements;
+
+  // Retrieve raw combined text from the stored messages
+  const msgs = store.getMessages(turn.threadId);
+  const inbound = msgs.find((m) => m.direction === "inbound");
+  assert.ok(inbound);
+  const sourceText = `${inbound.subject}\n${inbound.bodyText}\n${inbound.attachments?.map((a) => a.extractedText || "").join("\n") || ""}`.toLowerCase();
+
+  // Assert every unit has an evidence string and it is a verbatim substring
+  for (const unit of INTAKE_UNITS) {
+    const req = intake[unit];
+    assert.ok(req.evidence, `Unit ${unit} must have an evidence string`);
+    assert.ok(
+      sourceText.includes(req.evidence.toLowerCase().trim()),
+      `Evidence "${req.evidence}" for unit ${unit} must be a verbatim substring of source text`
+    );
+  }
+
+  // Direct validator invocation test
+  const extractionResult = extractRequirements({
+    threadId: "th_test",
+    senderEmail: "alex.mercer@acmecorp.com",
+    senderName: "Alex Mercer",
+    subject: "Quote Request: Production Infrastructure Monitoring (PDF Scope)",
+    bodyText: [
+      "Hi Site24x7 Team,",
+      "",
+      "Please review the attached PDF document containing our current infrastructure inventory and sizing breakdown.",
+      "We are looking for an annual quote with tier-appropriate add-ons for our servers, network gear, and log aggregation.",
+      "No other monitoring needed.",
+      "",
+      "Total Host Server Requirement: 50 Servers",
+      "Total Network Component Requirement: 8 Network Devices",
+      "5 Public HTTPS Website availability monitors",
+      "2 Multi-step Real Browser Synthetic Transactions",
+      "20 GB per day (~600 GB monthly)",
+      "",
+      "Thanks,",
+      "Alex Mercer",
+      "DevOps Lead, Acme Corp",
+    ].join("\n"),
+  });
+  const valResult = validateEvidenceIntegrity(extractionResult, sourceText);
+  assert.equal(valResult.valid, true, `validateEvidenceIntegrity must return valid: true. Errors: ${valResult.errors.join("; ")}`);
+
+  // Specifically assert RUM evidence is the exact closer phrase from email, never synthesized
+  assert.equal(intake.rum_pageview.state, "none");
+  assert.equal(intake.rum_pageview.evidence, "No other monitoring needed");
+  assert.notEqual(intake.rum_pageview.evidence, "no RUM requested");
+  assert.notEqual(intake.rum_pageview.evidence, "Explicitly stated no RUM pageviews");
+});
+
 
 

@@ -170,6 +170,7 @@ export async function decideNextAction(
         senderEmail: input.senderEmail,
         senderName: input.senderName,
         subject: input.subject,
+        cumulativeText: input.cumulativeText,
       })
     : extractRequirements({
         threadId: input.thread.id,

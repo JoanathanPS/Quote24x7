@@ -998,7 +998,7 @@ async function doProcessInboundEmail(
         )
         .filter(Boolean)
         .join("\n");
-      const cleanBody = stripQuotedEmail(m.bodyText);
+      const cleanBody = `${m.subject ? m.subject + "\n" : ""}${stripQuotedEmail(m.bodyText)}`;
       return attTexts ? `${cleanBody}\n${attTexts}` : cleanBody;
     })
     .filter((txt) => txt.length > 0)

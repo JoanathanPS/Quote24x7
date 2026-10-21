@@ -217,6 +217,11 @@ async function runScenario(tc: TestCase) {
 
   console.log(`Thread ID: ${initResult.threadId}`);
   console.log(`Thread Match Method: ${inbound1?.threadMatchMethod ?? "new"}`);
+  console.log(`Decision Source: ${initResult.decisionSource || "rules"}`);
+  console.log(`Decision Model: ${initResult.decisionModel || "none"}`);
+  if (process.env.DISABLE_AI !== "true" && initResult.decisionSource !== "gemini" && initResult.decisionSource !== "groq") {
+    console.log(`[AI RUN STATUS: INVALID — AI call failed: ${initResult.aiFailureCategory || "unknown"}]`);
+  }
   console.log(`Subject: ${outbound1?.subject ?? tc.subject}`);
   console.log(`In-Reply-To (as sent): ${outbound1?.inReplyTo ?? "None (First Turn)"}`);
   console.log(`References (as sent): ${outbound1?.references ?? "None (First Turn)"}`);
@@ -226,6 +231,8 @@ async function runScenario(tc: TestCase) {
   if (initResult.quote) {
     const q1 = initResult.quote;
     const rec1 = (q1.recommendedOptionId ? q1.options.find((o) => o.id === q1.recommendedOptionId) : undefined) ?? q1.options[0]!;
+    const lineItemsSum1 = rec1.lineItems.reduce((acc, item) => acc + item.lineTotal, 0);
+    assert.equal(lineItemsSum1, rec1.total, "Sum of line items must equal quote total");
     const pdfBuf1 = await renderQuotePdf({ quote: q1 });
     const pdfText1 = extractPdfText(pdfBuf1);
     const emailMatch1 = outbound1?.bodyText.match(/Total\s*\|\s*\|\s*\|\s*₹([\d,]+)/);
@@ -242,6 +249,8 @@ async function runScenario(tc: TestCase) {
     console.log(`  - Stored Recommended Total: ₹${formattedRupees1}`);
     console.log(`  - Email Body Total: ₹${emailTotal1?.toLocaleString("en-IN") ?? "N/A"}`);
     console.log(`  - PDF Text Total: ₹${formattedRupees1} (verified in PDF text: ${pdfHasTotal1})`);
+    console.log(`  - Line Items Sum: ₹${Math.round(lineItemsSum1 / 100).toLocaleString("en-IN")} (verified equal to total: ${lineItemsSum1 === rec1.total})`);
+    console.log(`  - Alternative Line: ${q1.comparisonLine ?? "None (Single plan or no upsell)"}`);
 
     assert.equal(emailTotal1, recTotalRupees1, "Email total must equal stored recommended total");
     assert.equal(pdfHasTotal1, true, "PDF text must contain recommended total");
@@ -291,6 +300,11 @@ async function runScenario(tc: TestCase) {
 
   console.log(`Thread ID: ${initResult.threadId}`);
   console.log(`Thread Match Method: ${inbound2?.threadMatchMethod ?? "in_reply_to"}`);
+  console.log(`Decision Source: ${followResult.decisionSource || "rules"}`);
+  console.log(`Decision Model: ${followResult.decisionModel || "none"}`);
+  if (process.env.DISABLE_AI !== "true" && followResult.decisionSource !== "gemini" && followResult.decisionSource !== "groq") {
+    console.log(`[AI RUN STATUS: INVALID — AI call failed: ${followResult.aiFailureCategory || "unknown"}]`);
+  }
   console.log(`Subject: ${outbound2?.subject ?? `Re: ${tc.subject}`}`);
   console.log(`In-Reply-To (as sent): ${outbound2?.inReplyTo ?? "None"}`);
   console.log(`References (as sent): ${outbound2?.references ?? "None"}`);
@@ -303,6 +317,8 @@ async function runScenario(tc: TestCase) {
   if (followResult.quote) {
     const q2 = followResult.quote;
     const rec2 = (q2.recommendedOptionId ? q2.options.find((o) => o.id === q2.recommendedOptionId) : undefined) ?? q2.options[0]!;
+    const lineItemsSum2 = rec2.lineItems.reduce((acc, item) => acc + item.lineTotal, 0);
+    assert.equal(lineItemsSum2, rec2.total, "Sum of line items must equal quote total");
     const pdfBuf2 = await renderQuotePdf({ quote: q2 });
     const pdfText2 = extractPdfText(pdfBuf2);
     const emailMatch2 = outbound2?.bodyText.match(/Total\s*\|\s*\|\s*\|\s*₹([\d,]+)/);
@@ -319,6 +335,8 @@ async function runScenario(tc: TestCase) {
     console.log(`  - Stored Recommended Total: ₹${formattedRupees2}`);
     console.log(`  - Email Body Total: ₹${emailTotal2?.toLocaleString("en-IN") ?? "N/A"}`);
     console.log(`  - PDF Text Total: ₹${formattedRupees2} (verified in PDF text: ${pdfHasTotal2})`);
+    console.log(`  - Line Items Sum: ₹${Math.round(lineItemsSum2 / 100).toLocaleString("en-IN")} (verified equal to total: ${lineItemsSum2 === rec2.total})`);
+    console.log(`  - Alternative Line: ${q2.comparisonLine ?? "None (Single plan or no upsell)"}`);
 
     assert.equal(emailTotal2, recTotalRupees2, "Email total must equal stored recommended total");
     assert.equal(pdfHasTotal2, true, "PDF text must contain recommended total");
