@@ -1,7 +1,8 @@
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import { PDFDocument } from "pdf-lib";
-import pdfParse from "pdf-parse";
+// @ts-expect-error pdf-parse subpath import avoids the index.js debug execution bug
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 export interface DraftChunk {
   chunkIndex: number;
