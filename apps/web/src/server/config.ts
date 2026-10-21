@@ -27,6 +27,10 @@ export interface AppConfig {
   groqApiKey: string | null;
   /** Configured Groq model identifier (e.g. "llama-3.3-70b-versatile") */
   groqModel: string;
+  /** Cerebras API key for the AI sales engineer fallback. Server-side only. */
+  cerebrasApiKey: string | null;
+  /** Configured Cerebras model identifier (e.g. "llama-3.3-70b") */
+  cerebrasModel: string;
   /** Google Gemini API key for the AI sales engineer. Server-side only. */
   geminiApiKey: string | null;
   /** Configured Gemini model identifier (e.g. "gemini-3.8-flash") */
@@ -47,6 +51,9 @@ export interface AppConfig {
 
 /** Default Groq model used for fast, high-limit LPU inference */
 export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
+
+/** Default Cerebras model used for high-speed wafer-scale LPU inference */
+export const DEFAULT_CEREBRAS_MODEL = "llama-3.3-70b";
 
 /** Default model used only when GEMINI_MODEL is absent. Never a silent substitution for a configured value. */
 export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
@@ -126,6 +133,8 @@ export function getAppConfig(): AppConfig {
   // are never placed in a NEXT_PUBLIC_* variable, an API response, or a log line.
   const groqApiKey = process.env.GROQ_API_KEY?.trim() || null;
   const groqModel = process.env.GROQ_MODEL?.trim() || DEFAULT_GROQ_MODEL;
+  const cerebrasApiKey = process.env.CEREBRAS_API_KEY?.trim() || null;
+  const cerebrasModel = process.env.CEREBRAS_MODEL?.trim() || DEFAULT_CEREBRAS_MODEL;
   const geminiApiKey = process.env.GEMINI_API_KEY?.trim() || null;
   const geminiModel = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
   // An explicit opt-out so the rules fallback can be exercised without removing keys.
@@ -133,7 +142,7 @@ export function getAppConfig(): AppConfig {
   // Automated tests never reach the live provider unless explicitly allowed.
   const aiBlockedByTestRuntime = isTestRuntime() && process.env.ALLOW_AI_IN_TESTS !== "true";
   const isAiEnabled =
-    (Boolean(groqApiKey) || Boolean(geminiApiKey)) && !aiDisabledByFlag && !aiBlockedByTestRuntime;
+    (Boolean(groqApiKey) || Boolean(cerebrasApiKey) || Boolean(geminiApiKey)) && !aiDisabledByFlag && !aiBlockedByTestRuntime;
   const aiTimeoutMs = Number.parseInt(process.env.AI_TIMEOUT_MS ?? "", 10) || 30_000;
   const aiMaxAttempts = Number.parseInt(process.env.AI_MAX_ATTEMPTS ?? "", 10) || 3;
 
@@ -153,6 +162,8 @@ export function getAppConfig(): AppConfig {
     isPublicAppUrl,
     groqApiKey,
     groqModel,
+    cerebrasApiKey,
+    cerebrasModel,
     geminiApiKey,
     geminiModel,
     isAiEnabled,

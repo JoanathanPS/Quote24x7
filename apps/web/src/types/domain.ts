@@ -610,7 +610,7 @@ export interface HealthComponent {
 export type AiAction = "ask_follow_up" | "prepare_quote" | "human_review";
 
 /** Which component actually produced the decision that was acted on. */
-export type DecisionSource = "groq" | "gemini" | "rules_fallback";
+export type DecisionSource = "groq" | "cerebras" | "gemini" | "rules_fallback";
 
 /** Why the AI path was not used, or not trusted. Safe for operator display. */
 export type AiFailureCategory =
