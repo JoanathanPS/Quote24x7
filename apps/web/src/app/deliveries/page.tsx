@@ -21,7 +21,7 @@ import {
 } from "@phosphor-icons/react";
 
 import { useDeliveries } from "@/hooks/use-api";
-import { formatDateTime, formatRelativeTime, cn } from "@/lib/utils";
+import { formatDateTime, formatRelativeTime, formatShortRef, cn } from "@/lib/utils";
 import type { DeliveryRecord, DeliveryStatus, DeliveryEvent } from "@/types/domain";
 
 import {
@@ -409,7 +409,7 @@ export default function DeliveriesPage() {
                             title="View Quote Document"
                           >
                             <Receipt className="h-3 w-3" />
-                            <span>{delivery.quoteId}</span>
+                            <span>#{formatShortRef(delivery.quoteId)}</span>
                           </Link>
                         ) : (
                           <span className="text-[11px] text-muted-foreground italic">No quote attached</span>
@@ -650,7 +650,7 @@ export default function DeliveriesPage() {
                       href={`/quotes/${selectedDelivery.quoteId}`}
                       className="inline-flex items-center gap-1 text-primary hover:underline font-medium"
                     >
-                      <span>Inspect Quote</span>
+                      <span>Inspect Quote (#{formatShortRef(selectedDelivery.quoteId)})</span>
                       <ArrowSquareOut className="h-3.5 w-3.5" />
                     </Link>
                   )}

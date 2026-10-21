@@ -105,6 +105,7 @@ test("Golden Template PDF Generation: Short ref, no INR prefix, no monospace, cl
   assert.ok(pdfText.includes("Item"), "Must contain 'Item' column");
   assert.ok(pdfText.includes("What it covers"), "Must contain 'What it covers' column");
   assert.ok(pdfText.includes("Annual"), "Must contain 'Annual' column");
+  assert.ok(pdfText.includes("Rs. "), "Must contain currency symbol/prefix Rs.");
   assert.equal(pdfText.includes("Pack size"), false, "Must not contain 'Pack size' column");
   assert.equal(pdfText.includes("Purchased"), false, "Must not contain 'Purchased' column");
 

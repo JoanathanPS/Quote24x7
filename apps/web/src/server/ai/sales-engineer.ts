@@ -85,7 +85,9 @@ export function extractCandidateValues(text: string): Set<number> {
   }
 
   for (const match of norm.matchAll(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-](one|two|three|four|five|six|seven|eight|nine)\b/gi)) {
-    const sum = (WORD_VALUES_SE[match[1].toLowerCase()] ?? 0) + (WORD_VALUES_SE[match[2].toLowerCase()] ?? 0);
+    const w1 = match[1]?.toLowerCase();
+    const w2 = match[2]?.toLowerCase();
+    const sum = (w1 ? WORD_VALUES_SE[w1] ?? 0 : 0) + (w2 ? WORD_VALUES_SE[w2] ?? 0 : 0);
     literals.push(sum);
     values.add(sum);
   }

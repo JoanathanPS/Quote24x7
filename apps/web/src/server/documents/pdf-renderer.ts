@@ -13,7 +13,17 @@ export interface RenderPdfOptions {
 }
 
 function formatPdfMoney(amount: number, currency: string): string {
-  return formatMoney(amount, currency as CurrencyCode, { showDecimals: false }).replace(/[^0-9,]/g, "");
+  const digits = formatMoney(amount, currency as CurrencyCode, { showDecimals: false }).replace(/[^0-9,]/g, "");
+  if (currency === "INR") {
+    return `Rs. ${digits}`;
+  }
+  if (currency === "USD") {
+    return `$${digits}`;
+  }
+  if (currency === "EUR") {
+    return `EUR ${digits}`;
+  }
+  return `${currency} ${digits}`;
 }
 
 function safePdfText(str: string | null | undefined): string {
@@ -429,7 +439,9 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
 
   page.drawText("Item", { x: colX.item, y: y - 11, size: 7.5, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
   page.drawText("What it covers", { x: colX.whatItCovers, y: y - 11, size: 7.5, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
-  page.drawText("Annual", { x: colX.annual - 35, y: y - 11, size: 7.5, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
+  const annualHeader = quote.currency === "INR" ? "Annual (Rs.)" : `Annual (${quote.currency})`;
+  const annualHeaderWidth = fontSansBold.widthOfTextAtSize(annualHeader, 7.5);
+  page.drawText(annualHeader, { x: colX.annual - annualHeaderWidth, y: y - 11, size: 7.5, font: fontSansBold, color: rgb(0.2, 0.25, 0.35) });
 
   y -= tableHeaderHeight;
 
@@ -444,7 +456,7 @@ export async function renderQuotePdf(options: RenderPdfOptions): Promise<Buffer>
       (item.lineTotal ? Math.floor(item.lineTotal / 12) : 0);
     const monthlyStr = formatPdfMoney(monthlyRate, quote.currency);
     const itemName = isBase
-      ? `${activeOption.planName} base subscription (Rs. ${monthlyStr} per month x 12)`
+      ? `${activeOption.planName} base subscription (${monthlyStr} per month x 12)`
       : item.description;
 
     const coversText = getWhatItCovers(item, activeOption.coverage);

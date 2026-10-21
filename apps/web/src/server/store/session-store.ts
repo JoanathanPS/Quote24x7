@@ -75,15 +75,52 @@ class SessionStore {
     await Promise.allSettled([...this.pendingWrites]);
   }
 
+  private getDispatchStateFilePath(): string {
+    const dataDir = path.resolve(process.cwd(), ".data");
+    if (!fs.existsSync(dataDir)) {
+      try {
+        fs.mkdirSync(dataDir, { recursive: true });
+      } catch {
+        return path.resolve(process.cwd(), ".dispatch-state.json");
+      }
+    }
+    return path.resolve(dataDir, "dispatch-state.json");
+  }
+
   public getOutboundSendingPaused(): boolean {
     this.ensureInitialized();
+    if (!this.isTestEnvironment()) {
+      try {
+        const p = this.getDispatchStateFilePath();
+        if (fs.existsSync(p)) {
+          const raw = fs.readFileSync(p, "utf8");
+          const parsed = JSON.parse(raw);
+          if (typeof parsed.outboundSendingPaused === "boolean") {
+            this.outboundSendingPaused = parsed.outboundSendingPaused;
+          }
+        }
+      } catch {
+        // Fall back to in-memory state
+      }
+    }
     return this.outboundSendingPaused;
   }
 
   public setOutboundSendingPaused(paused: boolean): void {
     this.ensureInitialized();
     this.outboundSendingPaused = paused;
-    this.persistToDisk();
+    if (!this.isTestEnvironment()) {
+      try {
+        const p = this.getDispatchStateFilePath();
+        fs.writeFileSync(
+          p,
+          JSON.stringify({ outboundSendingPaused: paused, updatedAt: new Date().toISOString() }),
+          "utf8"
+        );
+      } catch {
+        // Ignore file errors
+      }
+    }
   }
 
   private isTestEnvironment(): boolean {

@@ -120,3 +120,33 @@ choice. Check the current paper and download links before citing.
 - Attachments (PDF/DOCX/CSV/XLSX) are not in v1; `test-attachments/` and `run-all-test-cases.ts` already cover them end to end.
 - `conversationalResponse` factuality (product Q&A) is not scored yet; it needs a reference knowledge set or an LLM judge.
 - Multi-turn cases feed earlier turns as conversation history, not as a persisted profile.
+
+---
+
+## Evaluation Benchmark Results
+
+The benchmark harness was evaluated across deterministic rules (before and after defect remediation), live Groq LPU inference, and Google Gemini.
+
+### Benchmark Comparison
+
+| Metric | Rules (Before) | Rules (After Step 1) | Groq Live (Raw Model) | Groq Live (Final System Pre-Fix) | Groq Post-Fix (Final System Replay) | Gemini Live (Limit 10)* |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| **Total Cases** | 40 | 40 | 40 | 40 | 40 | 10 (sample) |
+| **Provider Failures** | 0 / 40 (0%) | 0 / 40 (0%) | 0 / 40 (0%) | 0 / 40 (0%) | 0 / 40 (0%) | 10 / 10 (100%)* |
+| **Action Accuracy (lenient)** | 45.0% (18/40) | 62.5% (25/40) | 80.0% (32/40) | 82.5% (33/40) | 80.0% (32/40) | 60.0% (6/10)* |
+| **Exact Match (all 6 units)** | 41.7% (15/36) | 94.4% (34/36) | 94.4% (34/36) | 61.1% (22/36) | 94.4% (34/36) | 40.0% (4/10)* |
+| **Quantity Precision** | 71.9% | 98.4% | 100.0% | 85.0% | 100.0% | 66.7%* |
+| **Quantity Recall** | 69.8% | 96.8% | 96.8% | 77.4% | 96.8% | 74.3%* |
+| **Quantity F1** | 70.8% | 97.6% | 98.4% | 80.7% | 98.4% | 70.3%* |
+| **Hallucinated-Case Rate** | 10.0% (4/40) | 7.5% (3/40) | 7.5% (3/40) | 5.0% (2/40) | 5.0% (2/40) | 0.0% (0/10)* |
+| **95% Wilson CI (Hallucinations)** | [4.0%, 23.1%] | [2.6%, 19.9%] | [2.6%, 19.9%] | [1.4%, 16.5%] | [1.4%, 16.5%] | [0.0%, 27.8%]* |
+| **Hallucinated Claims / Positive** | 0.0% (0/63) | 0.0% (0/63) | 3.1% (2/64) | 0.0% (0/55) | 0.0% (0/62) | 0.0% (0/16)* |
+| **Premature Quote Rate** | 18.2% (2/11) | 27.3% (3/11) | 9.1% (1/11) | 9.1% (1/11) | 18.2% (2/11) | 0.0% (0/0)* |
+| **Follow-Up Coverage** | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0%* |
+
+> \* **Notice regarding Gemini Live results**: Gemini free-tier quota exhausted immediately on the live run with HTTP 429 rate limits, causing all 10 attempted cases to fall back to the rules engine. These numbers reflect the fallback rules layer at the time of execution, not genuine Gemini model capabilities, and cannot be compared fairly.
+
+### Guard Rescue and Pipeline Performance
+1. **Raw Model vs. Final System Degradation (Fixed)**: In the original Groq baseline, Guard 3 degraded exact quantity match from 94.4% down to 61.1% by discarding valid model extractions when evidence strings differed by punctuation or whitespace, or when the rules engine produced a conflicting faulty quantity. With the Step 1 extractor fixes and Step 2 Guard 3 candidate-value evidence verification, final system exact match was completely restored to 94.4% (F1 98.4%), while preventing 100% of invented claims.
+2. **Top-Up Pack Awareness (Step 3)**: Fixed a catalogue projection defect in `formatCatalogueProjection` where add-on packs were reported as `packs of none usable` due to reading top-level pack prices rather than `catalogue.planAddOnPrices`. The model now clearly sees that Lite, Professional, and Enterprise support add-on top-up packs for high-volume configurations.
+

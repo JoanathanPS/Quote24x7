@@ -23,7 +23,7 @@ import {
 
 import { useQuote, useThread } from "@/hooks/use-api";
 import { formatMoney } from "@/server/pricing/money";
-import { formatDateTime, cn } from "@/lib/utils";
+import { formatDateTime, formatShortRef, cn } from "@/lib/utils";
 import type { OptionType, QuoteOption } from "@/types/domain";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -160,7 +160,7 @@ export default function QuoteDocumentPage() {
             </Button>
             <span className="hidden text-xs text-subtle-foreground sm:inline">•</span>
             <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
-              Ref: {quote.id}
+              Ref: #{quote.shortRef || formatShortRef(quote.id)}
             </span>
           </div>
 
@@ -255,7 +255,7 @@ export default function QuoteDocumentPage() {
                   Quote Ref:
                 </span>
                 <span className="font-mono text-sm font-bold text-foreground print:text-black">
-                  #{quote.id}
+                  #{quote.shortRef || formatShortRef(quote.id)}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground print:text-neutral-700">

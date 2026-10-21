@@ -25,7 +25,7 @@ import {
 
 import { useQuote } from "@/hooks/use-api";
 import { formatMoney } from "@/server/pricing/money";
-import { formatDateTime, cn } from "@/lib/utils";
+import { formatDateTime, formatShortRef, cn } from "@/lib/utils";
 import type {
   OptionType,
   PricingStatus,
@@ -217,7 +217,7 @@ export default function QuoteDetailPage() {
         <div className="space-y-2.5">
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground font-mono">
-              Quote #{quote.id}
+              Quote #{quote.shortRef || formatShortRef(quote.id)}
             </h1>
             <Badge variant={quoteStatusInfo.variant} className="text-xs">
               {quoteStatusInfo.label}

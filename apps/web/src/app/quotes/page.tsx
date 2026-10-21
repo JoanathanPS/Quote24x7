@@ -10,10 +10,16 @@ import {
   CaretDown,
   CaretUp,
   FilePdf,
+  ArrowSquareOut,
+  TrendUp,
+  ShieldCheck,
+  Calendar,
+  Stack,
 } from "@phosphor-icons/react";
 
 import { useQuotes } from "@/hooks/use-api";
 import { formatMoney } from "@/server/pricing/money";
+import { formatDateTime, formatShortRef } from "@/lib/utils";
 import type { QuoteStatus } from "@/types/domain";
 
 import {
@@ -62,17 +68,38 @@ export default function QuotesPage() {
   const [search, setSearch] = React.useState("");
   const [expandedQuoteId, setExpandedQuoteId] = React.useState<string | null>(null);
 
+  // Compute summary metrics
+  const metrics = React.useMemo(() => {
+    if (!quotes || quotes.length === 0) return { totalQuotes: 0, totalValue: 0, avgValue: 0, validatedCount: 0 };
+    const totalQuotes = quotes.length;
+    let totalVal = 0;
+    let validated = 0;
+    for (const q of quotes) {
+      const best = q.options.find((o) => o.optionType === "best_value") ?? q.options[0];
+      if (best) totalVal += best.total;
+      if (q.status === "validated" || q.status === "sent") validated++;
+    }
+    return {
+      totalQuotes,
+      totalValue: totalVal,
+      avgValue: totalQuotes > 0 ? Math.round(totalVal / totalQuotes) : 0,
+      validatedCount: validated,
+    };
+  }, [quotes]);
+
   const filteredQuotes = React.useMemo(() => {
     if (!quotes) return [];
     if (!search.trim()) return quotes;
-    const q = search.toLowerCase();
+    const q = search.toLowerCase().trim();
     return quotes.filter((quote) => {
+      const shortRef = (quote.shortRef || formatShortRef(quote.id)).toLowerCase();
       const matchId = quote.id.toLowerCase().includes(q);
+      const matchRef = shortRef.includes(q);
       const matchThread = quote.threadId.toLowerCase().includes(q);
       const matchPlan = quote.options.some((opt) =>
         opt.planName.toLowerCase().includes(q)
       );
-      return matchId || matchThread || matchPlan;
+      return matchId || matchRef || matchThread || matchPlan;
     });
   }, [quotes, search]);
 
@@ -83,9 +110,14 @@ export default function QuotesPage() {
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-4 w-96" />
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-24 w-full rounded-lg" />
+          ))}
+        </div>
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-48 w-full rounded-lg" />
+            <Skeleton key={i} className="h-44 w-full rounded-lg" />
           ))}
         </div>
       </div>
@@ -116,7 +148,7 @@ export default function QuotesPage() {
             </h1>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Itemized customer quotations, line items, and subscription proposals.
+            Official customer quotations, line items, and subscription proposals.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -126,6 +158,63 @@ export default function QuotesPage() {
         </div>
       </div>
 
+      {/* KPI Metrics Summary Bar */}
+      {quotes && quotes.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Card className="border-border/70 bg-surface shadow-xs p-4">
+            <div className="flex items-center justify-between text-muted-foreground mb-1">
+              <span className="text-xs font-medium">Total Proposals</span>
+              <Stack className="h-4 w-4 text-primary" />
+            </div>
+            <div className="text-xl font-bold font-mono text-foreground">
+              {metrics.totalQuotes}
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              Generated quotes
+            </span>
+          </Card>
+
+          <Card className="border-border/70 bg-surface shadow-xs p-4">
+            <div className="flex items-center justify-between text-muted-foreground mb-1">
+              <span className="text-xs font-medium">Pipeline Value</span>
+              <TrendUp className="h-4 w-4 text-emerald-400" />
+            </div>
+            <div className="text-xl font-bold font-mono text-foreground truncate">
+              {formatMoney(metrics.totalValue, "INR")}
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              Across active options
+            </span>
+          </Card>
+
+          <Card className="border-border/70 bg-surface shadow-xs p-4">
+            <div className="flex items-center justify-between text-muted-foreground mb-1">
+              <span className="text-xs font-medium">Avg Deal Size</span>
+              <Receipt className="h-4 w-4 text-primary" />
+            </div>
+            <div className="text-xl font-bold font-mono text-foreground truncate">
+              {formatMoney(metrics.avgValue, "INR")}
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              Per quotation
+            </span>
+          </Card>
+
+          <Card className="border-border/70 bg-surface shadow-xs p-4">
+            <div className="flex items-center justify-between text-muted-foreground mb-1">
+              <span className="text-xs font-medium">Validation Status</span>
+              <ShieldCheck className="h-4 w-4 text-emerald-400" />
+            </div>
+            <div className="text-xl font-bold font-mono text-emerald-400">
+              {metrics.validatedCount} / {metrics.totalQuotes}
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              Verified without gaps
+            </span>
+          </Card>
+        </div>
+      )}
+
       {/* Filter / Search Bar */}
       <div className="relative max-w-md">
         <MagnifyingGlass className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -133,7 +222,7 @@ export default function QuotesPage() {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter by quote reference, thread, or plan name..."
+          placeholder="Filter by quote reference (e.g. Q-5239), thread, or plan..."
           className="flex h-9 w-full rounded-md border border-border bg-surface pl-9 pr-3 py-1.5 text-sm text-foreground shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
         />
         {search && (
@@ -147,7 +236,7 @@ export default function QuotesPage() {
         )}
       </div>
 
-      {/* Quotes List with Motion */}
+      {/* Quotes List */}
       {filteredQuotes.length === 0 ? (
         <EmptyState
           icon={Receipt}
@@ -159,13 +248,14 @@ export default function QuotesPage() {
           }
         />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3.5">
           <AnimatePresence mode="popLayout" initial={false}>
             {filteredQuotes.map((quote, idx) => {
               const statusInfo = getStatusBadge(quote.status);
               const bestValue =
                 quote.options.find((o) => o.optionType === "best_value") ?? quote.options[0];
               const isExpanded = expandedQuoteId === quote.id;
+              const displayRef = quote.shortRef || formatShortRef(quote.id);
 
               return (
                 <motion.div
@@ -174,33 +264,37 @@ export default function QuotesPage() {
                   initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
                   animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
                   exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
-                  transition={{ duration: 0.2, delay: idx * 0.03, ease: [0.16, 1, 0.3, 1] }}
+                  transition={{ duration: 0.2, delay: idx * 0.02, ease: [0.16, 1, 0.3, 1] }}
                 >
                   <Card className="border-border/80 bg-surface shadow-xs transition-shadow hover:shadow-sm overflow-hidden">
-                    <CardHeader className="p-5 pb-3">
+                    <CardHeader className="p-4 sm:p-5 pb-3">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-sm font-bold text-foreground">
-                              #{quote.id}
+                            <span className="font-mono text-sm font-bold text-foreground bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded">
+                              #{displayRef}
                             </span>
                             <Badge variant={statusInfo.variant} className="text-[11px]">
                               {statusInfo.label}
                             </Badge>
                             <span className="text-xs text-muted-foreground">
-                              Linked Thread:{" "}
+                              Thread:{" "}
                               <Link
                                 href={`/threads/${quote.threadId}`}
                                 className="font-mono text-primary hover:underline"
                               >
-                                #{quote.threadId}
+                                #{quote.threadId.replace(/^th_/, "T-")}
                               </Link>
                             </span>
+                            <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
+                              <Calendar className="h-3 w-3" />
+                              {formatDateTime(quote.createdAt)}
+                            </span>
                           </div>
-                          <CardTitle className="text-base font-bold text-foreground pt-1">
+                          <CardTitle className="text-base font-bold text-foreground pt-0.5">
                             {bestValue?.planName ?? "Customer Quote"}
                           </CardTitle>
-                          <CardDescription className="text-xs line-clamp-2">
+                          <CardDescription className="text-xs line-clamp-1">
                             {bestValue?.rankReason ?? "Sizing configuration for customer requirements."}
                           </CardDescription>
                         </div>
@@ -219,14 +313,14 @@ export default function QuotesPage() {
                       </div>
                     </CardHeader>
 
-                    <CardContent className="p-5 pt-0 space-y-4">
-                      {/* Coverage row */}
+                    <CardContent className="p-4 sm:p-5 pt-0 space-y-3.5">
+                      {/* Workload Coverage Summary */}
                       {bestValue?.coverage && bestValue.coverage.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border/50">
                           {bestValue.coverage.map((row) => (
                             <div
                               key={row.unit}
-                              className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1 text-xs text-foreground"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/30 px-2.5 py-0.5 text-xs text-foreground"
                             >
                               <span className="text-muted-foreground font-medium">{row.label}:</span>
                               <span className="font-mono font-semibold">{row.total}</span>
@@ -249,7 +343,19 @@ export default function QuotesPage() {
                           >
                             <Link href={`/quotes/${quote.id}`}>
                               <Eye className="h-3.5 w-3.5" />
-                              <span>Review Quote</span>
+                              <span>Review Details</span>
+                            </Link>
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            asChild
+                            className="h-8 gap-1.5 text-xs text-foreground"
+                          >
+                            <Link href={`/proposals/${quote.id}`} target="_blank">
+                              <ArrowSquareOut className="h-3.5 w-3.5" />
+                              <span>Customer Proposal</span>
                             </Link>
                           </Button>
 
@@ -259,9 +365,9 @@ export default function QuotesPage() {
                             asChild
                             className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
                           >
-                            <a href={`/api/v1/quotes/${quote.id}/pdf`} download={`Quote24x7-${quote.id}.pdf`}>
+                            <a href={`/api/v1/quotes/${quote.id}/pdf`} download={`Quote24x7-${displayRef}.pdf`}>
                               <FilePdf className="h-3.5 w-3.5" />
-                              <span>PDF Quotation</span>
+                              <span>Download PDF</span>
                             </a>
                           </Button>
                         </div>
@@ -280,7 +386,7 @@ export default function QuotesPage() {
                         </button>
                       </div>
 
-                      {/* Expandable Line Items & Assumptions with Motion */}
+                      {/* Expandable Line Items Table */}
                       <AnimatePresence>
                         {isExpanded && bestValue && (
                           <motion.div

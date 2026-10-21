@@ -19,7 +19,7 @@ import { useTheme } from "next-themes";
 
 import { useQuote, useThread } from "@/hooks/use-api";
 import { formatMoney } from "@/server/pricing/money";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, formatShortRef } from "@/lib/utils";
 import type { QuoteOption } from "@/types/domain";
 
 import { Button } from "@/components/ui/button";
@@ -87,7 +87,8 @@ export default function CustomerProposalPage() {
   const billingPeriodLabel = quote.billingPeriod === "annual" ? "Annually" : "Monthly";
   const customerName = thread?.senderName || "Customer";
   const customerOrg = thread?.organisation || "Client Organization";
-  const replySubject = encodeURIComponent(`Question regarding Site24x7 Proposal #${quote.id}`);
+  const proposalRef = quote.shortRef || formatShortRef(quote.id);
+  const replySubject = encodeURIComponent(`Question regarding Site24x7 Proposal #${proposalRef}`);
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-20">
@@ -97,7 +98,7 @@ export default function CustomerProposalPage() {
           <div className="flex items-center gap-3">
             <Quote24x7Logo size="md" />
             <span className="text-xs text-muted-foreground border-l border-border pl-3 font-mono">
-              Proposal #{quote.id}
+              Proposal #{proposalRef}
             </span>
           </div>
 
@@ -354,7 +355,7 @@ export default function CustomerProposalPage() {
               Order Activation &amp; Purchase Handoff
             </DialogTitle>
             <DialogDescription className="text-center text-xs">
-              Proposal Reference: <strong className="font-mono text-foreground">#{quote.id}</strong>
+              Proposal Reference: <strong className="font-mono text-foreground">#{quote.shortRef || formatShortRef(quote.id)}</strong>
             </DialogDescription>
           </DialogHeader>
 

@@ -18,12 +18,17 @@ import {
   Calendar,
   CheckCircle,
   Pause,
-  PencilSimple,
   FilePdf,
   ShieldCheck,
   Cpu,
   CaretDown,
   CaretUp,
+  HardDrives,
+  Globe,
+  Gauge,
+  Network,
+  Database,
+  Users,
 } from "@phosphor-icons/react";
 
 import {
@@ -35,7 +40,7 @@ import {
   useThreadAiDecisions,
 } from "@/hooks/use-api";
 import { formatMoney } from "@/server/pricing/money";
-import { formatDateTime, formatRelativeTime, cn } from "@/lib/utils";
+import { formatDateTime, formatRelativeTime, formatShortRef, cn } from "@/lib/utils";
 import type {
   RequestType,
   ThreadStatus,
@@ -148,11 +153,6 @@ export default function ThreadDetailPage() {
     setTimeout(() => setActionFeedback(null), 5000);
   };
 
-  const handleEdit = () => {
-    setActionFeedback("Editing mode active: operator adjustments ready for next sizing run.");
-    setTimeout(() => setActionFeedback(null), 5000);
-  };
-
   const handleHold = () => {
     setActionFeedback("Thread placed on Hold for manual sales desk review.");
     setTimeout(() => setActionFeedback(null), 5000);
@@ -203,12 +203,60 @@ export default function ThreadDetailPage() {
   const statusInfo = getStatusBadge(thread.status);
   const typeInfo = getRequestTypeBadge(thread.requestType);
 
-  // Partition requirements: Stated, Assumed, Missing
-  const statedFields = requirements?.fields.filter((f) => f.state === "provided" && f.value != null) ?? [];
+  // Partition requirements: Missing, Assumed
   const missingFields = requirements?.fields.filter((f) => f.state === "missing" || f.value == null) ?? [];
   const assumedList = quote?.assumptions ?? [
     "Priced against quantities understood from buyer email communication.",
     "Add-on capacity sold in standard whole packs.",
+  ];
+
+  // 6-Unit Sizing Matrix structured definition
+  const findReqField = (keys: string[]) =>
+    requirements?.fields.find((f) => keys.some((k) => f.key.toLowerCase().includes(k.toLowerCase())));
+
+  const matrixUnits = [
+    {
+      id: "servers",
+      label: "Servers / Hosts",
+      icon: HardDrives,
+      field: findReqField(["server", "host"]),
+      fallbackUnit: "servers",
+    },
+    {
+      id: "websites",
+      label: "Websites (Basic)",
+      icon: Globe,
+      field: findReqField(["basic_monitor", "website"]),
+      fallbackUnit: "monitors",
+    },
+    {
+      id: "synthetics",
+      label: "Advanced / Synthetic",
+      icon: Gauge,
+      field: findReqField(["advanced_monitor", "synthetic", "browser_transaction"]),
+      fallbackUnit: "monitors",
+    },
+    {
+      id: "network",
+      label: "Network Devices",
+      icon: Network,
+      field: findReqField(["network"]),
+      fallbackUnit: "devices",
+    },
+    {
+      id: "applogs",
+      label: "AppLogs Volume",
+      icon: Database,
+      field: findReqField(["log", "applog"]),
+      fallbackUnit: "GB/mo",
+    },
+    {
+      id: "rum",
+      label: "RUM Pageviews",
+      icon: Users,
+      field: findReqField(["rum", "pageview"]),
+      fallbackUnit: "views/mo",
+    },
   ];
 
   const bestValueOption = quote?.options.find((o) => o.optionType === "best_value") ?? quote?.options[0];
@@ -315,7 +363,7 @@ export default function ThreadDetailPage() {
               >
                 <a
                   href={`/api/v1/quotes/${thread.quoteId}/pdf`}
-                  download={`Quote24x7-Proposal-${thread.quoteId}.pdf`}
+                  download={`Quote24x7-Proposal-${quote?.shortRef || formatShortRef(thread.quoteId)}.pdf`}
                 >
                   <FilePdf className="h-3.5 w-3.5" />
                   <span>PDF Quote</span>
@@ -642,27 +690,91 @@ export default function ThreadDetailPage() {
                   </CardHeader>
 
                   <CardContent className="p-4 space-y-4">
-                    {/* Stated Parameters */}
-                    <div>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1.5">
-                        Stated by Buyer
+                    {/* 6-Unit Structured Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      {matrixUnits.map((item) => {
+                        const Icon = item.icon;
+                        const f = item.field;
+                        const hasVal = f && f.value != null && f.value !== 0 && f.value !== "0";
+                        const isMissing = f?.state === "missing";
+
+                        let displayValue: string = "0";
+                        let subNote: string | null = null;
+                        if (f && f.value != null) {
+                          if (typeof f.value === "number") {
+                            displayValue = f.value.toLocaleString();
+                          } else {
+                            const valStr = String(f.value).trim();
+                            const numMatch = valStr.match(/^\d+/);
+                            if (numMatch && numMatch[0] === valStr) {
+                              displayValue = Number(valStr).toLocaleString();
+                            } else if (numMatch && valStr.length > 20) {
+                              displayValue = numMatch[0];
+                              subNote = valStr;
+                            } else if (valStr.length > 24) {
+                              displayValue = "Requested";
+                              subNote = valStr;
+                            } else {
+                              displayValue = valStr;
+                            }
+                          }
+                        }
+
+                        return (
+                          <div
+                            key={item.id}
+                            className={cn(
+                              "rounded-lg border p-2.5 transition-colors flex flex-col justify-between min-h-[76px]",
+                              hasVal
+                                ? "border-primary/30 bg-primary-soft/10"
+                                : "border-border/60 bg-muted/20"
+                            )}
+                          >
+                            <div className="flex items-center justify-between gap-1 mb-1">
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground truncate">
+                                <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
+                                <span className="font-medium truncate">{item.label}</span>
+                              </div>
+                              {isMissing ? (
+                                <Badge variant="warning" className="text-[9px] px-1 py-0 h-3.5 font-normal">
+                                  Clarifying
+                                </Badge>
+                              ) : hasVal ? (
+                                <Badge variant="success" className="text-[9px] px-1 py-0 h-3.5 font-normal">
+                                  Stated
+                                </Badge>
+                              ) : (
+                                <span className="text-[9px] text-muted-foreground font-mono">
+                                  Default
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-baseline gap-1 mt-auto">
+                              <span className="text-base font-bold font-mono text-foreground tracking-tight">
+                                {displayValue}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {f?.unit || item.fallbackUnit}
+                              </span>
+                            </div>
+
+                            {subNote && (
+                              <p className="text-[10px] text-muted-foreground mt-1 line-clamp-1 italic" title={subNote}>
+                                {subNote}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Commercial / Billing Cycle Strip */}
+                    <div className="flex items-center justify-between text-xs py-1.5 px-3 rounded-md bg-muted/30 border border-border/50 text-muted-foreground">
+                      <span className="font-medium">Billing Period:</span>
+                      <span className="font-mono font-semibold text-foreground uppercase text-[11px]">
+                        {quote?.billingPeriod || "Annual"}
                       </span>
-                      {statedFields.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {statedFields.map((f) => (
-                            <span
-                              key={f.key}
-                              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-xs text-foreground"
-                            >
-                              <span className="text-muted-foreground">{f.label}:</span>
-                              <span className="font-semibold font-mono">{String(f.value)}</span>
-                              {f.unit && <span className="text-muted-foreground text-[10px]">{f.unit}</span>}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-muted-foreground italic">None explicitly declared yet.</p>
-                      )}
                     </div>
 
                     {/* Assumed Parameters */}
@@ -750,7 +862,7 @@ export default function ThreadDetailPage() {
                         <div>
                           <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
                             <Receipt className="h-4 w-4 text-primary" />
-                            Quote #{quote.id} (v{quote.version ?? 1})
+                            Quote #{quote.shortRef || formatShortRef(quote.id)} (v{quote.version ?? 1})
                           </CardTitle>
                           <CardDescription className="text-xs mt-0.5">
                             {bestValueOption.planName} • {quote.billingPeriod} billing
@@ -827,7 +939,7 @@ export default function ThreadDetailPage() {
                         >
                           <a
                             href={`/api/v1/quotes/${quote.id}/pdf`}
-                            download={`Quote24x7-${quote.id}.pdf`}
+                            download={`Quote24x7-${quote.shortRef || formatShortRef(quote.id)}.pdf`}
                           >
                             <FilePdf className="h-3.5 w-3.5" />
                             <span>Download Official Proposal PDF</span>
@@ -913,25 +1025,6 @@ export default function ThreadDetailPage() {
               </motion.div>
             )}
           </AnimatePresence>
-
-          {/* Bottom Operator Command Bar */}
-          <div className="flex items-center justify-between gap-2 p-3 rounded-lg border border-border/80 bg-surface shadow-xs">
-            <span className="text-xs font-semibold text-foreground">Operator Actions:</span>
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={handleSend} className="h-8 text-xs gap-1.5">
-                <PaperPlaneTilt className="h-3.5 w-3.5" />
-                Send
-              </Button>
-              <Button size="sm" variant="outline" onClick={handleEdit} className="h-8 text-xs gap-1.5">
-                <PencilSimple className="h-3.5 w-3.5" />
-                Edit
-              </Button>
-              <Button size="sm" variant="secondary" onClick={handleHold} className="h-8 text-xs gap-1.5">
-                <Pause className="h-3.5 w-3.5" />
-                Hold
-              </Button>
-            </div>
-          </div>
         </div>
       </div>
     </div>

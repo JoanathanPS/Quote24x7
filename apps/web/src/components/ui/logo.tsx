@@ -67,51 +67,51 @@ export function Quote24x7Logo({
       >
         {/* Cloud lower base contour */}
         <path
-          d="M20 70H80C88.2843 70 95 63.2843 95 55C95 47.1569 88.9442 40.7287 81.2407 40.0664C80.2038 23.3644 66.2731 10 49 10C35.5348 10 24.0326 18.1093 19.123 29.8033C11.1895 31.9056 5 39.2085 5 48C5 57.9411 11.7157 70 20 70Z"
-          stroke="#0070ea"
-          strokeWidth="7"
+          d="M22 68H78C86 68 93 61.5 93 53.5C93 46 87 39.8 79.5 39.2C78.5 23 65 11 48.5 11C35.5 11 24.5 19 19.5 30.5C12 32.5 6 39.5 6 48C6 57.5 12.5 68 22 68Z"
+          stroke="#006fe6"
+          strokeWidth="6.5"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
 
         {/* Radar concentric outer circle */}
         <circle
-          cx="49"
+          cx="48.5"
           cy="42"
-          r="26"
-          stroke="#0070ea"
-          strokeWidth="6"
+          r="25"
+          stroke="#006fe6"
+          strokeWidth="5.5"
         />
 
         {/* Radar concentric inner circle */}
         <circle
-          cx="49"
+          cx="48.5"
           cy="42"
-          r="15"
-          stroke="#0070ea"
-          strokeWidth="5"
+          r="14.5"
+          stroke="#006fe6"
+          strokeWidth="4.5"
         />
 
         {/* Center bullseye dot */}
         <circle
-          cx="49"
+          cx="48.5"
           cy="42"
-          r="5"
-          fill="#0070ea"
+          r="4.5"
+          fill="#006fe6"
         />
 
-        {/* Radar sweep / dark blue wedge in upper right quadrant */}
+        {/* Radar sweep / dark navy wedge in upper right quadrant */}
         <path
-          d="M49 42L67 23.5C71.5 27.8 74.5 33.6 75 40L49 42Z"
-          fill="#002b66"
+          d="M48.5 42L66 24.5C70.2 28.5 73 34 73.5 40.5L48.5 42Z"
+          fill="#0b2e68"
         />
       </svg>
 
-      {/* Typography: "Quote" (cyan-blue) + "24x7" (dark navy in light, bright in dark) */}
+      {/* Typography: "Quote" (Site24x7 blue) + "24x7" (Site24x7 navy in light, bright in dark) */}
       {showText && variant !== "icon" && (
-        <span className="flex items-baseline font-black leading-none">
-          <span className="text-[#0070ea]">Quote</span>
-          <span className="text-[#002b66] dark:text-foreground">24x7</span>
+        <span className="flex items-baseline font-black tracking-tight leading-none text-base sm:text-lg">
+          <span className="text-[#006fe6]">Quote</span>
+          <span className="text-[#0b2e68] dark:text-foreground">24x7</span>
         </span>
       )}
     </div>

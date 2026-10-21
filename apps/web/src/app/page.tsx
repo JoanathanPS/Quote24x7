@@ -31,7 +31,7 @@ import {
   useThreadRequirements,
 } from "@/hooks/use-api";
 import { formatMoney } from "@/server/pricing/money";
-import { formatRelativeTime, formatDateTime, cn } from "@/lib/utils";
+import { formatRelativeTime, formatDateTime, formatShortRef, cn } from "@/lib/utils";
 import type {
   EmailThread,
   ThreadStatus,
@@ -404,7 +404,7 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
           <div className="flex items-center gap-2 shrink-0">
             {thread.quoteId && (
               <Button variant="default" size="sm" asChild className="h-8 gap-1.5 text-xs shadow-xs" title="Download Official Vector PDF">
-                <a href={`/api/v1/quotes/${thread.quoteId}/pdf`} download={`Quote24x7-Proposal-${thread.quoteId}.pdf`}>
+                <a href={`/api/v1/quotes/${thread.quoteId}/pdf`} download={`Quote24x7-Proposal-${formatShortRef(thread.quoteId)}.pdf`}>
                   <FilePdf className="h-3.5 w-3.5" />
                   <span>PDF Quote</span>
                 </a>

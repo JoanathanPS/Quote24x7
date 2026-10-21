@@ -161,7 +161,7 @@ export function reconstructRawDecision(raw: ScoredOutput | null): AiDecisionOutp
     missingRequirements: [],
     assumptions: [],
     recommendedProductCategories: (raw.recommendedCategories || []).filter((cat): cat is (typeof PRODUCT_CATEGORIES)[number] =>
-      PRODUCT_CATEGORIES.includes(cat as any),
+      PRODUCT_CATEGORIES.includes(cat as (typeof PRODUCT_CATEGORIES)[number]),
     ),
     referencedPlanIds: (raw.referencedPlanIds || []).map((p) => p.slice(0, 80)).slice(0, 6),
     followUpQuestions: (raw.followUpQuestions || []).map((q) => q.slice(0, 300)).slice(0, 4),

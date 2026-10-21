@@ -58,3 +58,14 @@ export function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
   return str.slice(0, maxLen - 1) + "…";
 }
+
+/** Formats quote IDs (e.g. "qt_1792566215239") into clean references like "Q-5239". */
+export function formatShortRef(quoteId?: string | null): string {
+  if (!quoteId) return "Q-1042";
+  if (/^Q-\d+$/i.test(quoteId)) return quoteId.toUpperCase();
+  const digits = quoteId.replace(/\D/g, "");
+  if (digits.length >= 4) {
+    return `Q-${digits.slice(-4)}`;
+  }
+  return "Q-1042";
+}
