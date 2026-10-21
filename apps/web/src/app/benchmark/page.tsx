@@ -309,8 +309,8 @@ export default function BenchmarkPage() {
 
               <TableRow className="hover:bg-muted/10 bg-primary/5">
                 <TableCell className="font-medium text-xs">
-                  <div className="font-semibold text-foreground">Groq Raw Model (Llama-3.3-70b)</div>
-                  <div className="text-[11px] text-muted-foreground">Direct LLM JSON output</div>
+                  <div className="font-semibold text-foreground">Groq Raw Model (openai/gpt-oss-120b)</div>
+                  <div className="text-[11px] text-muted-foreground">Direct LLM JSON output from Groq LPU</div>
                 </TableCell>
                 <TableCell className="text-xs text-right">80.0%</TableCell>
                 <TableCell className="text-xs text-right font-mono font-semibold">94.4% (34/36)</TableCell>
@@ -358,7 +358,7 @@ export default function BenchmarkPage() {
                     <Lightning size={14} className="text-amber-500" />
                     Cerebras AI (Wafer-Scale Fallback)
                   </div>
-                  <div className="text-[11px] text-muted-foreground">Llama-3.3-70b via Cerebras Inference</div>
+                  <div className="text-[11px] text-muted-foreground">gpt-oss-120b via Cerebras Inference</div>
                 </TableCell>
                 <TableCell className="text-xs text-right">77.5%</TableCell>
                 <TableCell className="text-xs text-right font-mono">91.7% (33/36)</TableCell>
