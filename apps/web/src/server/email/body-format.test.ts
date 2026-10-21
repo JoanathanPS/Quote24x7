@@ -110,3 +110,84 @@ test("Body format: a message that is only quoted text is shown, not hidden", () 
   assert.equal(quoted, null);
   assert.deepEqual(blocks, [{ type: "paragraph", text: "> just a quote" }]);
 });
+
+test("Body format: quotation table is parsed into structured table block and not garbled", () => {
+  const rawEmail = [
+    "Item | Qty | What it covers | Per year",
+    "--------------------------------------------------------------------------------",
+    "Professional plan (₹3,990.00/mo x 12months) | 1 | Base entitlements | ₹47,880.00",
+    "2 Advanced Monitors add-on pack (annual) | 2 | 2 per pack x 1 | ₹15,390.00",
+    "10 Host monitors add-on pack (annual) | 40 | 10 per pack x 4 | ₹1,02,600.00",
+    "10 GB Logs Storage for 6 Months add-on pack (annual) | 600 | 10 per pack x 60 | ₹57,000.00",
+    "--------------------------------------------------------------------------------",
+    "Total | | | ₹2,22,870.00",
+    "",
+    "Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.",
+    "",
+    "Your official quotation document (PDF) is attached: Site24x7-estimate-qt_1792488259465.pdf",
+  ].join("\n");
+
+  const { blocks } = formatEmailBody(rawEmail);
+
+  assert.equal(blocks.length, 3);
+  assert.equal(blocks[0]!.type, "table");
+
+  if (blocks[0]!.type === "table") {
+    assert.deepEqual(blocks[0]!.headers, ["Item", "Qty", "What it covers", "Per year"]);
+    assert.equal(blocks[0]!.rows.length, 5);
+    assert.deepEqual(blocks[0]!.rows[0], [
+      "Professional plan (₹3,990.00/mo x 12months)",
+      "1",
+      "Base entitlements",
+      "₹47,880.00",
+    ]);
+    assert.deepEqual(blocks[0]!.rows[1], [
+      "2 Advanced Monitors add-on pack (annual)",
+      "2",
+      "2 per pack x 1",
+      "₹15,390.00",
+    ]);
+    assert.deepEqual(blocks[0]!.rows[2], [
+      "10 Host monitors add-on pack (annual)",
+      "40",
+      "10 per pack x 4",
+      "₹1,02,600.00",
+    ]);
+    assert.deepEqual(blocks[0]!.rows[3], [
+      "10 GB Logs Storage for 6 Months add-on pack (annual)",
+      "600",
+      "10 per pack x 60",
+      "₹57,000.00",
+    ]);
+    assert.deepEqual(blocks[0]!.rows[4], ["Total", "", "", "₹2,22,870.00"]);
+  }
+
+  assert.deepEqual(blocks[1], {
+    type: "paragraph",
+    text: "Add-on rates reflect the plan-specific per-year pricing from the Zoho Store.",
+  });
+  assert.deepEqual(blocks[2], {
+    type: "paragraph",
+    text: "Your official quotation document (PDF) is attached: Site24x7-estimate-qt_1792488259465.pdf",
+  });
+});
+
+test("Body format: markdown table with pipe separator line", () => {
+  const md = [
+    "| Feature | Status |",
+    "| --- | --- |",
+    "| Monitoring | Active |",
+    "| Billing | Annual |",
+  ].join("\n");
+
+  const { blocks } = formatEmailBody(md);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.type, "table");
+  if (blocks[0]!.type === "table") {
+    assert.deepEqual(blocks[0]!.headers, ["Feature", "Status"]);
+    assert.deepEqual(blocks[0]!.rows, [
+      ["Monitoring", "Active"],
+      ["Billing", "Annual"],
+    ]);
+  }
+});

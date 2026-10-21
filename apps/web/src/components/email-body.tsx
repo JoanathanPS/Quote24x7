@@ -27,6 +27,74 @@ export function EmailBody({ text, className }: EmailBodyProps) {
             </p>
           );
         }
+        if (block.type === "table") {
+          return (
+            <div
+              key={idx}
+              className="my-3 overflow-x-auto rounded-lg border border-border bg-card/60 shadow-xs"
+            >
+              <table className="w-full border-collapse text-left text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-muted/60 text-muted-foreground font-semibold">
+                    {block.headers.map((h, hIdx) => {
+                      const isLast = hIdx === block.headers.length - 1;
+                      const isQty = hIdx === 1 && block.headers.length === 4;
+                      return (
+                        <th
+                          key={hIdx}
+                          scope="col"
+                          className={cn(
+                            "px-3.5 py-2.5 font-semibold text-foreground tracking-tight",
+                            isLast ? "text-right" : isQty ? "text-right sm:text-center" : "text-left"
+                          )}
+                        >
+                          {h}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {block.rows.map((row, rIdx) => {
+                    const isTotal = row[0]?.trim().toLowerCase().startsWith("total");
+                    return (
+                      <tr
+                        key={rIdx}
+                        className={cn(
+                          "transition-colors",
+                          isTotal
+                            ? "bg-muted/40 font-semibold text-foreground"
+                            : "hover:bg-muted/25"
+                        )}
+                      >
+                        {row.map((cell, cIdx) => {
+                          const isLast = cIdx === row.length - 1;
+                          const isQty = cIdx === 1 && row.length === 4;
+                          return (
+                            <td
+                              key={cIdx}
+                              className={cn(
+                                "px-3.5 py-2 text-xs",
+                                isLast
+                                  ? "text-right font-medium tabular-nums font-mono whitespace-nowrap"
+                                  : isQty
+                                  ? "text-right sm:text-center tabular-nums"
+                                  : "text-left",
+                                isTotal && isLast && "text-primary font-bold text-sm"
+                              )}
+                            >
+                              {cell}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
         const ListTag = block.ordered ? "ol" : "ul";
         return (
           <ListTag

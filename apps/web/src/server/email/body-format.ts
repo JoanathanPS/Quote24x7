@@ -12,7 +12,8 @@
 
 export type EmailBodyBlock =
   | { type: "paragraph"; text: string }
-  | { type: "list"; ordered: boolean; items: string[] };
+  | { type: "list"; ordered: boolean; items: string[] }
+  | { type: "table"; headers: string[]; rows: string[][] };
 
 export interface FormattedEmailBody {
   blocks: EmailBodyBlock[];
@@ -74,12 +75,127 @@ function mergeOrphanBullets(lines: string[]): string[] {
   return merged;
 }
 
+/** Matches a horizontal separator line (e.g. "---", "===", "--------------------------------------------------------------------------------", "|---|---|") */
+function isSeparatorLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.length < 3) return false;
+  if (/^[-=_*]{3,}$/.test(trimmed)) return true;
+  if (/^\|?(\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?$/.test(trimmed)) return true;
+  return false;
+}
+
+/** Splits a pipe-delimited row into trimmed cell strings */
+function splitCells(line: string): string[] {
+  let trimmed = line.trim();
+  if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
+  return trimmed.split("|").map((c) => c.trim());
+}
+
+/** Checks whether a line looks like a valid table row with 2 or more columns */
+function isTableRowLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed || isSeparatorLine(trimmed)) return false;
+  if (!trimmed.includes("|")) return false;
+  const cells = splitCells(trimmed);
+  return cells.length >= 2;
+}
+
+interface ParsedTable {
+  headers: string[];
+  rows: string[][];
+  endIndex: number;
+}
+
+function tryParseTable(lines: string[], startIndex: number): ParsedTable | null {
+  let i = startIndex;
+  const line = lines[i]?.trim() ?? "";
+  if (!line) return null;
+
+  let hasTopSeparator = false;
+  if (isSeparatorLine(line)) {
+    if (i + 1 < lines.length && isTableRowLine(lines[i + 1]!)) {
+      hasTopSeparator = true;
+      i++;
+    } else {
+      return null;
+    }
+  }
+
+  const headerLine = lines[i]?.trim() ?? "";
+  if (!isTableRowLine(headerLine)) return null;
+
+  const nextLine = lines[i + 1]?.trim() ?? "";
+  const hasSeparatorBelowHeader = isSeparatorLine(nextLine);
+  const nextIsTableRow = isTableRowLine(nextLine);
+
+  if (!hasSeparatorBelowHeader && !nextIsTableRow) {
+    return null;
+  }
+
+  const headers = splitCells(headerLine);
+  i++;
+
+  if (hasSeparatorBelowHeader) {
+    i++;
+  }
+
+  const rows: string[][] = [];
+
+  while (i < lines.length) {
+    const currentLine = lines[i]!.trim();
+    if (currentLine === "") {
+      break;
+    }
+
+    if (isSeparatorLine(currentLine)) {
+      let peek = i + 1;
+      while (peek < lines.length && isSeparatorLine(lines[peek]!.trim())) {
+        peek++;
+      }
+      if (peek < lines.length && isTableRowLine(lines[peek]!.trim())) {
+        i = peek;
+        continue;
+      } else {
+        i++;
+        break;
+      }
+    }
+
+    if (isTableRowLine(currentLine)) {
+      const cells = splitCells(currentLine);
+      while (cells.length < headers.length) {
+        cells.push("");
+      }
+      rows.push(cells);
+      i++;
+    } else {
+      break;
+    }
+  }
+
+  if (rows.length === 0 && !hasSeparatorBelowHeader && !hasTopSeparator) {
+    return null;
+  }
+
+  return {
+    headers,
+    rows,
+    endIndex: i,
+  };
+}
+
 /** Rejoins lines a mail client broke at its wrap width; keeps deliberate breaks. */
 function unwrapParagraph(lines: string[]): string {
   let text = lines[0] ?? "";
   for (let i = 1; i < lines.length; i++) {
     const prev = lines[i - 1]!;
     const next = lines[i]!;
+    // Never unwrap lines containing pipes or separator characters
+    if (prev.includes("|") || next.includes("|") || isSeparatorLine(prev) || isSeparatorLine(next)) {
+      text += `\n${next}`;
+      continue;
+    }
     const nextWord = next.split(/\s+/)[0] ?? "";
     const wasWrapped =
       prev.length >= 40 &&
@@ -100,6 +216,7 @@ export function formatEmailBody(raw: string): FormattedEmailBody {
 
   const { main, quoted } = splitQuoted(lines);
 
+  const mergedLines = mergeOrphanBullets(main);
   const blocks: EmailBodyBlock[] = [];
   let paragraph: string[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
@@ -118,12 +235,29 @@ export function formatEmailBody(raw: string): FormattedEmailBody {
     }
   };
 
-  for (const line of mergeOrphanBullets(main)) {
+  for (let idx = 0; idx < mergedLines.length; idx++) {
+    const line = mergedLines[idx]!;
     const trimmed = line.trim();
+
     if (trimmed === "") {
       // A blank line ends a paragraph; a list stays open until non-item text.
       flushParagraph();
       previousWasItem = false;
+      continue;
+    }
+
+    // Detect tables and emit table blocks
+    const tableMatch = tryParseTable(mergedLines, idx);
+    if (tableMatch) {
+      flushParagraph();
+      flushList();
+      previousWasItem = false;
+      blocks.push({
+        type: "table",
+        headers: tableMatch.headers,
+        rows: tableMatch.rows,
+      });
+      idx = tableMatch.endIndex - 1;
       continue;
     }
 
