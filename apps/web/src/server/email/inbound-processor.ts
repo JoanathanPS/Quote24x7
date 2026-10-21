@@ -405,27 +405,31 @@ export function isAddressedToOurMailbox(
 
   if (recipients.length === 0) return true;
 
-  const target = foldSubAddress(extractEmail(mailbox));
-  const [rawTargetLocal, rawTargetDomain] = target.split("@");
-  const targetLocal = (rawTargetLocal || "").toLowerCase();
-  const targetDomain = (rawTargetDomain || "").toLowerCase();
+  const targets = (mailbox || "")
+    .split(",")
+    .map((entry) => foldSubAddress(extractEmail(entry)))
+    .filter(Boolean);
+
+  if (targets.length === 0) return true;
 
   return recipients.some((r) => {
-    if (r === target) return true;
     const [rawRLocal, rawRDomain] = r.split("@");
     const rLocal = (rawRLocal || "").toLowerCase();
     const rDomain = (rawRDomain || "").toLowerCase();
 
-    if (
-      rLocal === targetLocal &&
-      (rDomain === targetDomain ||
-        rDomain.endsWith(".internal") ||
-        rDomain.endsWith(".example.com"))
-    ) {
-      return true;
-    }
+    return targets.some((target) => {
+      if (r === target) return true;
+      const [rawTargetLocal, rawTargetDomain] = target.split("@");
+      const targetLocal = (rawTargetLocal || "").toLowerCase();
+      const targetDomain = (rawTargetDomain || "").toLowerCase();
 
-    return false;
+      return (
+        rLocal === targetLocal &&
+        (rDomain === targetDomain ||
+          rDomain.endsWith(".internal") ||
+          rDomain.endsWith(".example.com"))
+      );
+    });
   });
 }
 
