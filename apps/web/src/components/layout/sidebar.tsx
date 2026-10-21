@@ -11,6 +11,7 @@ import {
   PaperPlaneTilt,
   Heartbeat,
   GearSix,
+  Gauge,
   X,
   BookOpen,
   type Icon as PhosphorIcon,
@@ -60,6 +61,12 @@ const SECONDARY_NAV_ITEMS: NavItem[] = [
     href: "/deliveries",
     icon: PaperPlaneTilt,
     isActive: (pathname) => pathname.startsWith("/deliveries"),
+  },
+  {
+    name: "AI Benchmark",
+    href: "/benchmark",
+    icon: Gauge,
+    isActive: (pathname) => pathname.startsWith("/benchmark"),
   },
   {
     name: "Health",
