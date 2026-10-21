@@ -14,7 +14,6 @@ import {
   DownloadSimple,
   ArrowsIn,
   ArrowsOut,
-  CloudArrowDown,
   Sparkle,
 } from "@phosphor-icons/react";
 
@@ -66,11 +65,7 @@ interface BenchmarkApiResponse {
     f1: number;
   }>;
   benchmarkCases: BenchmarkCaseItem[];
-  supabaseDatasetUrl?: string;
 }
-
-const SUPABASE_DATASET_URL =
-  "https://rezunroklwuzwahzknbz.supabase.co/storage/v1/object/public/benchmark-datasets/benchmark-dataset-v1.json";
 
 export default function BenchmarkPage() {
   const [data, setData] = React.useState<BenchmarkApiResponse | null>(null);
@@ -177,29 +172,16 @@ export default function BenchmarkPage() {
         </div>
 
         {/* Action button for dataset download */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
             onClick={handleDownloadDataset}
-            className="flex items-center gap-2 text-xs font-semibold h-9 px-3.5 bg-card/80 hover:bg-muted border-border/80 shadow-xs"
+            className="flex items-center gap-2 text-xs font-semibold h-9 px-4 bg-card/80 hover:bg-muted border-border/80 shadow-xs cursor-pointer"
           >
             <DownloadSimple size={16} weight="bold" className="text-primary" />
             <span>Download Dataset</span>
-            <Badge variant="success" className="text-[9px] px-1.5 py-0 font-mono tracking-tight ml-1">
-              Supabase
-            </Badge>
+            <span className="text-[11px] text-muted-foreground font-mono ml-0.5">(JSON)</span>
           </Button>
-
-          <a
-            href={data?.supabaseDatasetUrl || SUPABASE_DATASET_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-lg border border-border/40 hover:bg-muted/40"
-            title="Open raw public JSON from Supabase Cloud Storage"
-          >
-            <CloudArrowDown size={15} />
-            <span className="hidden sm:inline">Supabase URL</span>
-          </a>
         </div>
       </div>
 
@@ -309,23 +291,23 @@ export default function BenchmarkPage() {
           <Table>
             <TableHeader>
               <TableRow className="border-b border-border/50 bg-muted/30">
-                <TableHead className="font-semibold text-xs">Model / Engine</TableHead>
-                <TableHead className="font-semibold text-xs text-right">Action Accuracy</TableHead>
-                <TableHead className="font-semibold text-xs text-right">Exact Match</TableHead>
-                <TableHead className="font-semibold text-xs text-right">Precision</TableHead>
-                <TableHead className="font-semibold text-xs text-right">Recall</TableHead>
-                <TableHead className="font-semibold text-xs text-right">F1 Score</TableHead>
-                <TableHead className="font-semibold text-xs text-right">Hallucination Rate</TableHead>
-                <TableHead className="font-semibold text-xs text-right">Failures</TableHead>
+                <TableHead className="font-semibold text-xs min-w-[360px]">Model / Engine</TableHead>
+                <TableHead className="font-semibold text-xs text-right whitespace-nowrap">Action Accuracy</TableHead>
+                <TableHead className="font-semibold text-xs text-right whitespace-nowrap">Exact Match</TableHead>
+                <TableHead className="font-semibold text-xs text-right whitespace-nowrap">Precision</TableHead>
+                <TableHead className="font-semibold text-xs text-right whitespace-nowrap">Recall</TableHead>
+                <TableHead className="font-semibold text-xs text-right whitespace-nowrap">F1 Score</TableHead>
+                <TableHead className="font-semibold text-xs text-right whitespace-nowrap">Hallucination Rate</TableHead>
+                <TableHead className="font-semibold text-xs text-right whitespace-nowrap">Failures</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {/* Rank 1: Groq LPU (openai/gpt-oss-120b) */}
               <TableRow className="hover:bg-primary/5 bg-primary/5 font-medium border-l-2 border-l-primary">
-                <TableCell className="font-medium text-xs py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground">Groq LPU (openai/gpt-oss-120b)</span>
-                    <Badge variant="success" className="text-[10px] font-mono py-0">
+                <TableCell className="font-medium text-xs py-3.5 min-w-[360px]">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-foreground whitespace-nowrap">Groq LPU (openai/gpt-oss-120b)</span>
+                    <Badge variant="success" className="text-[10px] font-mono py-0.5 px-2 whitespace-nowrap shrink-0">
                       Best Overall · Active Production
                     </Badge>
                   </div>
@@ -344,10 +326,10 @@ export default function BenchmarkPage() {
 
               {/* Rank 2: Cerebras AI (Wafer-Scale LPU) */}
               <TableRow className="hover:bg-muted/10 font-medium">
-                <TableCell className="font-medium text-xs py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-foreground">Cerebras LPU (gpt-oss-120b)</span>
-                    <Badge variant="info" className="text-[10px] font-mono py-0">
+                <TableCell className="font-medium text-xs py-3.5 min-w-[360px]">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-foreground whitespace-nowrap">Cerebras LPU (gpt-oss-120b)</span>
+                    <Badge variant="info" className="text-[10px] font-mono py-0.5 px-2 whitespace-nowrap shrink-0">
                       Ultra-Fast Fallback
                     </Badge>
                   </div>
@@ -366,10 +348,10 @@ export default function BenchmarkPage() {
 
               {/* Rank 3: Rules Engine (Deterministic) */}
               <TableRow className="hover:bg-muted/10 font-medium">
-                <TableCell className="font-medium text-xs py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-foreground">Rules Engine</span>
-                    <Badge variant="neutral" className="text-[10px] font-mono py-0">
+                <TableCell className="font-medium text-xs py-3.5 min-w-[360px]">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-foreground whitespace-nowrap">Rules Engine</span>
+                    <Badge variant="neutral" className="text-[10px] font-mono py-0.5 px-2 whitespace-nowrap shrink-0">
                       Deterministic Fail-Safe
                     </Badge>
                   </div>
@@ -388,10 +370,10 @@ export default function BenchmarkPage() {
 
               {/* Rank 4: Google Gemini Flash */}
               <TableRow className="hover:bg-muted/10 text-muted-foreground">
-                <TableCell className="font-medium text-xs py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-foreground">Google Gemini Flash</span>
-                    <Badge variant="neutral" className="text-[10px] font-mono py-0">
+                <TableCell className="font-medium text-xs py-3.5 min-w-[360px]">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-foreground whitespace-nowrap">Google Gemini Flash</span>
+                    <Badge variant="neutral" className="text-[10px] font-mono py-0.5 px-2 whitespace-nowrap shrink-0">
                       Tertiary Fallback
                     </Badge>
                   </div>
