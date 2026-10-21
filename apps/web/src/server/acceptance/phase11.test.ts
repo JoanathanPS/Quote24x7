@@ -225,11 +225,12 @@ test("Phase 11.7 - Automated mail (DMARC report, ticket-bot, noreply, Auto-Submi
 
 test("Phase 11.8 - Same Message-ID twice gives one thread and one outbound; replayed webhook event ids ignored", async () => {
   store.ensureInitialized();
-  const msgId = `<phase11-dedupe-${Date.now()}@client.in>`;
+  const now = Date.now();
+  const msgId = `<phase11-dedupe-${now}@client.in>`;
   const payload = {
-    providerMessageId: `prov_${Date.now()}`,
+    providerMessageId: `prov_${now}`,
     messageId: msgId,
-    from: "dedupe@client.in",
+    from: `dedupe_${now}@client.in`,
     fromName: "Client",
     to: ["quotes@quotes.joanathan.in"],
     subject: "Dedupe test",
