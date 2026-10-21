@@ -51,7 +51,7 @@ export const UNIT_KEYWORDS: Record<IntakeUnit, string[]> = {
 export interface ExtractionInput {
   threadId: string;
   senderEmail: string;
-  senderName: string | null;
+  senderName?: string | null;
   subject: string;
   bodyText: string;
   headers?: Record<string, string> | null;
@@ -366,10 +366,10 @@ const WORD_NUMBER_REGEX_PART = `(?:(?:${TENS_WORDS})[\\s-]+(?:${ONES_WORDS})|${A
 function parseWordNumber(str: string): number | null {
   const clean = str.toLowerCase().trim().replace(/-/g, " ");
   const parts = clean.split(/\s+/);
-  if (parts.length === 1) {
+  if (parts.length === 1 && parts[0]) {
     return WORD_TO_INT[parts[0]] ?? null;
   }
-  if (parts.length === 2) {
+  if (parts.length === 2 && parts[0] && parts[1]) {
     const tens = WORD_TO_INT[parts[0]];
     const ones = WORD_TO_INT[parts[1]];
     if (tens !== undefined && ones !== undefined) {
@@ -381,19 +381,19 @@ function parseWordNumber(str: string): number | null {
 
 function extractCombinedEvidence(rawText: string, matches: RegExpMatchArray[]): string {
   if (matches.length === 0) return "";
-  if (matches.length === 1) return matches[0][0].trim();
-  const firstStr = matches[0][0].trim();
-  const lastStr = matches[matches.length - 1][0].trim();
+  const first = matches[0]?.[0]?.trim() ?? "";
+  if (matches.length === 1) return first;
+  const last = matches[matches.length - 1]?.[0]?.trim() ?? "";
   const lower = rawText.toLowerCase();
-  const idx1 = lower.indexOf(firstStr.toLowerCase());
-  const idx2 = lower.lastIndexOf(lastStr.toLowerCase());
+  const idx1 = lower.indexOf(first.toLowerCase());
+  const idx2 = lower.lastIndexOf(last.toLowerCase());
   if (idx1 !== -1 && idx2 !== -1 && idx2 >= idx1) {
-    const end = idx2 + lastStr.length;
+    const end = idx2 + last.length;
     if (end - idx1 <= 150) {
       return rawText.slice(idx1, end).trim();
     }
   }
-  return firstStr;
+  return first;
 }
 
 /**

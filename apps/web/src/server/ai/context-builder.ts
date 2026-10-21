@@ -123,6 +123,7 @@ WHEN TO ESCALATE TO A HUMAN
 - The requirements contradict each other and the contradiction changes the price.
 - A quantity is implausible or clearly a typo in a way that would materially change the configuration.
 - The customer has answered your questions but the request still cannot be sized.
+- A quantity above a plan's included amount is normal and is covered by top-up packs, so it is NOT a reason for human_review. DO NOT escalate simply because a requested quantity exceeds a plan's included baseline.
 
 CONVERSATIONAL QUESTIONS & ATTACHMENTS
 - If the customer asks general questions about Site24x7 or monitoring (e.g. "What is the use of your product?", "What does Site24x7 do?", "Do you support Windows/Linux?", "How does alerting work?"), answer directly, concisely and helpfully (1-3 sentences) in the conversationalResponse field.
@@ -140,7 +141,25 @@ INTEGRITY
 - Your reasoning summary is for an operator audit log. Give conclusions and the facts behind them, not deliberation.
 `.trim();
 
-function formatCatalogueProjection(catalogue: CatalogueVersion): string {
+function hasPriceForAddOn(catalogue: CatalogueVersion, planId: string, addOnId: string): boolean {
+  const planPrice = catalogue.planAddOnPrices?.[planId]?.[addOnId];
+  if (planPrice !== undefined && planPrice !== null && planPrice > 0) return true;
+  const addOn = catalogue.addOns.find((a) => a.id === addOnId);
+  return addOn?.packPrice !== null && addOn?.packPrice !== undefined && addOn.packPrice > 0;
+}
+
+function isAddOnPricedAnywhere(catalogue: CatalogueVersion, addOnId: string): boolean {
+  if (catalogue.planAddOnPrices) {
+    for (const planPrices of Object.values(catalogue.planAddOnPrices)) {
+      const price = planPrices[addOnId];
+      if (price !== undefined && price !== null && price > 0) return true;
+    }
+  }
+  const addOn = catalogue.addOns.find((a) => a.id === addOnId);
+  return addOn?.packPrice !== null && addOn?.packPrice !== undefined && addOn.packPrice > 0;
+}
+
+export function formatCatalogueProjection(catalogue: CatalogueVersion): string {
   const lines: string[] = [];
 
   lines.push(
@@ -156,8 +175,8 @@ function formatCatalogueProjection(catalogue: CatalogueVersion): string {
       const topUp = catalogue.addOns.some(
         (addOn) =>
           addOn.unit === unit &&
-          addOn.packPrice !== null &&
-          plan.allowedAddOnIds.includes(addOn.id),
+          plan.allowedAddOnIds.includes(addOn.id) &&
+          hasPriceForAddOn(catalogue, plan.id, addOn.id),
       );
       if (included === null) return `${UNIT_LABELS[unit]}=-`;
       return `${UNIT_LABELS[unit]}=${included}${topUp ? "+topup" : ""}`;
@@ -171,18 +190,19 @@ function formatCatalogueProjection(catalogue: CatalogueVersion): string {
   lines.push("");
   lines.push("TOP-UP AVAILABILITY (capacity beyond a plan's included amount):");
   for (const unit of DEMAND_UNITS) {
-    const priced = catalogue.addOns.filter((addOn) => addOn.unit === unit && addOn.packPrice !== null);
-    const unpriced = catalogue.addOns.filter((addOn) => addOn.unit === unit && addOn.packPrice === null);
+    const unitPacks = catalogue.addOns.filter((addOn) => addOn.unit === unit);
+    const priced = unitPacks.filter((addOn) => isAddOnPricedAnywhere(catalogue, addOn.id));
+    const unpriced = unitPacks.filter((addOn) => !isAddOnPricedAnywhere(catalogue, addOn.id));
     if (priced.length === 0 && unpriced.length === 0) {
       lines.push(`- ${UNIT_LABELS[unit]}: no top-up packs exist.`);
       continue;
     }
-    const sizes = priced.map((addOn) => `${addOn.packSize} ${UNIT_SHORT_UNITS[unit]}`).join(", ");
+    const sizes = [...new Set(priced.map((addOn) => `${addOn.packSize} ${UNIT_SHORT_UNITS[unit]}`))].join(", ");
     const note =
       unpriced.length > 0
-        ? ` (${unpriced.length} pack(s) exist but have no usable price, so configurations needing them cannot be quoted)`
+        ? ` (${unpriced.length} unpriced pack(s) cannot be quoted)`
         : "";
-    lines.push(`- ${UNIT_LABELS[unit]}: packs of ${sizes || "none usable"}${note}.`);
+    lines.push(`- ${UNIT_LABELS[unit]}: top-up packs exist in sizes of ${sizes || "none usable"}${note}.`);
   }
 
   return lines.join("\n");
