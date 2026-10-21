@@ -20,6 +20,16 @@ export async function GET() {
     categoryCounts[c.category] = (categoryCounts[c.category] || 0) + 1;
   }
 
+  const cases = RAW_CASES.map((c) => ({
+    id: c.id,
+    category: c.category,
+    description: c.description,
+    subject: c.subject,
+    turns: c.turns,
+    expectedAction: c.expected.action,
+    expectedRequirements: c.expected.requirements ?? {},
+  }));
+
   return NextResponse.json({
     name: "Quote24x7 AI Evaluation Benchmark",
     description:
@@ -29,6 +39,7 @@ export async function GET() {
       totalCases: RAW_CASES.length,
       datasetVersion: "v1.0.0",
       categories: categoryCounts,
+      cases,
     },
     metricsTracked: [
       "action_accuracy_strict",
@@ -53,11 +64,11 @@ export async function GET() {
       "premature_quote",
     ],
     supportedProviders: {
-      rules: { name: "Deterministic Rules Baseline", status: "always_ready" },
-      groq: { name: "Groq Cloud LPU", configured: Boolean(config.groqApiKey) },
-      cerebras: { name: "Cerebras CS-3", configured: Boolean(config.cerebrasApiKey) },
-      gemini: { name: "Google Gemini", configured: Boolean(config.geminiApiKey) },
-      ollama: { name: "Local Ollama (llama3.2:1b)", endpoint: config.ollamaBaseUrl, configured: true },
+      rules: { id: "rules", name: "Deterministic Rules Baseline", status: "always_ready" },
+      ollama: { id: "ollama", name: "Local Ollama (llama3.2:1b)", endpoint: config.ollamaBaseUrl, configured: true },
+      groq: { id: "groq", name: "Groq Cloud LPU", configured: Boolean(config.groqApiKey) },
+      cerebras: { id: "cerebras", name: "Cerebras CS-3", configured: Boolean(config.cerebrasApiKey) },
+      gemini: { id: "gemini", name: "Google Gemini", configured: Boolean(config.geminiApiKey) },
     },
   });
 }

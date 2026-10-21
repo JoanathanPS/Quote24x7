@@ -52,6 +52,9 @@ function getBreadcrumbs(pathname: string): BreadcrumbItem[] {
         case "catalogue":
           label = "Catalogue";
           break;
+        case "benchmark":
+          label = "Benchmark";
+          break;
         case "deliveries":
           label = "Deliveries";
           break;

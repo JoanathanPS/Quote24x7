@@ -190,3 +190,40 @@ export function useAiProviderConfig() {
     refetchInterval: 4000,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Benchmark Suite Overview
+// ---------------------------------------------------------------------------
+
+export interface BenchmarkCaseItem {
+  id: string;
+  category: string;
+  description: string;
+  subject: string;
+  turns: string[];
+  expectedAction: string;
+  expectedRequirements: Record<string, number>;
+}
+
+export interface BenchmarkOverview {
+  name: string;
+  description: string;
+  activeProvider: string;
+  dataset: {
+    totalCases: number;
+    datasetVersion: string;
+    categories: Record<string, number>;
+    cases: BenchmarkCaseItem[];
+  };
+  metricsTracked: string[];
+  hallucinationTaxonomy: string[];
+  supportedProviders: Record<string, { id: string; name: string; status?: string; configured?: boolean; endpoint?: string }>;
+}
+
+export function useBenchmarkOverview() {
+  return useQuery({
+    queryKey: ["benchmark-overview"],
+    queryFn: () => apiGet<BenchmarkOverview>("/api/v1/benchmark"),
+    refetchInterval: 5000,
+  });
+}

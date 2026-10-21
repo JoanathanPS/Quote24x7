@@ -13,6 +13,7 @@ import {
   GearSix,
   X,
   BookOpen,
+  ChartBar,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 
@@ -51,6 +52,12 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
     href: "/knowledge",
     icon: BookOpen,
     isActive: (pathname) => pathname.startsWith("/knowledge"),
+  },
+  {
+    name: "Benchmark",
+    href: "/benchmark",
+    icon: ChartBar,
+    isActive: (pathname) => pathname.startsWith("/benchmark"),
   },
 ];
 
