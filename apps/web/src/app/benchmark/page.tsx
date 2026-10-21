@@ -98,6 +98,38 @@ export default function BenchmarkPage() {
   const [runError, setRunError] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState<string>("");
 
+  // Ollama Connection Diagnostic State
+  const [pingingOllama, setPingingOllama] = React.useState<boolean>(false);
+  const [ollamaPingResult, setOllamaPingResult] = React.useState<{
+    ok: boolean;
+    baseUrl?: string;
+    configuredModel?: string;
+    latencyMs?: number | null;
+    modelsAvailable?: string[];
+    error?: string;
+  } | null>(null);
+
+  const handlePingOllama = async () => {
+    setPingingOllama(true);
+    try {
+      const res = await fetch("/api/v1/ai/test-ollama", { method: "POST" });
+      const data = await res.json();
+      setOllamaPingResult(data);
+    } catch (err: unknown) {
+      setOllamaPingResult({
+        ok: false,
+        error: `Could not reach local Ollama: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    } finally {
+      setPingingOllama(false);
+    }
+  };
+
+  // Check Ollama connection on page load
+  React.useEffect(() => {
+    handlePingOllama();
+  }, []);
+
   // Default to active AI provider if available
   React.useEffect(() => {
     if (aiConfig?.activeProvider) {
@@ -205,18 +237,56 @@ export default function BenchmarkPage() {
         <CardContent className="p-4 sm:p-5 space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             {/* Provider Selector */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <Cpu className="h-3.5 w-3.5 text-primary" />
-                Select Evaluation Model / Provider:
-              </label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Cpu className="h-3.5 w-3.5 text-primary" />
+                  Select Evaluation Model / Provider:
+                </label>
+
+                {/* Test Ollama Connection Button & Indicator */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={pingingOllama}
+                    onClick={handlePingOllama}
+                    className="h-7 text-[11px] px-2 gap-1 text-muted-foreground hover:text-foreground"
+                  >
+                    {pingingOllama ? (
+                      <ArrowsClockwise className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Cpu className="h-3 w-3 text-primary" weight="bold" />
+                    )}
+                    Test Ollama
+                  </Button>
+
+                  {ollamaPingResult && (
+                    <Badge
+                      variant={ollamaPingResult.ok ? "success" : "warning"}
+                      className="text-[10px] font-mono py-0 px-1.5"
+                    >
+                      {ollamaPingResult.ok
+                        ? `Ollama Online (${ollamaPingResult.latencyMs}ms)`
+                        : "Ollama Offline"}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {/* Provider Selection Buttons */}
               <div className="flex items-center gap-2 flex-wrap">
                 {[
-                  { id: "rules", label: "Rules Baseline", icon: SlidersHorizontal },
-                  { id: "ollama", label: "Local Ollama (llama3.2:1b)", icon: Cpu },
-                  { id: "groq", label: "Groq LPU (Cloud)", icon: Lightning },
-                  { id: "gemini", label: "Gemini 3.8", icon: Sparkle },
-                  { id: "cerebras", label: "Cerebras CS-3", icon: Cpu },
+                  { id: "rules", label: "Rules Baseline", icon: SlidersHorizontal, status: "Always Ready" },
+                  {
+                    id: "ollama",
+                    label: "Local Ollama (llama3.2:1b)",
+                    icon: Cpu,
+                    status: ollamaPingResult?.ok ? "Online" : "Offline",
+                  },
+                  { id: "groq", label: "Groq LPU (Cloud)", icon: Lightning, status: "Cloud" },
+                  { id: "gemini", label: "Gemini 3.8", icon: Sparkle, status: "Cloud" },
+                  { id: "cerebras", label: "Cerebras CS-3", icon: Cpu, status: "Cloud" },
                 ].map((prov) => {
                   const Icon = prov.icon;
                   const isSelected = selectedProvider === prov.id;
@@ -226,7 +296,7 @@ export default function BenchmarkPage() {
                       type="button"
                       onClick={() => setSelectedProvider(prov.id)}
                       className={cn(
-                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                        "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                         isSelected
                           ? "border-primary bg-primary-soft text-primary font-semibold shadow-2xs"
                           : "border-border text-muted-foreground hover:bg-surface-soft hover:text-foreground"
@@ -234,6 +304,18 @@ export default function BenchmarkPage() {
                     >
                       <Icon className="h-3.5 w-3.5" weight={isSelected ? "bold" : "regular"} />
                       <span>{prov.label}</span>
+                      {prov.id === "ollama" && (
+                        <span
+                          className={cn(
+                            "text-[9px] font-mono font-bold px-1 py-0.5 rounded",
+                            ollamaPingResult?.ok
+                              ? "bg-success/20 text-success"
+                              : "bg-warning/20 text-warning"
+                          )}
+                        >
+                          {ollamaPingResult?.ok ? "READY" : "OFFLINE"}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -261,6 +343,42 @@ export default function BenchmarkPage() {
               </select>
             </div>
           </div>
+
+          {/* Ollama Diagnostic Banner if selected */}
+          {selectedProvider === "ollama" && (
+            <div
+              className={cn(
+                "p-3 rounded-lg border text-xs flex items-start gap-2.5 animate-fade-in",
+                ollamaPingResult?.ok
+                  ? "border-success/30 bg-success-soft text-success"
+                  : "border-warning/30 bg-warning-soft text-warning"
+              )}
+            >
+              {ollamaPingResult?.ok ? (
+                <CheckCircle className="h-4 w-4 shrink-0 mt-0.5" weight="fill" />
+              ) : (
+                <WarningCircle className="h-4 w-4 shrink-0 mt-0.5" weight="fill" />
+              )}
+              <div className="space-y-0.5 text-[11px] leading-relaxed">
+                <div className="font-semibold text-xs">
+                  {ollamaPingResult?.ok
+                    ? `Local Ollama is AVAILABLE and connected (${ollamaPingResult.latencyMs}ms)`
+                    : "Local Ollama Engine Offline"}
+                </div>
+                <div>
+                  {ollamaPingResult?.ok ? (
+                    <span>
+                      Connected to endpoint <span className="font-mono font-bold">{ollamaPingResult.baseUrl || "http://localhost:11434/v1"}</span> with model <span className="font-mono font-bold">{ollamaPingResult.configuredModel || "llama3.2:1b"}</span>. Outputs pass small-model schema normalization with zero cloud egress.
+                    </span>
+                  ) : (
+                    <span>
+                      {ollamaPingResult?.error || "Cannot reach http://localhost:11434/v1. Start local Ollama with 'ollama serve' and 'ollama run llama3.2:1b'."}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
