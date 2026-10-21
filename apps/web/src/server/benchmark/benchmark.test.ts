@@ -326,3 +326,20 @@ test("Rules baseline runs offline and produces a final-layer score only", async 
     else process.env.DISABLE_AI = previous;
   }
 });
+
+test("Replay reproduces recorded final_system metrics on Groq benchmark run", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const resultsPath = path.resolve(process.cwd(), "benchmark-results/groq-2026-10-21T09-07-48-218Z.json");
+  if (!fs.existsSync(resultsPath)) return;
+  const recorded = JSON.parse(fs.readFileSync(resultsPath, "utf8"));
+  const result = await runBenchmark({
+    providerName: "replay-test",
+    provider: null,
+    replayRuns: recorded.runs,
+  });
+  assert.equal(result.providerFailures, 0);
+  assert.equal(result.runs.length, 40);
+  assert.equal(result.final.metrics.exactMatch.k, 22);
+  assert.equal(result.final.metrics.exactMatch.n, 36);
+});
