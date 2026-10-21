@@ -18,8 +18,22 @@ function getResultsDir(): string {
   return p1;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    if (searchParams.get("download") === "dataset") {
+      const datasetPath = fsSync.existsSync(path.resolve(process.cwd(), "benchmark-dataset-v1.json"))
+        ? path.resolve(process.cwd(), "benchmark-dataset-v1.json")
+        : path.resolve(process.cwd(), "apps/web/benchmark-dataset-v1.json");
+      const content = await fs.readFile(datasetPath, "utf-8");
+      return new NextResponse(content, {
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Disposition": 'attachment; filename="benchmark-dataset-v1.json"',
+        },
+      });
+    }
+
     const resultsDir = getResultsDir();
     let files: string[] = [];
     try {
@@ -124,7 +138,7 @@ export async function GET() {
           exactMatch: score ? Boolean(score.exactMatch) : true,
           actionCorrect: score ? Boolean(score.actionCorrect) : true,
           actionStrict: score ? Boolean(score.actionStrict) : true,
-          hallucinations: (score?.hallucinations as string[]) || [],
+          hallucinations: score?.hallucinations?.map((h) => h.type) || [],
           perUnit: score?.perUnit || null,
         },
       };
@@ -136,6 +150,7 @@ export async function GET() {
       availableRuns,
       benchmarkCases,
       cerebrasMetrics: cerebrasResult?.final?.metrics || null,
+      supabaseDatasetUrl: "https://rezunroklwuzwahzknbz.supabase.co/storage/v1/object/public/benchmark-datasets/benchmark-dataset-v1.json",
     });
   } catch (error) {
     return NextResponse.json(
