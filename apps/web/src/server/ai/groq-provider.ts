@@ -1,5 +1,5 @@
 import type { AiFailureCategory } from "@/types/domain";
-import { getAppConfig } from "../config.ts";
+import { getAppConfig, DEFAULT_GROQ_MODEL } from "../config.ts";
 import { buildResponseJsonSchema } from "./decision-schema.ts";
 import { parseDecisionResponse, type AiProvider, type AiProviderResult, type GenerateDecisionInput } from "./gemini-provider.ts";
 
@@ -94,11 +94,7 @@ function backoffDelayMs(attempt: number): number {
 
 export function normalizeGroqModel(raw: string): string {
   const cleaned = raw.trim();
-  const lower = cleaned.toLowerCase();
-  if (lower.includes("120b") || lower.includes("gpt-oss")) {
-    return "openai/gpt-oss-120b";
-  }
-  return cleaned;
+  return cleaned || DEFAULT_GROQ_MODEL;
 }
 
 export const groqProvider: AiProvider = {
