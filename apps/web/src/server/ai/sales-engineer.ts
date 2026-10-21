@@ -44,6 +44,101 @@ import type { DecisionSource } from "@/types/domain";
 
 export const MAX_CLARIFICATION_ROUNDS = 3;
 
+export function normaliseEvidenceText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[.,:;!?()[\]{}"'\-_/\\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const WORD_VALUES_SE: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
+  eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70,
+  eighty: 80, ninety: 90, hundred: 100, thousand: 1000,
+};
+
+const SUFFIX_MULTIPLIERS_SE: Record<string, number> = {
+  k: 1e3, thousand: 1e3, m: 1e6, million: 1e6, billion: 1e9, lakh: 1e5, lakhs: 1e5, crore: 1e7, crores: 1e7, gb: 1,
+};
+
+export function extractCandidateValues(text: string): Set<number> {
+  const norm = text.toLowerCase().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ");
+  const values = new Set<number>();
+  const literals: number[] = [];
+
+  for (const match of norm.matchAll(/(\d[\d,]*(?:\.\d+)?)\s*(k|m|million|billion|lakhs?|crores?|thousand|tb|gb)?\b/gi)) {
+    const n = Number.parseFloat((match[1] ?? "").replace(/,/g, ""));
+    if (!Number.isFinite(n)) continue;
+    const suffix = (match[2] ?? "").toLowerCase();
+    literals.push(n);
+    values.add(n);
+    if (suffix === "tb") {
+      values.add(n * 1024);
+      values.add(n * 1000);
+    } else if (suffix in SUFFIX_MULTIPLIERS_SE) {
+      values.add(n * (SUFFIX_MULTIPLIERS_SE[suffix] ?? 1));
+    }
+  }
+
+  for (const match of norm.matchAll(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-](one|two|three|four|five|six|seven|eight|nine)\b/gi)) {
+    const sum = (WORD_VALUES_SE[match[1].toLowerCase()] ?? 0) + (WORD_VALUES_SE[match[2].toLowerCase()] ?? 0);
+    literals.push(sum);
+    values.add(sum);
+  }
+  for (const match of norm.matchAll(/[a-z]+/gi)) {
+    const v = WORD_VALUES_SE[match[0].toLowerCase()];
+    if (v !== undefined) {
+      literals.push(v);
+      values.add(v);
+    }
+  }
+
+  for (let i = 0; i < literals.length; i += 1) {
+    for (let j = i + 1; j < literals.length; j += 1) values.add((literals[i] ?? 0) + (literals[j] ?? 0));
+  }
+  if (literals.length > 1) values.add(literals.reduce((a, b) => a + b, 0));
+  return values;
+}
+
+export function isModelEvidenceSupported(
+  evidence: string | undefined,
+  quantity: number,
+  sourceText: string,
+): boolean {
+  if (quantity === 0) return true;
+  if (!evidence || evidence.trim().length === 0) return false;
+
+  const normSource = normaliseEvidenceText(sourceText);
+  const normEvidence = normaliseEvidenceText(evidence);
+
+  if (normEvidence.length > 0 && normSource.includes(normEvidence)) {
+    return true;
+  }
+
+  const numericTokens = [...evidence.matchAll(/\b\d+\b/g)].map((m) => m[0]);
+  const allNumericTokensInSource =
+    numericTokens.length > 0 && numericTokens.every((token) => sourceText.includes(token));
+  const candidates = extractCandidateValues(sourceText);
+  const quantitySupported = candidates.has(quantity);
+
+  if (allNumericTokensInSource && quantitySupported) {
+    return true;
+  }
+
+  if (quantitySupported && normEvidence.length > 0) {
+    const words = normEvidence.split(/\s+/).filter((w) => w.length > 3);
+    if (words.length > 0 && words.some((w) => normSource.includes(w))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Whether asking another question would exceed the clarification allowance.
  *
@@ -383,8 +478,13 @@ function buildAiDecision(
   }
 
   // --- Guard 3: quantities must be plausible whole numbers and validated against source text ---
-  const availableSourceText = `${input.latestMessageText}\n${input.cumulativeText}`.toLowerCase();
-  const aiQuantities = new Map<DemandUnit, { quantity: number; basis: "stated" | "inferred"; evidence: string; confidence: number }>();
+  const availableSourceText = `${input.latestMessageText}\n${input.cumulativeText}`;
+  const aiQuantities = new Map<
+    DemandUnit,
+    { quantity: number; basis: "stated" | "inferred"; evidence: string; confidence: number; conflictWith?: string | null }
+  >();
+  const disagreementReasons: string[] = [];
+
   for (const requirement of output.knownRequirements) {
     const bound = QUANTITY_BOUNDS[requirement.unit];
     if (!Number.isSafeInteger(requirement.quantity) || requirement.quantity < 0) {
@@ -398,28 +498,38 @@ function buildAiDecision(
       continue;
     }
 
-    // Task 1 requirement: The AI path must not be able to change quantities.
-    // Every extracted quantity must be validated against an evidence span in the email or attachment text,
-    // and a mismatch must fall back to the deterministic value.
-    const evidenceLower = (requirement.evidence || "").toLowerCase().trim();
-    const hasEvidenceSpan = evidenceLower.length > 0 && availableSourceText.includes(evidenceLower);
+    const modelSupported = isModelEvidenceSupported(requirement.evidence, requirement.quantity, availableSourceText);
     const deterministicVal = rulesResult.demand[requirement.unit];
-    const deterministicState = rulesResult.intakeRequirements?.[requirement.unit]?.state;
+    const deterministicReq = rulesResult.intakeRequirements?.[requirement.unit];
+    const deterministicState = deterministicReq?.state;
+    const deterministicEvidence = deterministicReq?.evidence;
+    const rulesHasEvidence =
+      (deterministicState === "stated" || (Boolean(deterministicEvidence) && deterministicEvidence!.trim().length > 0)) &&
+      deterministicVal !== null &&
+      deterministicVal !== undefined;
 
     let finalQuantity = requirement.quantity;
     let finalEvidence = requirement.evidence;
     let finalBasis = requirement.basis;
+    let conflictWith: string | null = null;
 
-    if (!hasEvidenceSpan && requirement.quantity > 0) {
-      warnings.push(`AI quantity ${requirement.quantity} for ${UNIT_LABELS[requirement.unit]} lacks a valid evidence span in the source text; falling back to deterministic value ${deterministicVal}.`);
+    if (!modelSupported && requirement.quantity > 0) {
+      // Model quantity has no supporting evidence at all -> Silent override to deterministic value
+      warnings.push(
+        `AI quantity ${requirement.quantity} for ${UNIT_LABELS[requirement.unit]} lacks a valid evidence span in the source text; falling back to deterministic value ${deterministicVal}.`,
+      );
       finalQuantity = deterministicVal;
-      finalEvidence = rulesResult.intakeRequirements?.[requirement.unit]?.evidence || requirement.evidence;
+      finalEvidence = deterministicEvidence || requirement.evidence;
       finalBasis = deterministicState === "stated" ? "stated" : "inferred";
-    } else if (deterministicState === "stated" && deterministicVal !== requirement.quantity) {
-      warnings.push(`AI quantity ${requirement.quantity} for ${UNIT_LABELS[requirement.unit]} differs from deterministic stated value ${deterministicVal}; falling back to deterministic value.`);
-      finalQuantity = deterministicVal;
-      finalEvidence = rulesResult.intakeRequirements?.[requirement.unit]?.evidence || requirement.evidence;
-      finalBasis = "stated";
+    } else if (modelSupported && rulesHasEvidence && deterministicVal !== requirement.quantity) {
+      // Both model and rules have evidence, but disagree:
+      // Do NOT silently let either one win. Record both values and route to human_review.
+      const reason = `AI says ${requirement.quantity}, rules say ${deterministicVal} for ${UNIT_LABELS[requirement.unit]}`;
+      disagreementReasons.push(reason);
+      warnings.push(`Disagreement on ${UNIT_LABELS[requirement.unit]}: ${reason}`);
+      conflictWith = `rules: ${deterministicVal} (${deterministicEvidence})`;
+      finalQuantity = requirement.quantity;
+      finalEvidence = `${requirement.evidence} (rules: ${deterministicVal} via "${deterministicEvidence}")`;
     }
 
     // Last value wins if the model emitted a unit twice; both are recorded.
@@ -431,6 +541,7 @@ function buildAiDecision(
       basis: finalBasis,
       evidence: finalEvidence,
       confidence: requirement.confidence,
+      conflictWith,
     });
   }
 
@@ -484,7 +595,7 @@ function buildAiDecision(
         state: fromAi.basis === "stated" ? "provided" : "inferred",
         confidence: fromAi.confidence,
         evidence: fromAi.evidence || null,
-        conflictWith: null,
+        conflictWith: fromAi.conflictWith ?? null,
         previousValue:
           retained && retained.value !== fromAi.quantity ? retained.value : retained?.previousValue ?? null,
         materialToPricing: true,
@@ -547,7 +658,7 @@ function buildAiDecision(
     .filter((field) => field.state === "missing" && field.materialToPricing)
     .map((field) => field.key);
 
-  const humanReviewReasons = [...output.humanReviewReasons];
+  const humanReviewReasons = [...output.humanReviewReasons, ...disagreementReasons];
   let action: AiAction;
 
   if (errors.length > 0) {

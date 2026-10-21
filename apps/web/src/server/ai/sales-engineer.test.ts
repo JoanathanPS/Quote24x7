@@ -1227,3 +1227,106 @@ test("Provider chain: Groq returns malformed JSON and falls back with neutral pr
   assert.match(result.record.failureDetail ?? "", /groq:\s*invalid_output/i);
   assert.match(result.record.reasoningSummary, /not by Groq/i);
 });
+
+// ---------------------------------------------------------------------------
+// Step 2 Guard 3 Tests: Robust evidence validation & Disagreement handling
+// ---------------------------------------------------------------------------
+
+test("Guard 3: shortened evidence accepted (not discarded due to punctuation/whitespace differences)", async () => {
+  const text = "Monitoring needs:\n5 websites, 10 servers. No other monitoring needed.";
+  const input = engineerInput({
+    latestMessageText: text,
+    cumulativeText: text,
+  });
+
+  const prov = okProvider(
+    decision({
+      action: "prepare_quote",
+      knownRequirements: [
+        { unit: "basic_monitor", quantity: 5, basis: "stated", evidence: "5 websites", confidence: 0.95 },
+        { unit: "host_monitor", quantity: 10, basis: "stated", evidence: "10 servers", confidence: 0.95 },
+      ],
+      recommendedProductCategories: ["infrastructure_monitoring", "website_monitoring"],
+    }),
+  );
+
+  const result = await decideNextAction(input, prov);
+  assert.equal(result.action, "prepare_quote");
+  assert.equal(result.extraction.demand.basic_monitor, 5);
+  assert.equal(result.extraction.demand.host_monitor, 10);
+});
+
+test("Guard 3: invented quantity without source evidence is blocked and falls back to deterministic value", async () => {
+  const text = "We have 10 servers only. No other monitoring needed.";
+  const input = engineerInput({
+    latestMessageText: text,
+    cumulativeText: text,
+  });
+
+  const prov = okProvider(
+    decision({
+      action: "prepare_quote",
+      knownRequirements: [
+        { unit: "host_monitor", quantity: 10, basis: "stated", evidence: "10 servers", confidence: 0.98 },
+        // Model invents 99 synthetic monitors with unsupported evidence
+        { unit: "advanced_monitor", quantity: 99, basis: "stated", evidence: "they need ninety-nine synthetics", confidence: 0.95 },
+      ],
+      recommendedProductCategories: ["infrastructure_monitoring"],
+    }),
+  );
+
+  const result = await decideNextAction(input, prov);
+  // The invented quantity 99 must be blocked and fallback to rules (0)
+  assert.equal(result.extraction.demand.advanced_monitor, 0);
+  assert.equal(result.extraction.demand.host_monitor, 10);
+  assert.ok(result.record.validation.warnings.some((w) => w.includes("lacks a valid evidence span")));
+});
+
+test("Guard 3: disagreement where both have evidence is escalated to human_review with both values recorded", async () => {
+  const text = "We have 45 database servers and 15 application servers. No other monitoring needed.";
+  const input = engineerInput({
+    latestMessageText: text,
+    cumulativeText: text,
+  });
+
+  // Rules engine extracts 60 (sum of 45 and 15).
+  // Model extracts only 45 (focusing on database servers, which has valid evidence "45 database servers" in text).
+  const prov = okProvider(
+    decision({
+      action: "prepare_quote",
+      knownRequirements: [
+        { unit: "host_monitor", quantity: 45, basis: "stated", evidence: "45 database servers", confidence: 0.95 },
+      ],
+      recommendedProductCategories: ["infrastructure_monitoring"],
+    }),
+  );
+
+  const result = await decideNextAction(input, prov);
+  // Both have evidence in text, but they disagree (AI says 45, rules say 60).
+  // Disagreement must be escalated to human_review with both values recorded.
+  assert.equal(result.action, "human_review");
+  assert.ok(result.record.humanReviewReasons.some((r) => r.includes("AI says 45") && r.includes("rules say 60")));
+  assert.ok(result.extraction.profile.fields.some((f) => f.conflictWith?.includes("rules: 60")));
+});
+
+test("Guard 3: correction turn handled where updated quantity overrides earlier value", async () => {
+  const text = "We have 60 servers.\n\nActually make that 45 servers. No network or other devices.";
+  const input = engineerInput({
+    latestMessageText: "Actually make that 45 servers. No network or other devices.",
+    cumulativeText: text,
+  });
+
+  const prov = okProvider(
+    decision({
+      action: "prepare_quote",
+      knownRequirements: [
+        { unit: "host_monitor", quantity: 45, basis: "stated", evidence: "45 servers", confidence: 0.98 },
+      ],
+      recommendedProductCategories: ["infrastructure_monitoring"],
+    }),
+  );
+
+  const result = await decideNextAction(input, prov);
+  assert.equal(result.action, "prepare_quote");
+  assert.equal(result.extraction.demand.host_monitor, 45);
+});
