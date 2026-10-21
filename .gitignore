@@ -13,3 +13,4 @@ backups/
 .agents/
 .codex/
 .temp/
+apps/web/benchmark-results/

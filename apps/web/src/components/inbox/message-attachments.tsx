@@ -112,6 +112,7 @@ export function MessageAttachmentsList({
 
 function AttachmentCard({
   att,
+  quoteId,
 }: {
   att: MessageAttachment;
   quoteId?: string | null;
@@ -120,6 +121,11 @@ function AttachmentCard({
   const [copied, setCopied] = React.useState(false);
 
   const kind = getAttachmentKind(att);
+  const isQuotePdf =
+    Boolean(quoteId) &&
+    (att.name.toLowerCase().includes("site24x7-estimate") ||
+      att.name.toLowerCase().includes("quote24x7") ||
+      att.name.toLowerCase().startsWith("estimate-"));
 
   const handleCopy = async () => {
     if (!att.extractedText) return;
@@ -133,6 +139,17 @@ function AttachmentCard({
   };
 
   const handleDownload = () => {
+    // 1. If this is an outbound quotation PDF, download the official quote PDF from the API:
+    if (isQuotePdf) {
+      const a = document.createElement("a");
+      a.href = `/api/v1/quotes/${quoteId}/pdf`;
+      a.download = att.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
+
     if (!att.contentBase64 && !att.extractedText) return;
 
     try {
@@ -140,7 +157,9 @@ function AttachmentCard({
       if (att.contentBase64) {
         url = `data:${att.contentType || "application/octet-stream"};base64,${att.contentBase64}`;
       } else {
-        const blob = new Blob([att.extractedText || ""], { type: "text/plain;charset=utf-8" });
+        let mime = att.contentType || "text/plain;charset=utf-8";
+        if (kind === "csv") mime = "text/csv;charset=utf-8";
+        const blob = new Blob([att.extractedText || ""], { type: mime });
         url = URL.createObjectURL(blob);
       }
 
@@ -219,7 +238,7 @@ function AttachmentCard({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          {(att.contentBase64 || hasExtractedText) && (
+          {(att.contentBase64 || hasExtractedText || isQuotePdf) && (
             <button
               type="button"
               onClick={handleDownload}

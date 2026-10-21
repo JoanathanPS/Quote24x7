@@ -261,6 +261,7 @@ test("End-to-end: inbound email with Excel (.xlsx) inventory generates quotation
   assert.equal(inboundMsg.attachments[0]?.name, "fleet_inventory.xlsx");
   assert.equal(inboundMsg.attachments[0]?.documentKind, "excel");
   assert.ok(inboundMsg.attachments[0]?.extractedText?.includes("Linux servers,80"));
+  assert.ok(inboundMsg.attachments[0]?.contentBase64, "Excel attachment must retain contentBase64");
 });
 
 test("processInboundEmail deduplicates duplicate attachments when receiving both downloaded buffer and 0-byte stub", async () => {

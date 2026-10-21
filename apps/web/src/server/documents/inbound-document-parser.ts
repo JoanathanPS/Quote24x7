@@ -548,6 +548,11 @@ export async function parseInboundDocument(
     text = text.slice(0, MAX_EXTRACTED_TEXT_LENGTH) + "\n\n[... Truncated: attachment content exceeded limit ...]";
   }
 
+  // Preserve binary base64 for file downloads & document inspection (capped at 10MB)
+  if (!contentBase64 && buffer.length > 0 && buffer.length < 10_000_000) {
+    contentBase64 = buffer.toString("base64");
+  }
+
   return {
     filename,
     contentType,

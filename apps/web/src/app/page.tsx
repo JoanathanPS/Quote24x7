@@ -23,7 +23,6 @@ import {
   Calendar,
   Buildings,
   EnvelopeSimple,
-  Paperclip,
 } from "@phosphor-icons/react";
 
 import {
@@ -45,6 +44,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EmailBody } from "@/components/email-body";
+import { MessageAttachmentsList } from "@/components/inbox/message-attachments";
 
 type HumanFilter = "all" | "needs_reply" | "configuring" | "proposal_ready" | "needs_review";
 
@@ -594,31 +594,12 @@ function SelectedThreadPanel({ thread }: { thread: EmailThread }) {
                   className="font-sans text-xs text-foreground/90 leading-relaxed"
                 />
 
-                {/* Attachments if any */}
+                {/* Attachments */}
                 {msg.attachments && msg.attachments.length > 0 && (
-                  <div className="pt-2 border-t border-border/40 flex flex-wrap gap-2">
-                    {msg.attachments.map((att, idx) => (
-                      <div
-                        key={idx}
-                        className="inline-flex items-center gap-1.5 rounded border border-border bg-surface px-2 py-1 text-xs"
-                      >
-                        <Paperclip className="h-3 w-3 text-muted-foreground" />
-                        <span className="font-medium text-[11px] text-foreground">{att.name}</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          ({(att.sizeBytes / 1024).toFixed(0)} KB)
-                        </span>
-                        {thread.quoteId && (
-                          <a
-                            href={`/api/v1/quotes/${thread.quoteId}/pdf`}
-                            download={att.name}
-                            className="ml-1 text-[10px] text-primary hover:underline font-medium"
-                          >
-                            Download
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <MessageAttachmentsList
+                    attachments={msg.attachments}
+                    quoteId={thread.quoteId}
+                  />
                 )}
               </div>
             );
