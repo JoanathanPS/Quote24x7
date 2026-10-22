@@ -1,9 +1,13 @@
+import fs from "node:fs";
+import path from "node:path";
 import { decideNextAction, type SalesDecision, type SalesEngineerInput } from "../ai/sales-engineer.ts";
 import type { AiProvider, AiProviderResult } from "../ai/gemini-provider.ts";
 import { PRODUCT_CATEGORIES, type AiDecisionOutput } from "../ai/decision-schema.ts";
 import { deriveSupportedCategories } from "../ai/context-builder.ts";
 import { loadActiveCatalogue } from "../catalogue/loader.ts";
-import type { EmailMessage, EmailThread } from "@/types/domain";
+import type { EmailMessage, EmailThread, MessageAttachment, RequirementProfile } from "@/types/domain";
+import { parseInboundDocument } from "../documents/inbound-document-parser.ts";
+import { extractRequirements, mergeRequirements } from "../extraction/extractor.ts";
 import { BENCHMARK_CASES } from "./cases.ts";
 import { aggregate, scoreCase, type DetectContext } from "./scorer.ts";
 import {
@@ -17,6 +21,19 @@ import {
 type Catalogue = ReturnType<typeof loadActiveCatalogue>;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function resolveAttachmentPath(filename: string): string | null {
+  const candidates = [
+    path.resolve(process.cwd(), "test-attachments", filename),
+    path.resolve(process.cwd(), "..", "test-attachments", filename),
+    path.resolve(process.cwd(), "..", "..", "test-attachments", filename),
+    path.resolve(process.cwd(), "apps", "web", "test-attachments", filename),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Building the app's real input from a benchmark case
@@ -45,10 +62,38 @@ function thread(id: string): EmailThread {
   };
 }
 
-export function buildInput(c: BenchmarkCase, catalogue: Catalogue): SalesEngineerInput {
+export async function buildInput(c: BenchmarkCase, catalogue: Catalogue): Promise<SalesEngineerInput> {
   const th = thread(`th_bench_${c.id}`);
   const subject = c.subject ?? "Monitoring quote request";
   const latest = c.turns[c.turns.length - 1] ?? "";
+
+  const attachments: MessageAttachment[] = [];
+  if (c.attachments && c.attachments.length > 0) {
+    for (const filename of c.attachments) {
+      const fullPath = resolveAttachmentPath(filename);
+      if (fullPath && fs.existsSync(fullPath)) {
+        try {
+          const buffer = fs.readFileSync(fullPath);
+          const parsed = await parseInboundDocument({ filename, buffer });
+          attachments.push({
+            name: parsed.filename,
+            contentType: parsed.contentType,
+            sizeBytes: parsed.sizeBytes,
+            scanned: true,
+            extractedText: parsed.text,
+            documentKind: parsed.documentKind,
+            contentBase64: parsed.contentBase64,
+          });
+        } catch {
+          // ignore read failure
+        }
+      }
+    }
+  }
+
+  const docText = attachments.map((a) => a.extractedText || "").filter(Boolean).join("\n\n");
+  const cumulativeText = docText ? `${c.turns.join("\n\n")}\n\n[Attached Documents]:\n${docText}` : c.turns.join("\n\n");
+
   const prior: EmailMessage[] = c.turns.slice(0, -1).map((body, index) => ({
     id: `msg_${c.id}_${index}`,
     threadId: th.id,
@@ -64,16 +109,40 @@ export function buildInput(c: BenchmarkCase, catalogue: Catalogue): SalesEnginee
     securityNotes: [],
     attachments: [],
   }));
+
+  let existingProfile: RequirementProfile | undefined = undefined;
+  if (c.turns.length > 1) {
+    let currentRes = extractRequirements({
+      threadId: th.id,
+      senderEmail: th.senderEmail,
+      senderName: th.senderName,
+      subject,
+      bodyText: c.turns[0]!,
+    });
+    for (let t = 1; t < c.turns.length - 1; t++) {
+      currentRes = mergeRequirements({
+        existingProfile: currentRes.profile,
+        replyText: c.turns[t]!,
+        senderEmail: th.senderEmail,
+        senderName: th.senderName,
+        subject,
+        cumulativeText: c.turns.slice(0, t + 1).join("\n\n"),
+      });
+    }
+    existingProfile = currentRes.profile;
+  }
+
   return {
     thread: th,
     latestMessageText: latest,
-    cumulativeText: c.turns.join("\n\n"),
+    cumulativeText,
     priorMessages: prior,
-    existingProfile: undefined,
+    existingProfile,
     catalogue,
     senderEmail: th.senderEmail,
     senderName: th.senderName,
     subject,
+    attachments,
   };
 }
 
@@ -215,7 +284,7 @@ function recorder(inner: AiProvider, rateLimitWaitMs: number) {
 }
 
 export async function runCase(c: BenchmarkCase, catalogue: Catalogue, provider: AiProvider | null, rateLimitWaitMs = 15_000): Promise<CaseRun> {
-  const input = buildInput(c, catalogue);
+  const input = await buildInput(c, catalogue);
   if (!provider) {
     const decision = await decideNextAction(input);
     return {
@@ -286,7 +355,7 @@ export interface BenchmarkResult {
   providerFailures: number;
 }
 
-export const DATASET_VERSION = "v1";
+export const DATASET_VERSION = "v2";
 
 export async function runBenchmark(options: RunOptions): Promise<BenchmarkResult> {
   const catalogue = loadActiveCatalogue();

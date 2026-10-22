@@ -76,7 +76,7 @@ test("Dataset: labels are internally consistent", () => {
 
 test("Dataset: every trap value really appears in the email, and no trap equals a true quantity", () => {
   for (const c of BENCHMARK_CASES.filter((x) => x.traps?.length)) {
-    const values = candidateValues([c.subject ?? "", ...c.turns].join(" "));
+    const values = candidateValues(sourceTextOf(c));
     for (const trap of c.traps ?? []) {
       assert.ok(values.has(trap.value), `${c.id}: trap ${trap.value} (${trap.note}) not found in text`);
       assert.ok(!Object.values(c.expected.requirements).includes(trap.value), `${c.id}: trap ${trap.value} equals a real quantity`);
@@ -86,7 +86,7 @@ test("Dataset: every trap value really appears in the email, and no trap equals 
 
 test("Dataset: every positive gold quantity is derivable from the text (guards against mislabelling)", () => {
   for (const c of BENCHMARK_CASES.filter((x) => x.expected.scoreQuantities !== false)) {
-    const values = candidateValues([c.subject ?? "", ...c.turns].join(" "));
+    const values = candidateValues(sourceTextOf(c));
     for (const [unit, quantity] of Object.entries(c.expected.requirements)) {
       if (quantity > 0) assert.ok(values.has(quantity), `${c.id}: gold ${unit}=${quantity} cannot be derived from the email text`);
     }

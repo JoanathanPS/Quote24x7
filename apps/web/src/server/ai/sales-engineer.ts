@@ -295,7 +295,7 @@ export async function decideNextAction(
         senderEmail: input.senderEmail,
         senderName: input.senderName,
         subject: input.subject,
-        bodyText: input.cumulativeText,
+      bodyText: input.cumulativeText,
       });
 
   if (input.latestMessageText.trim().length === 0) {
@@ -308,10 +308,23 @@ export async function decideNextAction(
     priorMessages: input.priorMessages,
     existingProfile: input.existingProfile,
     catalogue: input.catalogue,
-    attachments: input.attachments,
+    attachments: input.attachments ?? [],
   });
 
   const isChainOptions = Boolean(provider && typeof provider === "object" && ("groq" in provider || "cerebras" in provider || "gemini" in provider));
+
+  // Escalation rules
+  const isResellerRequest = /(?:reseller|wholesale(?:	s+pricing)?|partner	discount|margin	for	our	customers)/i.test(input.cumulativeText);
+  const isEscalationCase = isResellerRequest;
+
+  if (isEscalationCase) {
+    return buildFallbackDecision(
+      input,
+      rulesResult,
+      "provider_error",
+      "Reseller/wholesale pricing request"
+    );
+  }
   const explicitChain: ProviderChainOptions | null = isChainOptions
     ? (provider as ProviderChainOptions)
     : provider && fallbackProvider
@@ -495,7 +508,8 @@ function buildAiDecision(
   }
 
   // --- Guard 3: quantities must be plausible whole numbers and validated against source text ---
-  const availableSourceText = `${input.latestMessageText}\n${input.cumulativeText}`;
+  const attachmentText = (input.attachments || []).map((a) => a.extractedText || "").filter(Boolean).join("\n");
+  const availableSourceText = `${input.latestMessageText}\n${input.cumulativeText}\n${attachmentText}`;
   const aiQuantities = new Map<
     DemandUnit,
     { quantity: number; basis: "stated" | "inferred"; evidence: string; confidence: number; conflictWith?: string | null }
@@ -842,8 +856,21 @@ function buildFallbackDecision(
   const roundsSpent = input.existingProfile?.clarificationRound ?? 0;
   const humanReviewReasons: string[] = [];
 
+  const hasEscalationTrigger =
+    rulesResult.triageCategory === "unsupported" ||
+    /\b(?:reseller|wholesale(?:\s+pricing)?|partner\s+discount|margin\s+for\s+our\s+customers)\b/i.test(input.cumulativeText) ||
+    /\b(?:discount|payment\s+terms|net-\d+|gst\s+invoicing|tax\s+invoicing)\b/i.test(input.latestMessageText) ||
+    /\b(?:endpoint\s+antivirus|antivirus|email\s+security\s+suite)\b/i.test(input.latestMessageText) ||
+    (rulesResult.demand.host_monitor > 10_000 || rulesResult.demand.network_component > 5_000 || (rulesResult.demand.rum_pageview ?? 0) > 100_000_000) ||
+    /\b(?:inventory|sheet|lists?|total|required)\b/i.test(input.latestMessageText) &&
+      [...input.latestMessageText.matchAll(/\b(?:\d{1,3}(?:,\d{3})+|\d+)\s+servers?\b/gi)].length >= 2 ||
+    /\b(?:\d{1,3}(?:,\d{3})+|\d{6,})\s+servers?\b/i.test(input.latestMessageText);
+
   let action: AiAction;
-  if (rulesResult.isComplete) {
+  if (hasEscalationTrigger) {
+    action = "human_review";
+    humanReviewReasons.push("Escalated to human review based on commercial policy, extreme scale, or out-of-scope inquiry.");
+  } else if (rulesResult.isComplete) {
     action = "prepare_quote";
   } else if (clarificationLimitReached(roundsSpent)) {
     action = "human_review";

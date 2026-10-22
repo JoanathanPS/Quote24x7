@@ -1,0 +1,126 @@
+NE ID,Network Element Type,PoP Site,Management IP,Role
+B-NGN-SRV-001,Compute Host Server,Delhi-PoP-Central,172.16.50.1,Compute Node
+B-NGN-SRV-002,Compute Host Server,Delhi-PoP-Central,172.16.50.2,Compute Node
+B-NGN-SRV-003,Compute Host Server,Delhi-PoP-Central,172.16.50.3,Compute Node
+B-NGN-SRV-004,Compute Host Server,Delhi-PoP-Central,172.16.50.4,Compute Node
+B-NGN-SRV-005,Compute Host Server,Delhi-PoP-Central,172.16.50.5,Compute Node
+B-NGN-SRV-006,Compute Host Server,Delhi-PoP-Central,172.16.50.6,Compute Node
+B-NGN-SRV-007,Compute Host Server,Delhi-PoP-Central,172.16.50.7,Compute Node
+B-NGN-SRV-008,Compute Host Server,Delhi-PoP-Central,172.16.50.8,Compute Node
+B-NGN-SRV-009,Compute Host Server,Delhi-PoP-Central,172.16.50.9,Compute Node
+B-NGN-SRV-010,Compute Host Server,Delhi-PoP-Central,172.16.50.10,Compute Node
+B-NGN-SRV-011,Compute Host Server,Delhi-PoP-Central,172.16.50.11,Compute Node
+B-NGN-SRV-012,Compute Host Server,Delhi-PoP-Central,172.16.50.12,Compute Node
+B-NGN-SRV-013,Compute Host Server,Delhi-PoP-Central,172.16.50.13,Compute Node
+B-NGN-SRV-014,Compute Host Server,Delhi-PoP-Central,172.16.50.14,Compute Node
+B-NGN-SRV-015,Compute Host Server,Delhi-PoP-Central,172.16.50.15,Compute Node
+B-NGN-SRV-016,Compute Host Server,Delhi-PoP-Central,172.16.50.16,Compute Node
+B-NGN-SRV-017,Compute Host Server,Delhi-PoP-Central,172.16.50.17,Compute Node
+B-NGN-SRV-018,Compute Host Server,Delhi-PoP-Central,172.16.50.18,Compute Node
+B-NGN-SRV-019,Compute Host Server,Delhi-PoP-Central,172.16.50.19,Compute Node
+B-NGN-SRV-020,Compute Host Server,Delhi-PoP-Central,172.16.50.20,Compute Node
+B-NGN-SRV-021,Compute Host Server,Delhi-PoP-Central,172.16.50.21,Compute Node
+B-NGN-SRV-022,Compute Host Server,Delhi-PoP-Central,172.16.50.22,Compute Node
+B-NGN-SRV-023,Compute Host Server,Delhi-PoP-Central,172.16.50.23,Compute Node
+B-NGN-SRV-024,Compute Host Server,Delhi-PoP-Central,172.16.50.24,Compute Node
+B-NGN-SRV-025,Compute Host Server,Delhi-PoP-Central,172.16.50.25,Compute Node
+B-NGN-SRV-026,Compute Host Server,Delhi-PoP-Central,172.16.50.26,Compute Node
+B-NGN-SRV-027,Compute Host Server,Delhi-PoP-Central,172.16.50.27,Compute Node
+B-NGN-SRV-028,Compute Host Server,Delhi-PoP-Central,172.16.50.28,Compute Node
+B-NGN-SRV-029,Compute Host Server,Delhi-PoP-Central,172.16.50.29,Compute Node
+B-NGN-SRV-030,Compute Host Server,Delhi-PoP-Central,172.16.50.30,Compute Node
+B-NGN-SRV-031,Compute Host Server,Delhi-PoP-Central,172.16.50.31,Compute Node
+B-NGN-SRV-032,Compute Host Server,Delhi-PoP-Central,172.16.50.32,Compute Node
+B-NGN-SRV-033,Compute Host Server,Delhi-PoP-Central,172.16.50.33,Compute Node
+B-NGN-SRV-034,Compute Host Server,Delhi-PoP-Central,172.16.50.34,Compute Node
+B-NGN-SRV-035,Compute Host Server,Delhi-PoP-Central,172.16.50.35,Compute Node
+B-NGN-SRV-036,Compute Host Server,Delhi-PoP-Central,172.16.50.36,Compute Node
+B-NGN-SRV-037,Compute Host Server,Delhi-PoP-Central,172.16.50.37,Compute Node
+B-NGN-SRV-038,Compute Host Server,Delhi-PoP-Central,172.16.50.38,Compute Node
+B-NGN-SRV-039,Compute Host Server,Delhi-PoP-Central,172.16.50.39,Compute Node
+B-NGN-SRV-040,Compute Host Server,Delhi-PoP-Central,172.16.50.40,Compute Node
+B-NGN-SRV-041,Compute Host Server,Delhi-PoP-Central,172.16.50.41,Compute Node
+B-NGN-SRV-042,Compute Host Server,Delhi-PoP-Central,172.16.50.42,Compute Node
+B-NGN-SRV-043,Compute Host Server,Delhi-PoP-Central,172.16.50.43,Compute Node
+B-NGN-SRV-044,Compute Host Server,Delhi-PoP-Central,172.16.50.44,Compute Node
+B-NGN-SRV-045,Compute Host Server,Delhi-PoP-Central,172.16.50.45,Compute Node
+B-NGN-SRV-046,Compute Host Server,Delhi-PoP-Central,172.16.50.46,Compute Node
+B-NGN-SRV-047,Compute Host Server,Delhi-PoP-Central,172.16.50.47,Compute Node
+B-NGN-SRV-048,Compute Host Server,Delhi-PoP-Central,172.16.50.48,Compute Node
+B-NGN-SRV-049,Compute Host Server,Delhi-PoP-Central,172.16.50.49,Compute Node
+B-NGN-SRV-050,Compute Host Server,Delhi-PoP-Central,172.16.50.50,Compute Node
+B-NGN-SRV-051,Compute Host Server,Delhi-PoP-Central,172.16.50.51,Compute Node
+B-NGN-SRV-052,Compute Host Server,Delhi-PoP-Central,172.16.50.52,Compute Node
+B-NGN-SRV-053,Compute Host Server,Delhi-PoP-Central,172.16.50.53,Compute Node
+B-NGN-SRV-054,Compute Host Server,Delhi-PoP-Central,172.16.50.54,Compute Node
+B-NGN-SRV-055,Compute Host Server,Delhi-PoP-Central,172.16.50.55,Compute Node
+B-NGN-SRV-056,Compute Host Server,Delhi-PoP-Central,172.16.50.56,Compute Node
+B-NGN-SRV-057,Compute Host Server,Delhi-PoP-Central,172.16.50.57,Compute Node
+B-NGN-SRV-058,Compute Host Server,Delhi-PoP-Central,172.16.50.58,Compute Node
+B-NGN-SRV-059,Compute Host Server,Delhi-PoP-Central,172.16.50.59,Compute Node
+B-NGN-SRV-060,Compute Host Server,Delhi-PoP-Central,172.16.50.60,Compute Node
+B-NGN-SRV-061,Compute Host Server,Delhi-PoP-Central,172.16.50.61,Compute Node
+B-NGN-SRV-062,Compute Host Server,Delhi-PoP-Central,172.16.50.62,Compute Node
+B-NGN-SRV-063,Compute Host Server,Delhi-PoP-Central,172.16.50.63,Compute Node
+B-NGN-SRV-064,Compute Host Server,Delhi-PoP-Central,172.16.50.64,Compute Node
+B-NGN-SRV-065,Compute Host Server,Delhi-PoP-Central,172.16.50.65,Compute Node
+B-NGN-SRV-066,Compute Host Server,Delhi-PoP-Central,172.16.50.66,Compute Node
+B-NGN-SRV-067,Compute Host Server,Delhi-PoP-Central,172.16.50.67,Compute Node
+B-NGN-SRV-068,Compute Host Server,Delhi-PoP-Central,172.16.50.68,Compute Node
+B-NGN-SRV-069,Compute Host Server,Delhi-PoP-Central,172.16.50.69,Compute Node
+B-NGN-SRV-070,Compute Host Server,Delhi-PoP-Central,172.16.50.70,Compute Node
+B-NGN-SRV-071,Compute Host Server,Delhi-PoP-Central,172.16.50.71,Compute Node
+B-NGN-SRV-072,Compute Host Server,Delhi-PoP-Central,172.16.50.72,Compute Node
+B-NGN-SRV-073,Compute Host Server,Delhi-PoP-Central,172.16.50.73,Compute Node
+B-NGN-SRV-074,Compute Host Server,Delhi-PoP-Central,172.16.50.74,Compute Node
+B-NGN-SRV-075,Compute Host Server,Delhi-PoP-Central,172.16.50.75,Compute Node
+B-NGN-SRV-076,Compute Host Server,Delhi-PoP-Central,172.16.50.76,Compute Node
+B-NGN-SRV-077,Compute Host Server,Delhi-PoP-Central,172.16.50.77,Compute Node
+B-NGN-SRV-078,Compute Host Server,Delhi-PoP-Central,172.16.50.78,Compute Node
+B-NGN-SRV-079,Compute Host Server,Delhi-PoP-Central,172.16.50.79,Compute Node
+B-NGN-SRV-080,Compute Host Server,Delhi-PoP-Central,172.16.50.80,Compute Node
+B-NGN-SRV-081,Compute Host Server,Delhi-PoP-Central,172.16.50.81,Compute Node
+B-NGN-SRV-082,Compute Host Server,Delhi-PoP-Central,172.16.50.82,Compute Node
+B-NGN-SRV-083,Compute Host Server,Delhi-PoP-Central,172.16.50.83,Compute Node
+B-NGN-SRV-084,Compute Host Server,Delhi-PoP-Central,172.16.50.84,Compute Node
+B-NGN-SRV-085,Compute Host Server,Delhi-PoP-Central,172.16.50.85,Compute Node
+B-NGN-SRV-086,Compute Host Server,Delhi-PoP-Central,172.16.50.86,Compute Node
+B-NGN-SRV-087,Compute Host Server,Delhi-PoP-Central,172.16.50.87,Compute Node
+B-NGN-SRV-088,Compute Host Server,Delhi-PoP-Central,172.16.50.88,Compute Node
+B-NGN-SRV-089,Compute Host Server,Delhi-PoP-Central,172.16.50.89,Compute Node
+B-NGN-SRV-090,Compute Host Server,Delhi-PoP-Central,172.16.50.90,Compute Node
+B-NGN-SRV-091,Compute Host Server,Delhi-PoP-Central,172.16.50.91,Compute Node
+B-NGN-SRV-092,Compute Host Server,Delhi-PoP-Central,172.16.50.92,Compute Node
+B-NGN-SRV-093,Compute Host Server,Delhi-PoP-Central,172.16.50.93,Compute Node
+B-NGN-SRV-094,Compute Host Server,Delhi-PoP-Central,172.16.50.94,Compute Node
+B-NGN-SRV-095,Compute Host Server,Delhi-PoP-Central,172.16.50.95,Compute Node
+B-NGN-SRV-096,Compute Host Server,Delhi-PoP-Central,172.16.50.96,Compute Node
+B-NGN-SRV-097,Compute Host Server,Delhi-PoP-Central,172.16.50.97,Compute Node
+B-NGN-SRV-098,Compute Host Server,Delhi-PoP-Central,172.16.50.98,Compute Node
+B-NGN-SRV-099,Compute Host Server,Delhi-PoP-Central,172.16.50.99,Compute Node
+B-NGN-SRV-100,Compute Host Server,Delhi-PoP-Central,172.16.50.100,Compute Node
+B-NGN-SRV-101,Compute Host Server,Delhi-PoP-Central,172.16.50.101,Compute Node
+B-NGN-SRV-102,Compute Host Server,Delhi-PoP-Central,172.16.50.102,Compute Node
+B-NGN-SRV-103,Compute Host Server,Delhi-PoP-Central,172.16.50.103,Compute Node
+B-NGN-SRV-104,Compute Host Server,Delhi-PoP-Central,172.16.50.104,Compute Node
+B-NGN-SRV-105,Compute Host Server,Delhi-PoP-Central,172.16.50.105,Compute Node
+B-NGN-SRV-106,Compute Host Server,Delhi-PoP-Central,172.16.50.106,Compute Node
+B-NGN-SRV-107,Compute Host Server,Delhi-PoP-Central,172.16.50.107,Compute Node
+B-NGN-SRV-108,Compute Host Server,Delhi-PoP-Central,172.16.50.108,Compute Node
+B-NGN-SRV-109,Compute Host Server,Delhi-PoP-Central,172.16.50.109,Compute Node
+B-NGN-SRV-110,Compute Host Server,Delhi-PoP-Central,172.16.50.110,Compute Node
+SW-METRO-01,Network Switch,Delhi-PoP-Central,172.16.10.1,Spine/Leaf Switch
+SW-METRO-02,Network Switch,Delhi-PoP-Central,172.16.10.2,Spine/Leaf Switch
+SW-METRO-03,Network Switch,Delhi-PoP-Central,172.16.10.3,Spine/Leaf Switch
+SW-METRO-04,Network Switch,Delhi-PoP-Central,172.16.10.4,Spine/Leaf Switch
+SW-METRO-05,Network Switch,Delhi-PoP-Central,172.16.10.5,Spine/Leaf Switch
+SW-METRO-06,Network Switch,Delhi-PoP-Central,172.16.10.6,Spine/Leaf Switch
+SW-METRO-07,Network Switch,Delhi-PoP-Central,172.16.10.7,Spine/Leaf Switch
+SW-METRO-08,Network Switch,Delhi-PoP-Central,172.16.10.8,Spine/Leaf Switch
+SW-METRO-09,Network Switch,Delhi-PoP-Central,172.16.10.9,Spine/Leaf Switch
+SW-METRO-10,Network Switch,Delhi-PoP-Central,172.16.10.10,Spine/Leaf Switch
+SW-METRO-11,Network Switch,Delhi-PoP-Central,172.16.10.11,Spine/Leaf Switch
+SW-METRO-12,Network Switch,Delhi-PoP-Central,172.16.10.12,Spine/Leaf Switch
+SW-METRO-13,Network Switch,Delhi-PoP-Central,172.16.10.13,Spine/Leaf Switch
+SW-METRO-14,Network Switch,Delhi-PoP-Central,172.16.10.14,Spine/Leaf Switch
+SW-METRO-15,Network Switch,Delhi-PoP-Central,172.16.10.15,Spine/Leaf Switch

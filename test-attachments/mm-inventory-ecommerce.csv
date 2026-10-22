@@ -1,0 +1,38 @@
+Host,OS,Type,Rack
+ec-node-1,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-2,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-3,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-4,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-5,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-6,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-7,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-8,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-9,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-10,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-11,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-12,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-13,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-14,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-15,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-16,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-17,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-18,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-19,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-20,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-21,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-22,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-23,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-24,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-25,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-26,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-27,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-28,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-29,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-30,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-31,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-32,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-33,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-34,Ubuntu 22.04,VM Instance,Rack-B1
+ec-node-35,Ubuntu 22.04,VM Instance,Rack-B1
+edge-gw-01,Junos,Network Switch,Rack-A1
+edge-gw-02,Junos,Network Switch,Rack-A2

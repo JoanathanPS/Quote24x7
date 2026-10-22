@@ -40,12 +40,12 @@ export const FIELD_KEY_TO_UNIT: Record<string, IntakeUnit> = {
 };
 
 export const UNIT_KEYWORDS: Record<IntakeUnit, string[]> = {
-  host_monitor: ["server", "servers", "host", "hosts", "vm", "vms", "node", "nodes", "machine", "machines", "instance", "instances", "server count"],
-  basic_monitor: ["website", "websites", "url", "urls", "endpoint", "endpoints", "api", "apis", "uptime", "website check", "website checks", "web check", "web checks", "uptime check", "uptime checks", "basic monitor", "basic monitors"],
-  network_component: ["network", "switch", "switches", "router", "routers", "firewall", "firewalls", "network device", "network devices", "network component", "network components", "network gear"],
-  advanced_monitor: ["synthetic", "synthetics", "synthetic check", "synthetic checks", "browser transaction", "browser transactions", "advanced monitor", "advanced monitors", "journey", "journeys", "critical web", "synthetic monitor", "synthetic monitors", "synthetic transaction", "synthetic transactions", "real browser", "browser synthetic"],
+  host_monitor: ["server", "servers", "host", "hosts", "vm", "vms", "node", "nodes", "machine", "machines", "instance", "instances", "server count", "blade", "blades", "bare-metal", "ec2", "branch server", "branch servers", "compute node", "compute nodes"],
+  basic_monitor: ["website", "websites", "url", "urls", "endpoint", "endpoints", "api", "apis", "uptime", "website check", "website checks", "web check", "web checks", "uptime check", "uptime checks", "basic monitor", "basic monitors", "web portal", "web portals", "web console", "web consoles", "web application", "web applications", "web dashboard", "web dashboards", "web page", "web pages", "storefront", "storefronts", "alb endpoint", "alb endpoints", "ingress", "ingress service", "ingress services", "portal url", "portal urls"],
+  network_component: ["network", "switch", "switches", "router", "routers", "firewall", "firewalls", "network device", "network devices", "network component", "network components", "network gear", "gateway", "gateways", "vpc gateway", "vpc gateways", "sd-wan router", "sd-wan routers", "cloud router", "cloud routers", "top-of-rack switch", "top-of-rack switches", "tor switch", "tor switches", "core switch", "core switches", "industrial switch", "industrial switches", "plant switch", "plant switches"],
+  advanced_monitor: ["synthetic", "synthetics", "synthetic check", "synthetic checks", "browser transaction", "browser transactions", "advanced monitor", "advanced monitors", "journey", "journeys", "critical web", "synthetic monitor", "synthetic monitors", "synthetic transaction", "synthetic transactions", "real browser", "browser synthetic", "user flow", "user flows", "billing journey", "billing journeys", "java app", "java apps", "apm", "apm instance", "apm instances"],
   rum_pageview: ["rum", "real user", "pageview", "pageviews", "page view", "page views"],
-  applog_gb: ["log", "logs", "applog", "applogs", "gb/day", "gb per day", "log ingestion", "log management", "log aggregation", "retention", "gb/mo", "gb per month", "gb monthly", "logs monthly"],
+  applog_gb: ["log", "logs", "applog", "applogs", "gb/day", "gb per day", "log ingestion", "log management", "log aggregation", "retention", "gb/mo", "gb per month", "gb monthly", "logs monthly", "tb", "terabytes"],
 };
 
 export interface ExtractionInput {
@@ -111,12 +111,8 @@ export function triageInboundEmail(
     /\b(?:reseller|partner\s+discount|partner\s+margin|white-?label|partner\s+program|become\s+a\s+partner|distributor|deal\s+registration)\b/i.test(
       combined,
     );
-  const isRfp =
-    /\b(?:attached\s+rfp|rfp\s+attached|tender\s+doc(?:ument)?|formal\s+rfp|bid\s+submission|request\s+for\s+proposal)\b/i.test(
-      combined,
-    );
   const isNonIndia =
-    /\b(?:u\.s\.\s+pricing|usa\s+pricing|us\s+dollars?|dollar\s+pricing|usd|\$|in\s+dollars|eur|€|quote\s+in\s+eur|gbp|£|outside\s+india|non-india|united\s+states\s+pricing)\b/i.test(
+    /\b(?:u\.s\.\s+pricing|usa\s+pricing|us\s+dollars?|dollar\s+pricing|usd\s+pricing|in\s+dollars|eur|€|quote\s+in\s+eur|gbp|£|outside\s+india|non-india|united\s+states\s+pricing)\b/i.test(
       combined,
     ) && !/\binr|rupee|₹\b/i.test(combined);
   const isFeatureRequest =
@@ -124,7 +120,7 @@ export function triageInboundEmail(
       combined,
     );
 
-  if (isReseller || isRfp || isNonIndia || isFeatureRequest) {
+  if (isReseller || isNonIndia || isFeatureRequest) {
     return "unsupported";
   }
 
@@ -342,6 +338,11 @@ export function maskModelTokens(text: string): string {
     .replace(/\b(?:c5|m5|r5|t3|t4g)\.[a-zA-Z0-9]+\b/gi, "CLOUD_INSTANCE")
     .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d+\b/gi, "CIDR_BLOCK")
     .replace(/\b(?:port|ports)\s+\d+\b/gi, "PORT_NUMBER")
+    .replace(/\b\d+\s*-\s*ports?\b/gi, "PATCH_PANEL_PORTS")
+    .replace(/\b(?:listening\s+on\s+|runs?\s+on\s+|on\s+)?port\s+\d+\b/gi, "PORT_NUMBER")
+    .replace(/\bapi\s+keys?\b/gi, "API_KEY_TOKEN")
+    .replace(/\b\d+\s*(?:employees?|staff|people|workers)\b/gi, "EMPLOYEE_COUNT")
+    .replace(/\b(?:5G|4G|3G|2G)\b/gi, "CELLULAR_GEN")
     .replace(/\b(?:ticket|case|issue|ref)\s*#?\s*\d+\b/gi, "TICKET_NUMBER")
     .replace(/\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/gi, "PHONE_NUMBER")
     .replace(/\b\d{10,12}\b/gi, "PHONE_NUMBER")
@@ -350,33 +351,43 @@ export function maskModelTokens(text: string): string {
     .replace(/\b\d[\d,.]*\s*(?:per|\/)\s*(?:server|host|device|switch|router|vm|month|year|annum|hr|hour|day|user|seat|gb|tb)\b(?:\s*(?:per|\/)\s*[a-z]+)*/gi, "PRICE_TOKEN");
 }
 
-const WORD_TO_INT: Record<string, number> = {
-  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
-  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
-  eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70,
-  eighty: 80, ninety: 90, hundred: 100,
-};
-
 const TENS_WORDS = "twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety";
 const ONES_WORDS = "one|two|three|four|five|six|seven|eight|nine";
 const TEENS_WORDS = "ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen";
-const ALL_NUM_WORDS = `${TENS_WORDS}|${ONES_WORDS}|${TEENS_WORDS}|hundred`;
-const WORD_NUMBER_REGEX_PART = `(?:(?:${TENS_WORDS})[\\s-]+(?:${ONES_WORDS})|${ALL_NUM_WORDS})`;
+const ALL_NUM_WORDS = `${TENS_WORDS}|${ONES_WORDS}|${TEENS_WORDS}|hundred|thousand|million`;
+export const WORD_NUMBER_REGEX_PART = `(?:(?:${TENS_WORDS})[\\s-]+(?:${ONES_WORDS})|${ALL_NUM_WORDS}|(?:[a-z]+(?:\\s+[a-z]+){1,4}))`;
 
-function parseWordNumber(str: string): number | null {
+export function parseWordNumber(str: string): number | null {
   const clean = str.toLowerCase().trim().replace(/-/g, " ");
-  const parts = clean.split(/\s+/);
-  if (parts.length === 1 && parts[0]) {
-    return WORD_TO_INT[parts[0]] ?? null;
-  }
-  if (parts.length === 2 && parts[0] && parts[1]) {
-    const tens = WORD_TO_INT[parts[0]];
-    const ones = WORD_TO_INT[parts[1]];
-    if (tens !== undefined && ones !== undefined) {
-      return tens + ones;
+  const words = clean.split(/\s+/);
+  let total = 0;
+  let current = 0;
+
+  const small: Record<string, number> = {
+    zero: 0, one: 1, a: 1, an: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+    eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
+    eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70,
+    eighty: 80, ninety: 90,
+  };
+
+  for (const w of words) {
+    if (w === "and") continue;
+    if (small[w] !== undefined) {
+      current += small[w];
+    } else if (w === "hundred") {
+      current = (current === 0 ? 1 : current) * 100;
+    } else if (w === "thousand") {
+      total += (current === 0 ? 1 : current) * 1000;
+      current = 0;
+    } else if (w === "million") {
+      total += (current === 0 ? 1 : current) * 1000000;
+      current = 0;
+    } else {
+      return null;
     }
   }
-  return null;
+  const result = total + current;
+  return result > 0 ? result : null;
 }
 
 function extractCombinedEvidence(rawText: string, matches: RegExpMatchArray[]): string {
@@ -411,13 +422,20 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     });
   }
 
-  const rawText = `${input.subject}\n${input.bodyText}`;
-  const text = maskModelTokens(rawText);
+  const rawText = input.bodyText;
+  const docMarker = "\n\n[Attached Documents]:\n";
+  const hasDocAttachment = rawText.includes(docMarker);
+  const inboundRawText = hasDocAttachment ? rawText.split(docMarker)[0]! : rawText;
+  const inboundText = maskModelTokens(inboundRawText);
+  const fullText = maskModelTokens(rawText);
+  const scanText = hasDocAttachment && !/\d/.test(inboundText) ? fullText : inboundText;
+  const text = scanText;
   const lower = text.toLowerCase();
 
-  const triageCategory = triageInboundEmail(input.subject, input.bodyText, input.senderEmail, input.headers);
+  const triageBody = hasDocAttachment ? input.bodyText.split(docMarker)[0]! : input.bodyText;
+  const triageCategory = triageInboundEmail(input.subject, triageBody, input.senderEmail, input.headers);
   const fields: RequirementField[] = [];
-  const missingMaterialFields: string[] = [];
+  let missingMaterialFields: string[] = [];
 
   // Global "just servers" / "only servers" check
   const serversOnlyMatch = rawText.match(
@@ -427,9 +445,47 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   // Global "no other needs" check
   const noOtherNeedsMatch = rawText.match(
-    /\b(?:no\s+other\s+(?:monitoring|needs?|requirements?|checks?|services?)|nothing\s+else|no\s+others?)\b/i,
+    /\b(?:no\s+other\s+(?:monitoring|needs?|requirements?|checks?|services?)|nothing\s+else|no\s+others?|nothing\s+else\s+needed|no\s+other\s+monitoring\s+needed|no\s+other\s+checks?|no\s+other\s+services?)\b/i,
   );
   const noOtherNeeds = Boolean(noOtherNeedsMatch);
+  const scopeClosureMatch = rawText.match(/\b(?:that\s+is\s+(?:all|everything)|nothing\s+else|only)\b/i);
+  const scopeClosed = noOtherNeeds || Boolean(scopeClosureMatch);
+
+  // Collect all negated clauses in text across all 6 units
+  const negatedUnitMap = new Map<IntakeUnit, string>();
+  const negPatterns = [
+    /\b(?:do\s+not|don'?t|not)\s+(?:need|require|want|look\s+for|use)\s+([^.!\n;]+)/gi,
+    /\b(?:not\s+interested\s+in|no\s+interest\s+in)\s+([^.!\n;]+)/gi,
+    /\b(?:no\s+need\s+for)\s+([^.!\n;]+)/gi,
+    /\b(?:no|without|zero|0)\s+([^.!\n;]+?)(?:\s+(?:needed|required|necessary|wanted|to\s+monitor))?(?:[.!\n;]|$)/gi,
+    /\b(?:exclude|excluding|skip|dropping|remove|removed)\s+([^.!\n;]+)/gi,
+  ];
+
+  for (const pat of negPatterns) {
+    for (const match of text.matchAll(pat)) {
+      const rawPhrase = match[1] ? match[1].toLowerCase() : "";
+      const phrase = rawPhrase.replace(/\b(?:outside|except|other\s+than|besides)\b.*/i, "").trim();
+      const ev = match[0].trim();
+      if (/\b(?:servers?|hosts?|vms?|virtual\s+machines?|instances?|nodes?|blades?|bare-metal)\b/i.test(phrase)) {
+        if (!negatedUnitMap.has("host_monitor")) negatedUnitMap.set("host_monitor", ev);
+      }
+      if (/\b(?:network(?:\s+(?:devices?|components?|gear))?|switches?|routers?|firewalls?|gateways?)\b/i.test(phrase)) {
+        if (!negatedUnitMap.has("network_component")) negatedUnitMap.set("network_component", ev);
+      }
+      if (/\b(?:websites?|web\s+sites?|urls?|endpoints?|apis?|basic(?:\s+monitors?)?|uptime(?:\s+checks?)?|web\s+checks?)\b/i.test(phrase)) {
+        if (!negatedUnitMap.has("basic_monitor")) negatedUnitMap.set("basic_monitor", ev);
+      }
+      if (/\b(?:synthetics?|browser(?:\s+transactions?)?|advanced(?:\s+monitors?)?|user\s+journeys?|journeys?)\b/i.test(phrase)) {
+        if (!negatedUnitMap.has("advanced_monitor")) negatedUnitMap.set("advanced_monitor", ev);
+      }
+      if (/\b(?:rum|real\s+user(?:\s+monitoring)?|page\s*views?|traffic)\b/i.test(phrase)) {
+        if (!negatedUnitMap.has("rum_pageview")) negatedUnitMap.set("rum_pageview", ev);
+      }
+      if (/\b(?:logs?|applogs?|log\s+monitoring|log\s+management|log\s+collection|log\s+aggregation)\b/i.test(phrase)) {
+        if (!negatedUnitMap.has("applog_gb")) negatedUnitMap.set("applog_gb", ev);
+      }
+    }
+  }
 
   // Compound negation check: "no synthetic checks or RUM needed", "without servers or network", etc.
   const compoundNegMatch = text.match(/\b(?:no|without)\s+([a-z\s,/-]+?)\s+(?:needed|required|necessary|wanted)\b/i);
@@ -438,6 +494,8 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const generalCloserEvidence = noOtherNeedsMatch
     ? noOtherNeedsMatch[0].trim()
+    : scopeClosureMatch
+      ? scopeClosureMatch[0].trim()
     : serversOnlyMatch
       ? serversOnlyMatch[0].trim()
       : null;
@@ -448,17 +506,17 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   let serverState: IntakeUnitState = "unknown";
 
   const authoritativeHostMatch =
-    rawText.match(/Total\s+(?:Host\s+Server|Host|Server)\s+Requirement\s*[:=]\s*(\d+)/i) ||
-    rawText.match(/Total\s+Requirement\s*[:=]\s*(\d+)\s*(?:Host|Server)/i);
+    inboundRawText.match(/Total\s+(?:Host\s+Server|Host|Server)\s+Requirement\s*[:=]\s*(\d+)/i) ||
+    inboundRawText.match(/Total\s+Requirement\s*[:=]\s*(\d+)\s*(?:Host|Server)/i);
 
   const serverChangeMatch =
-    text.match(/(?:reduce|lower|increase|change|adjust)\s*(?:servers?|hosts?|vms?)\s*to\s*(\d+)/i) ||
+    text.match(/(?:reduce|lower|increase|change|adjust)\s*(?:the\s+)?(?:servers?|hosts?|vms?)\s*(?:from\s+\d+\s+)?to\s*(\d+)/i) ||
     text.match(/(\d+)\s*(?:servers?|hosts?|vms?)?\s*instead\s+of\s*(\d+)/i) ||
     text.match(/(?:make\s+(?:it|that)|should\s+be)\s+(\d+)\s*(?:servers?|hosts?|vms?)/i);
 
   const inlineServerMatches = [
     ...text.matchAll(
-      /(\d+)\s*(?:[a-z\s]{0,25}?)\b(servers?|hosts?|vms?|instances?|nodes?|machines?)\b/gi,
+      /(?<![a-zA-Z0-9])(\d+)\s*(?:[a-zA-Z0-9 ._-]{0,35}?)\b(servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|bare-metal(?:\s+blades?)?|ec2(?:\s+instances?)?|branch\s+servers?|compute\s+nodes?)\b/gi,
     ),
   ].filter(
     (m) =>
@@ -472,7 +530,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     inlineHostSum = inlineServerMatches.reduce((acc, m) => acc + parseInt(m[1]!, 10), 0);
   }
 
-  const itemLineServerMatches = [...text.matchAll(/(?:^|\n)[^\S\r\n]*[•\-\*]?\s*(\d+)\s+([^\n\r]*?\b(?:Linux|Windows|Ubuntu|Database|Active\s+Directory|Hosts?|Servers?|Nodes?|VMs?)\b[^\n\r]*)/gi)];
+  const itemLineServerMatches = [...text.matchAll(/(?:^|\n)[^\S\r\n]*[•\-\*]?\s*(\d+)\s+([^\n\r]*?\b(?:Linux|Windows|Ubuntu|Database|Active\s+Directory|Hosts?|Servers?|Nodes?|VMs?|Blades?|EC2)\b[^\n\r]*)/gi)];
   let itemLineHostSum = 0;
   if (!authoritativeHostMatch && itemLineServerMatches.length > 1) {
     for (const m of itemLineServerMatches) {
@@ -481,33 +539,39 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   }
 
   const serverNoneMatch = text.match(
-    /\b(?:no\s+servers?|without\s+servers?|zero\s+servers?|0\s+servers?|don'?t\s+need\s+servers?|servers?\s*:\s*(?:none|0|no)|no\s+vms?|without\s+vms?)\b/i,
+    /\b(?:no\s+(?:servers?|vms?|hosts?|nodes?|instances?|blades?)|without\s+(?:servers?|vms?|hosts?|nodes?|instances?|blades?)|zero\s+servers?|0\s+servers?|don'?t\s+need\s+servers?|servers?\s*:\s*(?:none|0|no)|no\s+vms?|without\s+vms?)\b/i,
   );
-  const serverNone =
-    Boolean(serverNoneMatch) ||
-    Boolean(compoundNegPhrase && /\b(?:servers?|hosts?|vms?|instances?|machines?)\b/i.test(compoundNegInner));
+  const serverNotInterestedMatch = inboundText.match(/\bnot\s+interested\s+in\b[^.!?\n;]*\bservers?\b/i);
   const serverMentioned =
-    /\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?)\b/i.test(text);
+    /\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|bare-metal|ec2|branch\s+servers?|compute\s+nodes?)\b/i.test(text);
 
   const serverMatch =
     text.match(
-      /(\d+)[^\S\r\n]*(?:[a-z \t]{0,35}?)\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?)\b/i,
+      /(?<![a-zA-Z0-9])(\d+)[^\S\r\n]*(?:[a-zA-Z0-9 ._-]{0,35}?)\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|bare-metal(?:\s+blades?)?|ec2(?:\s+instances?)?|branch\s+servers?|compute\s+nodes?)\b/i,
     ) ||
     text.match(
-      /(?:servers?|hosts?|vms?|instances?|nodes?|machines?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
+      /(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
     ) ||
     text.match(
       /(?:servers?|hosts?|nodes?|instances?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
     );
 
   const wordServerMatch = text.match(
-    new RegExp(`\\b(${WORD_NUMBER_REGEX_PART})\\s*(?:production\\s+|prod\\s+|linux\\s+|windows\\s+|database\\s+|app\\s+|application\\s+|web\\s+|virtual\\s+|cloud\\s+)?\\b(servers?|hosts?|vms?|instances?|nodes?|machines?)\\b`, "i"),
+    new RegExp(`\\b(${WORD_NUMBER_REGEX_PART})\\s*(?:production\\s+|prod\\s+|linux\\s+|windows\\s+|database\\s+|app\\s+|application\\s+|web\\s+|virtual\\s+|cloud\\s+|bare-metal\\s+)?\\b(servers?|hosts?|vms?|instances?|nodes?|machines?|blades?)\\b`, "i"),
   );
+
+  const hasPositiveHost = Boolean(authoritativeHostMatch || serverChangeMatch || inlineHostSum > 0 || itemLineHostSum > 0 || (serverMatch && serverMatch[1]) || (wordServerMatch && wordServerMatch[1]));
+  const serverNone =
+    (!hasPositiveHost && scopeClosed && !serverMentioned) ||
+    Boolean(serverNoneMatch) ||
+    Boolean(serverNotInterestedMatch) ||
+    Boolean(compoundNegPhrase && /\b(?:servers?|hosts?|vms?|instances?|machines?|blades?)\b/i.test(compoundNegInner)) ||
+    (!hasPositiveHost && negatedUnitMap.has("host_monitor"));
 
   if (serverNone) {
     serverCount = 0;
     serverState = "none";
-    serverEvidence = serverNoneMatch ? serverNoneMatch[0].trim() : compoundNegPhrase ?? generalCloserEvidence ?? (serverMatch ? serverMatch[0].trim() : "servers");
+    serverEvidence = serverNoneMatch ? serverNoneMatch[0].trim() : serverNotInterestedMatch ? serverNotInterestedMatch[0].trim() : negatedUnitMap.get("host_monitor") ?? compoundNegPhrase ?? generalCloserEvidence ?? (serverMatch ? serverMatch[0].trim() : "servers");
     fields.push({
       key: "servers",
       label: "Server / Host Monitors",
@@ -659,25 +723,30 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     rawText.match(/Total\s+(?:Network\s+)?Component\s+Requirement\s*[:=]\s*(\d+)/i);
 
   const netChangeMatch =
-    text.match(/(?:reduce|lower|increase|change|adjust)\s*(?:network|switches?|devices?|routers?|firewalls?)\s*to\s*(\d+)/i) ||
-    text.match(/(\d+)\s*(?:network\s+devices?|switches?|routers?|firewalls?)?\s*instead\s+of\s*(\d+)/i) ||
-    text.match(/(?:make\s+(?:it|that)|should\s+be)\s+(\d+)\s*(?:network\s+devices?|switches?|routers?|firewalls?)/i);
+    text.match(/(?:reduce|lower|increase|change|adjust)\s*(?:the\s+)?(?:network|switches?|devices?|routers?|firewalls?|gateways?)\s*(?:from\s+\d+\s+)?to\s*(\d+)/i) ||
+    text.match(/(\d+)\s*(?:network\s+devices?|switches?|routers?|firewalls?|gateways?)?\s*instead\s+of\s*(\d+)/i) ||
+    text.match(/(?:make\s+(?:it|that)|should\s+be)\s+(\d+)\s*(?:network\s+devices?|switches?|routers?|firewalls?|gateways?)/i);
 
   const inlineNetMatches = [
     ...text.matchAll(
-      /(\d+)\s*(?:[a-z\s]{0,25}?)\b(switches?|routers?|firewalls?|network\s+(?:devices?|components?|gear)?)\b/gi,
+      /(?<![a-zA-Z0-9])(\d+)\s*(?:[a-z\s]{0,25}?)\b(switches?|routers?|firewalls?|gateways?|vpc\s+gateways?|sd-wan\s+routers?|cloud\s+routers?|top-of-rack\s+switches?|tor\s+switches?|network\s+(?:devices?|components?|gear)?)\b/gi,
     ),
   ].filter(
     (m) =>
       !m[0].toLowerCase().includes("per ") &&
-      !m[0].toLowerCase().includes("instead of"),
+      !m[0].toLowerCase().includes("instead of") &&
+      !m[0].toLowerCase().includes("and ") &&
+      !m[0].toLowerCase().includes("servers") &&
+      !m[0].toLowerCase().includes("hosts") &&
+      !m[0].toLowerCase().includes("instances") &&
+      !m[0].toLowerCase().includes("nodes"),
   );
   let inlineNetSum = 0;
   if (!authoritativeNetMatch && !netChangeMatch && inlineNetMatches.length > 1) {
     inlineNetSum = inlineNetMatches.reduce((acc, m) => acc + parseInt(m[1]!, 10), 0);
   }
 
-  const itemLineNetMatches = [...text.matchAll(/(?:^|\n)[^\S\r\n]*[•\-\*]?\s*(\d+)\s+([^\n\r]*?\b(?:Catalyst|FortiGate|Switches?|Routers?|Firewalls?|Network\s+Devices?)\b[^\n\r]*)/gi)];
+  const itemLineNetMatches = [...text.matchAll(/(?:^|\n)[^\S\r\n]*[•\-\*]?\s*(\d+)\s+([^\n\r]*?\b(?:Catalyst|FortiGate|Switches?|Routers?|Firewalls?|Gateways?|Network\s+Devices?)\b[^\n\r]*)/gi)];
   let itemLineNetSum = 0;
   if (!authoritativeNetMatch && itemLineNetMatches.length > 1) {
     for (const m of itemLineNetMatches) {
@@ -686,39 +755,43 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   }
 
   const netMentioned =
-    /\b(?:network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?))?|switches?|routers?|firewalls?)\b/i.test(
+    /\b(?:network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|gateways?))?|switches?|routers?|firewalls?|gateways?|cloud\s+routers?|sd-wan\s+routers?|vpc\s+gateways?)\b/i.test(
       text,
     );
 
   const netMatch =
     text.match(
-      /(\d+)[^\S\r\n]*(?:[a-z \t]{0,30}?)\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)\b/i,
+      /(?<![a-zA-Z0-9])(\d+)[^\S\r\n]*(?:[a-z \t]{0,30}?)\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|gateways?|vpc\s+gateways?|sd-wan\s+routers?|cloud\s+routers?|top-of-rack\s+switches?)\b(?!\s*(?:servers?|hosts?|vms?|nodes?|instances?|machines?))/i,
     ) ||
     text.match(
-      /(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|interfaces?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
+      /(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|gateways?)[^:\n\r\d,|]{0,50}[:=\t|]\s*"?(\d+)"?/i,
     ) ||
     text.match(
-      /(?:network(?:\s+devices?)?|switches?|routers?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
+      /(?:network(?:\s+devices?)?|switches?|routers?|gateways?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
     );
 
   const wordNetMatch = text.match(
-    new RegExp(`\\b(${WORD_NUMBER_REGEX_PART})\\s*(?:network\\s+|core\\s+|access\\s+|cisco\\s+)?\\b(switches?|routers?|firewalls?|network(?:\\s+devices?)?)\\b`, "i"),
+    new RegExp(`\\b(${WORD_NUMBER_REGEX_PART})\\s*(?:network\\s+|core\\s+|access\\s+|cisco\\s+)?\\b(switches?|routers?|firewalls?|gateways?|network(?:\\s+devices?)?)\\b`, "i"),
   );
 
   const netNoneMatch = text.match(
-    /\b(?:no\s+network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?|gear))?|without\s+network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?|gear))?|zero\s+network|0\s+network|don'?t\s+need\s+network|network\s*:\s*(?:none|0|no)|no\s+(?:switches|routers|firewalls)|without\s+(?:switches|routers|firewalls)|remove\s+(?:all\s+)?network(?:\s+devices?)?)\b/i,
+    /\b(?:no\s+network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?|gear|gateways?))?|without\s+network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?|gear|gateways?))?|zero\s+network|0\s+network|don'?t\s+need\s+network|network\s*:\s*(?:none|0|no)|no\s+(?:switches|routers|firewalls|gateways)|without\s+(?:switches|routers|firewalls|gateways)|remove\s+(?:all\s+)?network(?:\s+devices?)?)\b/i,
   );
+
+  const hasPositiveNet = Boolean(authoritativeNetMatch || netChangeMatch || inlineNetSum > 0 || itemLineNetSum > 0 || (netMatch && netMatch[1]) || (wordNetMatch && wordNetMatch[1]));
 
   const netNone =
     serversOnly ||
-    (noOtherNeeds && !netMentioned) ||
+    (!hasPositiveNet && scopeClosed && !netMentioned) ||
     Boolean(netNoneMatch) ||
-    Boolean(compoundNegPhrase && /\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?)\b/i.test(compoundNegInner));
+    /\bno\s+[^.!?\n;]{0,80}\b(?:network|switches?|routers?|firewalls?|gateways?)\b/i.test(inboundText) ||
+    Boolean(compoundNegPhrase && /\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|gateways?)\b/i.test(compoundNegInner)) ||
+    (!hasPositiveNet && negatedUnitMap.has("network_component"));
 
   if (netNone) {
     networkCount = 0;
     networkState = "none";
-    networkEvidence = netNoneMatch ? netNoneMatch[0].trim() : compoundNegPhrase ?? generalCloserEvidence ?? (netMatch ? netMatch[0].trim() : "network");
+    networkEvidence = netNoneMatch ? netNoneMatch[0].trim() : negatedUnitMap.get("network_component") ?? compoundNegPhrase ?? generalCloserEvidence ?? (netMatch ? netMatch[0].trim() : "network");
     fields.push({
       key: "network_devices",
       label: "Network Devices",
@@ -903,11 +976,11 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   if (!basicCountCandidate) {
     const inlineBasicMatches = [
       ...text.matchAll(
-        /(\d+)\s*(?:public\s+|external\s+|internal\s+|secure\s+|monitored\s+|active\s+)?\b(websites?|urls?|web\s+sites?|api\s+endpoints?|rest\s+apis?|web\s+endpoints?|endpoints?|basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?|\s+checks?)?|uptime(?:\s+monitors?|\s+checks?)?|tcp\s+port\s+checks?)\b/gi,
+        /(?<![a-zA-Z0-9])(\d+)\s*(?:(?:public|external|internal|secure|monitored|active|news|web)\s+){0,2}\b(websites?|urls?|portal\s+urls?|web\s+portals?|portals?|web\s+sites?|api\s+endpoints?|rest\s+apis?|web\s+endpoints?|alb\s+endpoints?|endpoints?|ingress(?:\s+services?)?|web\s+checks?|website\s+checks?|website\s+monitors?|web\s+consoles?|consoles?|web\s+applications?|web\s+dashboards?|dashboards?|internal\s+web\s+pages?|web\s+pages?|public\s+storefronts?|storefronts?|basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?|\s+checks?)?|uptime(?:\s+monitors?|\s+checks?)?|tcp\s+port\s+checks?)\b/gi,
       ),
     ].filter((m) => {
       const raw = m[0].toLowerCase();
-      if (raw.includes("pageview") || raw.includes("rum") || raw.includes("million")) return false;
+      if (raw.includes("pageview") || raw.includes("rum") || raw.includes("million") || raw.includes("log") || raw.includes("tb") || raw.includes("gb")) return false;
       return true;
     });
 
@@ -926,7 +999,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   }
 
   if (!basicCountCandidate) {
-    const mColon = text.match(/(?:basic|ping|port|website\s+uptime|uptime\s+checks?|websites?|urls?|apis?|endpoints?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i);
+    const mColon = text.match(/(?:basic|ping|port|website\s+uptime|uptime\s+checks?|websites?|urls?|apis?|endpoints?)[^:\n\r\d,|]{0,50}[:=\t|,]\s*"?(\d+)"?/i);
     if (mColon && mColon[1] && !isServerLine(mColon[0])) {
       basicCountCandidate = {
         quantity: parseInt(mColon[1], 10),
@@ -937,7 +1010,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   if (!basicCountCandidate) {
     const wordBasicMatch = text.match(
-      new RegExp(`\\b(${WORD_NUMBER_REGEX_PART})\\s*(?:public\\s+|external\\s+|internal\\s+|secure\\s+|monitored\\s+|active\\s+)?\\b(websites?|urls?|web\\s+sites?|api\\s+endpoints?|rest\\s+apis?|web\\s+endpoints?|endpoints?|basic(?:\\s+monitors?)?|uptime\\s+checks?|website\\s+checks?|tcp\\s+port\\s+checks?)\\b`, "i"),
+      new RegExp(`\\b(${WORD_NUMBER_REGEX_PART})\\s*(?:public\\s+|external\\s+|internal\\s+|secure\\s+|monitored\\s+|active\\s+|news\\s+)?\\b(websites?|urls?|portal\\s+urls?|web\\s+portals?|portals?|web\\s+sites?|api\\s+endpoints?|rest\\s+apis?|web\\s+endpoints?|alb\\s+endpoints?|endpoints?|ingress(?:\\s+services?)?|web\\s+checks?|website\\s+checks?|web\s+consoles?|consoles?|web\\s+applications?|web\\s+dashboards?|dashboards?|internal\\s+web\\s+pages?|web\\s+pages?|public\\s+storefronts?|storefronts?|basic(?:\\s+monitors?)?|uptime\\s+checks?|website\\s+checks?|tcp\\s+port\\s+checks?)\\b`, "i"),
     );
     if (wordBasicMatch && wordBasicMatch[1] && parseWordNumber(wordBasicMatch[1]) !== null) {
       basicCountCandidate = {
@@ -954,20 +1027,22 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const basicMentioned =
     /\b(?:basic|ping|port|standard)\s*monitors?\b/i.test(text) ||
-    /\b(?:websites?|urls?|apis?|endpoints?)\b/i.test(text) ||
+    /\b(?:websites?|urls?|web\s+urls?|endpoints?|web\s+portals?|web\s+consoles?|web\s+applications?|web\s+dashboards?|web\s+checks?|web\s+pages?|storefronts?|alb\s+endpoints?|ingress)\b/i.test(text) ||
+    /\b(?:api\s+endpoints?|rest\s+apis?|public\s+apis?|monitored\s+apis?|check\s+apis?|monitor\s+apis?)\b/i.test(text) ||
     websiteAvailabilityMentioned;
 
   const basicNoneMatch = text.match(
-    /\b(?:no\s+(?:websites?|urls?|apis?|endpoints?|basic(?:\s+monitors?)?|uptime\s+checks?|website\s+checks?|web\s+checks?)|without\s+(?:websites?|urls?|apis?|endpoints?|basic(?:\s+monitors?)?|uptime\s+checks?|website\s+checks?|web\s+checks?)|zero\s+(?:websites?|urls?|apis?)|0\s+(?:websites?|urls?|apis?)|don'?t\s+need\s+(?:websites?|urls?|apis?)|(?:websites?|urls?|apis?)\s*:\s*(?:none|0|no)|no\s+basic\s+website\s+checks)\b/i,
+    /\b(?:no\s+(?:websites?|urls?|apis?|endpoints?|basic(?:\s+monitors?)?|uptime\s+checks?|website\s+checks?|web\s+checks?|web\s+portals?|web\s+consoles?|web\s+applications?)|without\s+(?:websites?|urls?|apis?|endpoints?|basic(?:\s+monitors?)?|uptime\s+checks?|website\s+checks?|web\s+checks?|web\s+portals?|web\s+consoles?|web\s+applications?)|zero\s+(?:websites?|urls?|apis?)|0\s+(?:websites?|urls?|apis?)|don'?t\s+need\s+(?:websites?|urls?|apis?)|(?:websites?|urls?|apis?)\s*:\s*(?:none|0|no)|no\s+basic\s+website\s+checks)\b/i,
   );
 
   const hasPositiveBasic = basicCountCandidate !== null;
 
   const basicNone =
     serversOnly ||
-    (!hasPositiveBasic && noOtherNeeds && !basicMentioned) ||
+    (!hasPositiveBasic && scopeClosed && !/\bwebsite\s+(?:is\s+)?accessible\b/i.test(text)) ||
     Boolean(basicNoneMatch) ||
-    Boolean(compoundNegPhrase && /\b(?:websites?|urls?|apis?|endpoints?|basic\s+monitors?|uptime\s+checks?|website\s+checks?|web\s+checks?)\b/i.test(compoundNegInner));
+    Boolean(compoundNegPhrase && /\b(?:websites?|urls?|apis?|endpoints?|basic\s+monitors?|uptime\s+checks?|website\s+checks?|web\s+checks?|web\s+portals?|web\s+consoles?|web\s+applications?)\b/i.test(compoundNegInner)) ||
+    (!hasPositiveBasic && negatedUnitMap.has("basic_monitor"));
 
   if (hasPositiveBasic && !basicNoneMatch) {
     basicCount = basicCountCandidate!.quantity;
@@ -990,7 +1065,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   } else if (basicNone) {
     basicCount = 0;
     basicState = "none";
-    basicEvidence = basicNoneMatch ? basicNoneMatch[0].trim() : compoundNegPhrase ?? generalCloserEvidence ?? "websites";
+    basicEvidence = basicNoneMatch ? basicNoneMatch[0].trim() : negatedUnitMap.get("basic_monitor") ?? compoundNegPhrase ?? generalCloserEvidence ?? "websites";
     fields.push({
       key: "basic_monitors",
       label: "Basic Monitors",
@@ -1065,46 +1140,72 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   let advancedState: IntakeUnitState = "unknown";
 
   const advMentioned =
-    /\b(?:synthetic(?:\s+(?:transaction|web|browser))?|advanced(?:\s+web)?|transaction|browser\s+transaction|critical\s+web)\s*(?:monitors?|monitoring|endpoints?|checks?|urls?|apis?|transactions?|flows?)\b/i.test(
+    /\b(?:synthetic(?:\s+(?:transaction|web|browser))?|advanced(?:\s+web)?|browser[- ]based\s+transaction|real[- ]browser\s+synthetic|critical\s+web)\s*(?:monitors?|monitoring|endpoints?|checks?|urls?|apis?|transactions?|flows?|journeys?)?\b/i.test(
       text,
-    ) || /\b(?:synthetic(?:\s+[a-z]+)?\s+monitoring)\b/i.test(text);
+    ) || /\b(?:synthetic(?:\s+[a-z]+)?\s+monitoring)\b/i.test(text) ||
+    /\b(?:apm|java\s+apps?|\.net\s+apps?|node(?:\.js)?\s+apps?|python\s+apps?|application\s+performance\s+monitoring)\b/i.test(text);
 
   const advMatch =
     text.match(
-      /(\d+)[^\S\r\n]*(?:(?:multi-step|real\s+browser)\s+){0,2}\b(?:synthetic(?:\s+(?:transaction|web|browser))?|advanced(?:\s+web)?|transaction|browser\s+transaction|critical\s+web)\s*(?:monitors?|endpoints?|urls?|checks?|apis?|transactions?|flows?)?\b/i,
+      /(?<![a-zA-Z0-9])(\d+(?:\s*k|\s*thousand)?)[^\S\r\n]*(?:(?:multi[- ]step|real[- ]browser)\s+){0,2}\b(?:synthetic(?:\s+(?:transaction|web|browser|login))?|advanced(?:\s+web)?|browser[- ]based\s+transaction|critical\s+web)\s*(?:monitors?|endpoints?|urls?|checks?|transactions?|flows?|journeys?)?\b(?!\s*(?:servers?|hosts?|vms?|nodes?|instances?|machines?|logs?))/i,
     ) ||
     text.match(
-      /(?:synthetic(?:\s+transaction|\s+web|\s+browser)?|advanced(?:\s+web)?|transaction|browser\s+transaction)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
+      /(?:synthetic(?:\s+transaction|\s+web|\s+browser)?|advanced(?:\s+web)?|browser[- ]based\s+transaction)[^:\n\r\d,|]{0,50}[:=\t|,]\s*"?(\d+(?:\s*k|\s*thousand)?)"?/i,
     ) ||
     text.match(
-      /(\d+)[^\S\r\n]*(?:synthetic|advanced|transaction|browser\s+transaction)\s*(?:(?:transaction|web|browser)\s+)?(?:monitors?|endpoints?|checks?|urls?|apis?|transactions?|flows?)/i,
+      /(?<![a-zA-Z0-9])(\d+(?:\s*k|\s*thousand)?)[^\S\r\n]*(?:synthetic|advanced|browser[- ]based\s+transaction)\s*(?:(?:transaction|web|browser)\s+)?(?:monitors?|endpoints?|checks?|urls?|apis?|transactions?|flows?|journeys?)/i,
     ) ||
     text.match(
-      /(?:advanced|synthetic|transaction|browser\s+transaction)\s*(?:monitors?|endpoints?|checks?|transactions?|flows?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
-    );
-
-  const appApmMatch =
-    text.match(
-      /(\d+)\s*(?:[a-z\s]{0,15}?)\b(?:java|node(?:\.js)?|python|\.net|php|ruby|go)?\s*(?:apps?|applications?|apm(?:\s+instances?|\s+monitors?)?)(?!\s*(?:servers?|hosts?|vms?|nodes?|instances?|machines?))\b/i,
+      /(?:advanced|synthetic|browser[- ]based\s+transaction)\s*(?:monitors?|endpoints?|checks?|transactions?|flows?|journeys?)\s*(?:count|total|:|=|\t|\||,)\s*"?(\d+(?:\s*k|\s*thousand)?)"?/i,
     ) ||
     text.match(
-      /(?:java|node(?:\.js)?|python|\.net|php|ruby|go|apm)\s*(?:apps?|applications?|instances?)\s*(?:count|total|:|=)\s*(\d+)/i,
+      /(?<![a-zA-Z0-9])(\d+(?:\s*k|\s*thousand)?)[^\S\r\n]*(?:(?:java|\.net|node(?:\.js)?|python)\s+(?:apps?|applications?)|apm(?:\s+instances?)?)\b/i,
+    ) ||
+    text.match(
+      /(?:apm|java\s+apps?|\.net\s+apps?|node(?:\.js)?\s+apps?|python\s+apps?)[^:\n\r\d,|]{0,50}[:=\t|]\s*"?(\d+(?:\s*k|\s*thousand)?)"?/i,
     );
 
   const advNoneMatch = text.match(
     /\b(?:no\s+(?:synthetics?|synthetic(?:\s+(?:checks?|monitors?|transactions?|web|browser))?|advanced(?:\s+monitors?)?|browser\s+transactions?|transactions?)|without\s+(?:synthetics?|synthetic(?:\s+(?:checks?|monitors?|transactions?|web|browser))?|advanced(?:\s+monitors?)?|browser\s+transactions?|transactions?)|zero\s+synthetic|0\s+synthetic|don'?t\s+need\s+synthetic|synthetic\s*:\s*(?:none|0|no)|no\s+advanced\s+monitors?)\b/i,
   );
 
+  const hasPositiveAdv = Boolean(advMatch && advMatch[1]);
+
   const advNone =
     serversOnly ||
-    (noOtherNeeds && !advMentioned && !appApmMatch) ||
+    (!hasPositiveAdv && scopeClosed) ||
     Boolean(advNoneMatch) ||
-    Boolean(compoundNegPhrase && /\b(?:synthetics?|synthetic|browser\s+transactions?|transactions?)\b/i.test(compoundNegInner));
+    /\bno\s+[^.!?\n;]{0,80}\b(?:synthetic|advanced|transactions?|journeys?)\b/i.test(inboundText) ||
+    Boolean(compoundNegPhrase && /\b(?:synthetics?|synthetic|browser\s+transactions?|transactions?)\b/i.test(compoundNegInner)) ||
+    (!hasPositiveAdv && negatedUnitMap.has("advanced_monitor"));
 
-  if (advNone) {
+  if (hasPositiveAdv && !advNoneMatch) {
+    const rawVal = advMatch && advMatch[1] ? advMatch[1].trim().toLowerCase() : "0";
+    if (rawVal.endsWith("k") || rawVal.endsWith("thousand")) {
+      advancedCount = Math.round(parseFloat(rawVal.replace(/[^\d.]/g, "")) * 1000);
+    } else {
+      advancedCount = parseInt(rawVal.replace(/[^\d]/g, ""), 10) || 0;
+    }
+    advancedState = "stated";
+    advancedEvidence = advMatch ? advMatch[0].trim() : "synthetic";
+    fields.push({
+      key: "advanced_monitors",
+      label: "Advanced / Synthetic Monitors",
+      group: "applications",
+      value: advancedCount,
+      unit: "monitors",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.95,
+      evidence: advancedEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
+  } else if (advNone) {
     advancedCount = 0;
     advancedState = "none";
-    advancedEvidence = advNoneMatch ? advNoneMatch[0].trim() : compoundNegPhrase ?? generalCloserEvidence ?? (advMatch ? advMatch[0].trim() : "synthetic");
+    advancedEvidence = advNoneMatch ? advNoneMatch[0].trim() : negatedUnitMap.get("advanced_monitor") ?? compoundNegPhrase ?? generalCloserEvidence ?? (advMatch ? advMatch[0].trim() : "synthetic");
     fields.push({
       key: "advanced_monitors",
       label: "Advanced / Synthetic Monitors",
@@ -1114,45 +1215,6 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       state: "provided",
       intakeState: "none",
       confidence: 0.99,
-      evidence: advancedEvidence,
-      conflictWith: null,
-      previousValue: null,
-      materialToPricing: true,
-    });
-  } else if (advMatch && advMatch[1]) {
-    advancedCount = parseInt(advMatch[1], 10);
-    if (appApmMatch && appApmMatch[1]) {
-      advancedCount += parseInt(appApmMatch[1], 10);
-    }
-    advancedState = "stated";
-    advancedEvidence = advMatch[0].trim();
-    fields.push({
-      key: "advanced_monitors",
-      label: "Advanced / Synthetic Monitors",
-      group: "applications",
-      value: advancedCount,
-      unit: "monitors",
-      state: "provided",
-      intakeState: "stated",
-      confidence: 0.95,
-      evidence: advancedEvidence,
-      conflictWith: null,
-      previousValue: null,
-      materialToPricing: true,
-    });
-  } else if (appApmMatch && appApmMatch[1]) {
-    advancedCount = parseInt(appApmMatch[1], 10);
-    advancedState = "stated";
-    advancedEvidence = appApmMatch[0].trim();
-    fields.push({
-      key: "advanced_monitors",
-      label: "Advanced / Synthetic Monitors",
-      group: "applications",
-      value: advancedCount,
-      unit: "monitors",
-      state: "provided",
-      intakeState: "stated",
-      confidence: 0.95,
       evidence: advancedEvidence,
       conflictWith: null,
       previousValue: null,
@@ -1219,7 +1281,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     /(\d+(?:[.,]\d+)?)\s*(?:thousand\b|k\b)\s*(?:[a-z\s/]{0,35}?)\b(?:pageviews?|views?|rum)\b/i,
   );
   const rumColonMatch = text.match(
-    /(?:rum|real\s+user\s+monitoring|pageviews?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d[\d,.]*)"?\s*(million|m|k|thousand)?/i,
+    /(?:rum|real\s+user\s+monitoring|pageviews?)[^:\n\r\d,|]{0,50}[:=\t|,]\s*"?(\d[\d,.]*)"?\s*(million|m|k|thousand)?/i,
   );
   const rumRawMatch =
     text.match(
@@ -1229,17 +1291,34 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       /(\d{1,3}(?:,\d{3})+|\d{5,})\s+(?:real\s+user\s+monitoring(?:\s*\([a-z]+\))?\s+)?pageviews?/i,
     );
 
-  const rumNoneMatch = text.match(
-    /\b(?:no\s+(?:rum|real\s+user(?:\s+monitoring)?|page\s*views?|views?)|without\s+(?:rum|real\s+user(?:\s+monitoring)?|page\s*views?|views?)|zero\s+rum|0\s+rum|don'?t\s+need\s+rum|rum\s*:\s*(?:none|0|no)|no\s+real\s+user\s+monitoring)\b/i,
+  const wordRumMatch = text.match(
+    new RegExp(`\\b(${WORD_NUMBER_REGEX_PART})\\s*(?:million|m|thousand|k)?\\s*(?:pageviews?|views?|rum)\\b`, "i"),
+  );
+  const simpleWordRumScaleMatch = text.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+(million|thousand)\s+(?:monthly\s+)?(?:pageviews?|views?)\b/i);
+
+  const rumZeroMatch = text.match(
+    /(?:rum|real\s+user(?:\s+monitoring)?|pageviews?)[^:\n\r\d,|]{0,50}[:=\t|,]\s*"?0"?\b/i,
   );
 
-  const hasPositiveRum = Boolean(rumMillionMatch || rumKMatch || rumColonMatch || rumRawMatch);
+  const rumNoneMatch = text.match(
+    /\b(?:no\s+(?:rum|real\s+user(?:\s+monitoring)?|page\s*views?|views?)|without\s+(?:rum|real\s+user(?:\s+monitoring)?|page\s*views?|views?)|zero\s+rum|0\s+rum|don'?t\s+need\s+rum|rum\s*:\s*(?:none|0|no)|no\s+real\s+user\s+monitoring)\b/i,
+  ) || rumZeroMatch;
+  const inboundRumNoneMatch = inboundText.match(
+    /\b(?:no\s+(?:rum|real\s+user(?:\s+monitoring)?|page\s*views?|views?)|without\s+(?:rum|real\s+user(?:\s+monitoring)?|page\s*views?|views?)|zero\s+rum|0\s+rum|don'?t\s+need\s+rum|rum\s*:\s*(?:none|0|no)|no\s+real\s+user\s+monitoring|no\s+[^.!?]{0,50}\brum\b)\b/i,
+  );
+
+  const hasPositiveRum = Boolean(
+    !rumZeroMatch && (rumMillionMatch || rumKMatch || (rumColonMatch?.[1] && parseFloat(rumColonMatch[1].replace(/,/g, "")) > 0) || rumRawMatch || simpleWordRumScaleMatch || (wordRumMatch?.[1] && parseWordNumber(wordRumMatch[1]) !== null))
+  );
 
   const rumNone =
     serversOnly ||
-    (!hasPositiveRum && noOtherNeeds && !rumMentioned) ||
+    (!hasPositiveRum && scopeClosed) ||
     Boolean(rumNoneMatch) ||
-    Boolean(compoundNegPhrase && /\b(?:rum|real\s+user|page\s*views?|views?)\b/i.test(compoundNegInner));
+    Boolean(inboundRumNoneMatch) ||
+    /\bno\s+[^.!?\n;]{0,80}\b(?:rum|page\s*views?|real\s+user)\b/i.test(inboundText) ||
+    Boolean(compoundNegPhrase && /\b(?:rum|real\s+user|page\s*views?|views?)\b/i.test(compoundNegInner)) ||
+    (!hasPositiveRum && negatedUnitMap.has("rum_pageview"));
 
   if (hasPositiveRum && !rumNoneMatch) {
     if (rumMillionMatch && rumMillionMatch[1]) {
@@ -1262,6 +1341,15 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     } else if (rumRawMatch && rumRawMatch[1]) {
       rumPageviews = parseInt(rumRawMatch[1].replace(/,/g, ""), 10);
       rumEvidence = rumRawMatch[0].trim();
+    } else if (simpleWordRumScaleMatch) {
+      const base = parseWordNumber(simpleWordRumScaleMatch[1] ?? "") ?? 0;
+      rumPageviews = base * ((simpleWordRumScaleMatch[2] ?? "").toLowerCase() === "million" ? 1_000_000 : 1_000);
+      rumEvidence = simpleWordRumScaleMatch[0].trim();
+    } else if (wordRumMatch && wordRumMatch[1] && parseWordNumber(wordRumMatch[1]) !== null) {
+      const wordValue = parseWordNumber(wordRumMatch[1])!;
+      const suffix = wordRumMatch[0].toLowerCase();
+      rumPageviews = suffix.includes("million") ? wordValue * 1_000_000 : suffix.includes("thousand") ? wordValue * 1_000 : wordValue;
+      rumEvidence = wordRumMatch[0].trim();
     }
     rumState = "stated";
     fields.push({
@@ -1281,7 +1369,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   } else if (rumNone) {
     rumPageviews = 0;
     rumState = "none";
-    rumEvidence = rumNoneMatch ? rumNoneMatch[0].trim() : compoundNegPhrase ?? generalCloserEvidence ?? (rumRawMatch ? rumRawMatch[0].trim() : "RUM");
+    rumEvidence = (inboundRumNoneMatch || rumNoneMatch)?.[0]?.trim() ?? negatedUnitMap.get("rum_pageview") ?? compoundNegPhrase ?? generalCloserEvidence ?? (rumRawMatch ? rumRawMatch[0].trim() : "RUM");
     fields.push({
       key: "rum_pageviews",
       label: "RUM Pageviews",
@@ -1339,23 +1427,35 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       /(\d[\d,.]*)[^\S\r\n]*(gb|gigabytes?|tb|terabytes?)[^\S\r\n]*(?:[a-z \t/]{0,20}?)\b(?:applogs?|logs?)\b/i,
     ) ||
     text.match(
-      /(?:applogs?|logs?|log\s+management)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d[\d,.]*)"?\s*(?:gb|gigabytes?|tb|terabytes?)?/i,
+      /(?:applogs?|logs?|log\s+management)[^:\n\r\d,|]{0,50}[:=\t|,]\s*"?(\d[\d,.]*)"?\s*(?:gb|gigabytes?|tb|terabytes?)?/i,
     ) ||
     text.match(
       /(?:applogs?|logs?)\s*(?:volume|storage|size|retention)?\s*(?:of|:|=|,|\||\t)?\s*"?(\d[\d,.]*)"?\s*(?:gb|gigabytes?|tb|terabytes?)/i,
     );
 
-  const hasPositiveLog = Boolean(logMonthlyMatch || logDayMatch || logMatch);
+  const wordLogMatch = text.match(
+    new RegExp(`\\b(${WORD_NUMBER_REGEX_PART})\\s*(tb|terabytes?|gb|gigabytes?)(?:\\s+(?:of\\s+)?logs?)?\\b`, "i"),
+  );
+
+  const logZeroMatch = text.match(
+    /(?:applogs?|logs?|log\s+management)[^:\n\r\d,|]{0,50}[:=\t|,]\s*"?0"?\s*(?:gb|gigabytes?|tb|terabytes?)?\b/i,
+  );
 
   const logNoneMatch = text.match(
     /\b(?:no\s+(?:logs?|applogs?|log\s+management|log\s+ingestion|log\s+aggregation)|without\s+(?:logs?|applogs?|log\s+management|log\s+ingestion|log\s+aggregation)|zero\s+logs?|0\s+logs?|don'?t\s+need\s+logs?|logs?\s*:\s*(?:none|0|no)|no\s+applogs?)\b/i,
+  ) || logZeroMatch;
+
+  const hasPositiveLog = Boolean(
+    !logZeroMatch && (logMonthlyMatch || logDayMatch || (logMatch?.[1] && parseFloat(logMatch[1].replace(/,/g, "")) > 0) || (wordLogMatch?.[1] && parseWordNumber(wordLogMatch[1]) !== null))
   );
 
   const logNone =
     serversOnly ||
-    (!hasPositiveLog && noOtherNeeds && !logMentioned) ||
+    (!hasPositiveLog && scopeClosed) ||
     Boolean(logNoneMatch) ||
-    Boolean(compoundNegPhrase && /\b(?:logs?|applogs?|log\s+management)\b/i.test(compoundNegInner));
+    /\bno\s+[^.!?\n;]{0,80}\b(?:logs?|applogs?|log\s+management)\b/i.test(inboundText) ||
+    Boolean(compoundNegPhrase && /\b(?:logs?|applogs?|log\s+management)\b/i.test(compoundNegInner)) ||
+    (!hasPositiveLog && negatedUnitMap.has("applog_gb"));
 
   if (hasPositiveLog && !logNoneMatch) {
     if (logMonthlyMatch && logMonthlyMatch[1]) {
@@ -1372,6 +1472,13 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       }
       applogGb = Math.round(rawVal);
       applogEvidence = logMatch[0].trim();
+    } else if (wordLogMatch && wordLogMatch[1] && parseWordNumber(wordLogMatch[1]) !== null) {
+      let rawVal = parseWordNumber(wordLogMatch[1])!;
+      if ((wordLogMatch[2] ?? "").toLowerCase().includes("tb") || (wordLogMatch[2] ?? "").toLowerCase().includes("terabyte")) {
+        rawVal *= 1024;
+      }
+      applogGb = rawVal;
+      applogEvidence = wordLogMatch[0].trim();
     }
     applogState = "stated";
     fields.push({
@@ -1391,7 +1498,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   } else if (logNone) {
     applogGb = 0;
     applogState = "none";
-    applogEvidence = logNoneMatch ? logNoneMatch[0].trim() : compoundNegPhrase ?? generalCloserEvidence ?? (logMatch ? logMatch[0].trim() : "logs");
+    applogEvidence = logNoneMatch ? logNoneMatch[0].trim() : negatedUnitMap.get("applog_gb") ?? compoundNegPhrase ?? generalCloserEvidence ?? (logMatch ? logMatch[0].trim() : "logs");
     fields.push({
       key: "applogs_volume",
       label: "AppLogs Volume",
@@ -1426,16 +1533,32 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   }
 
   // Compound multi-specification check: if buyer explicitly specifies multiple items (e.g. servers + websites + synthetic)
-  // or says "no other needs", any remaining unmentioned units among the 6 become "none".
+  // or says "no other needs" or has explicit negations, any remaining unmentioned units among the 6 become "none".
   const compoundSpecification =
     noOtherNeeds ||
+    Boolean(generalCloserEvidence) ||
+    negatedUnitMap.size > 0 ||
+    Boolean(compoundNegPhrase) ||
+    serversOnly ||
     /\+/.test(text) ||
     (serverCount !== null && basicCount !== null && advancedCount !== null && serverCount > 0 && basicCount > 0 && advancedCount > 0);
 
   if (compoundSpecification) {
+    if (serverState === "unknown" && !serverMentioned && !hasPositiveHost) {
+      serverState = "none";
+      serverCount = 0;
+    }
     if (networkState === "unknown" && !netMentioned) {
       networkState = "none";
       networkCount = 0;
+    }
+    if (basicState === "unknown" && !basicMentioned) {
+      basicState = "none";
+      basicCount = 0;
+    }
+    if (advancedState === "unknown" && !advMentioned) {
+      advancedState = "none";
+      advancedCount = 0;
     }
     if (rumState === "unknown" && !rumMentioned) {
       rumState = "none";
@@ -1445,6 +1568,16 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       applogState = "none";
       applogGb = 0;
     }
+
+    missingMaterialFields = missingMaterialFields.filter((f) => {
+      if (f === "servers" && serverState !== "unknown") return false;
+      if (f === "network_devices" && networkState !== "unknown") return false;
+      if (f === "basic_monitors" && basicState !== "unknown") return false;
+      if (f === "advanced_monitors" && advancedState !== "unknown") return false;
+      if (f === "rum_pageviews" && rumState !== "unknown") return false;
+      if (f === "applogs_volume" && applogState !== "unknown") return false;
+      return true;
+    });
   }
 
   // Build the 6 Intake Requirements
@@ -1667,7 +1800,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     profile,
     demand,
     isComplete,
-    missingMaterialFields: unknownUnits.map((u) => UNIT_TO_FIELD_KEY[u]),
+    missingMaterialFields: unknownUnits.filter((u) => !scopeClosed && !negatedUnitMap.has(u)).map((u) => UNIT_TO_FIELD_KEY[u]),
     suggestedQuestion,
     clarificationQuestions,
     organization,
