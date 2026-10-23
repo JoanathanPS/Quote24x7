@@ -18,11 +18,14 @@ import {
   Receipt,
   Copy,
   Info,
+  FilePdf,
+  ArrowSquareOut,
 } from "@phosphor-icons/react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmailBody } from "@/components/email-body";
 import {
   Table,
   TableHeader,
@@ -66,6 +69,7 @@ interface BenchmarkCaseItem {
     currency: string;
     billingPeriod: string;
     comparisonLine: string | null;
+    pdfUrl?: string | null;
     lineItems: Array<{
       description: string;
       quantity: number;
@@ -125,6 +129,11 @@ export default function BenchmarkPage() {
   const [searchQuery, setSearchQuery] = React.useState<string>("");
   const [expandedCases, setExpandedCases] = React.useState<Record<string, boolean>>({});
   const [copiedCaseId, setCopiedCaseId] = React.useState<string | null>(null);
+  const [activePdfCaseId, setActivePdfCaseId] = React.useState<string | null>(null);
+
+  const togglePdf = (id: string) => {
+    setActivePdfCaseId((prev) => (prev === id ? null : id));
+  };
 
   const fetchOverview = React.useCallback(async () => {
     try {
@@ -872,8 +881,8 @@ export default function BenchmarkPage() {
                               )}
                             </Button>
                           </div>
-                          <div className="p-3 text-xs text-foreground font-mono whitespace-pre-wrap leading-relaxed select-text bg-card/40 max-h-72 overflow-y-auto">
-                            {c.replyEmail.bodyText}
+                          <div className="p-4 text-xs text-foreground font-sans select-text bg-card/40 max-h-96 overflow-y-auto">
+                            <EmailBody text={c.replyEmail.bodyText} />
                           </div>
                         </div>
                       </div>
@@ -998,6 +1007,77 @@ export default function BenchmarkPage() {
                                     </span>
                                   ))}
                                 </div>
+                              </div>
+                            )}
+
+                            {/* Official PDF Proposal Action Bar */}
+                            {c.pricingDetails.pdfUrl && (
+                              <div className="space-y-2 pt-2 border-t border-border/40">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      variant={activePdfCaseId === c.id ? "default" : "outline"}
+                                      size="sm"
+                                      className="h-7 text-xs flex items-center gap-1.5 border-primary/40 shadow-xs cursor-pointer"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        togglePdf(c.id);
+                                      }}
+                                    >
+                                      <FilePdf size={14} weight="bold" />
+                                      <span>{activePdfCaseId === c.id ? "Close PDF Proposal" : "View PDF Proposal"}</span>
+                                    </Button>
+
+                                    <a
+                                      href={c.pricingDetails.pdfUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground h-7 px-2 font-medium"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <ArrowSquareOut size={13} />
+                                      <span>Open in New Tab</span>
+                                    </a>
+                                  </div>
+
+                                  <a
+                                    href={c.pricingDetails.pdfUrl}
+                                    download={`Site24x7-Proposal-${c.id}.pdf`}
+                                    className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline h-7 px-2 font-medium"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <DownloadSimple size={13} weight="bold" />
+                                    <span>Download Vector PDF</span>
+                                  </a>
+                                </div>
+
+                                {/* In-line Embedded PDF Proposal Viewer */}
+                                {activePdfCaseId === c.id && (
+                                  <div className="rounded-lg border border-border/70 overflow-hidden bg-background shadow-xs mt-2">
+                                    <div className="bg-muted/50 px-3 py-1.5 border-b border-border/50 flex items-center justify-between text-xs">
+                                      <div className="flex items-center gap-1.5 font-medium text-foreground">
+                                        <FilePdf size={14} className="text-danger" weight="bold" />
+                                        <span>Official Site24x7 Vector PDF Proposal — Case {c.id}</span>
+                                      </div>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActivePdfCaseId(null);
+                                        }}
+                                      >
+                                        Close Preview
+                                      </Button>
+                                    </div>
+                                    <iframe
+                                      src={c.pricingDetails.pdfUrl}
+                                      title={`Site24x7 Proposal PDF for ${c.id}`}
+                                      className="w-full h-[520px] border-0 bg-muted/10"
+                                    />
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

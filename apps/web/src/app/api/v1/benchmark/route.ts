@@ -12,6 +12,7 @@ import { geminiProvider } from "@/server/ai/gemini-provider";
 import type { AiProvider } from "@/server/ai/gemini-provider";
 import { loadActiveCatalogue } from "@/server/catalogue/loader";
 import { buildQuote } from "@/server/pricing/quote-builder";
+import { renderQuotePdf } from "@/server/documents/pdf-renderer";
 import {
   renderQuoteEmail,
   renderClarificationEmail,
@@ -108,6 +109,39 @@ export async function GET(req: Request) {
         headers: {
           "Content-Type": "application/json",
           "Content-Disposition": `attachment; filename="${filename}"`,
+        },
+      });
+    }
+
+    const casePdfId = searchParams.get("caseId") && searchParams.get("pdf") === "true" ? searchParams.get("caseId") : null;
+    if (casePdfId) {
+      const targetCase = activeCases.find((c) => c.id === casePdfId);
+      if (!targetCase) {
+        return NextResponse.json({ success: false, error: "Case not found" }, { status: 404 });
+      }
+      const demand: PricingDemand = {
+        host_monitor: targetCase.expected.requirements?.host_monitor ?? 0,
+        network_component: targetCase.expected.requirements?.network_component ?? 0,
+        basic_monitor: targetCase.expected.requirements?.basic_monitor ?? 0,
+        advanced_monitor: targetCase.expected.requirements?.advanced_monitor ?? 0,
+        rum_pageview: targetCase.expected.requirements?.rum_pageview ?? 0,
+        applog_gb: targetCase.expected.requirements?.applog_gb ?? 0,
+      };
+      const catalogue = loadActiveCatalogue();
+      const { quote } = buildQuote({
+        quoteId: `qt_bench_${targetCase.id}`,
+        threadId: `th_bench_${targetCase.id}`,
+        profile: makeBenchmarkProfile(`th_bench_${targetCase.id}`, targetCase.turns.join("\n\n")),
+        demand,
+        catalogue,
+        createdAt: new Date().toISOString(),
+      });
+      const pdfBuffer = await renderQuotePdf({ quote, selectedOptionType: "best_value" });
+      return new NextResponse(new Uint8Array(pdfBuffer), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="Site24x7-Proposal-${targetCase.id}.pdf"`,
+          "Cache-Control": "public, max-age=3600",
         },
       });
     }
@@ -241,6 +275,7 @@ export async function GET(req: Request) {
         currency: string;
         billingPeriod: string;
         comparisonLine: string | null;
+        pdfUrl?: string | null;
         lineItems: Array<{
           description: string;
           quantity: number;
@@ -309,6 +344,7 @@ export async function GET(req: Request) {
               comparisonLine:
                 quote.comparisonLine ||
                 (alternative ? `${alternative.planName} is also available at ${formatMoney(alternative.total, quote.currency, { showDecimals: false })}/year.` : null),
+              pdfUrl: `/api/v1/benchmark?dataset=${dataset}&caseId=${c.id}&pdf=true`,
               lineItems: bestValue.lineItems.map((item) => ({
                 description: item.description,
                 quantity: item.quantity,
