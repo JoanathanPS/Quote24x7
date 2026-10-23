@@ -35,6 +35,7 @@ interface BenchmarkCaseItem {
   description: string;
   testedContent: string;
   turnsCount: number;
+  attachments: Array<{ filename: string; url: string; available: boolean }>;
   expected: {
     action: string;
     quantities: Record<string, number>;
@@ -474,6 +475,35 @@ export default function BenchmarkPage() {
                     </div>
 
                     {/* 2. Expected Requirements (Benchmark Ground Truth) */}
+                    {c.attachments.length > 0 && (
+                      <div className="space-y-1">
+                        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                          <DownloadSimple size={13} className="text-primary" />
+                          <span>Original Customer Documents</span>
+                        </div>
+                        <div className="bg-background/90 border border-border/50 rounded-lg p-2.5 flex flex-wrap gap-2">
+                          {c.attachments.map((attachment) => (
+                            <a
+                              key={attachment.filename}
+                              href={attachment.available ? attachment.url : undefined}
+                              target={attachment.available ? "_blank" : undefined}
+                              rel={attachment.available ? "noreferrer" : undefined}
+                              className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 text-xs ${
+                                attachment.available
+                                  ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
+                                  : "border-border/60 text-muted-foreground cursor-not-allowed"
+                              }`}
+                              aria-disabled={!attachment.available}
+                            >
+                              <DownloadSimple size={12} />
+                              {attachment.filename}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 3. Expected Requirements (Benchmark Ground Truth) */}
                     <div className="space-y-1">
                       <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                         <CheckCircle size={13} className="text-emerald-500" />
