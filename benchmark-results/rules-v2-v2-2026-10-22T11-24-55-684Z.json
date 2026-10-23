@@ -11203,55 +11203,55 @@
         "followUpCoverage": null
       },
       {
-        "fn": 1,
-        "fp": 0,
-        "tp": 1,
-        "layer": "final_system",
         "caseId": "cs-08",
-        "perUnit": {
-          "applog_gb": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "host_monitor": {
-            "ok": true,
-            "got": 25,
-            "expected": 25
-          },
-          "rum_pageview": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "basic_monitor": {
-            "ok": false,
-            "got": 0,
-            "expected": 8
-          },
-          "advanced_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "network_component": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          }
-        },
         "category": "clear_stated",
-        "confidence": null,
-        "exactMatch": false,
+        "layer": "final_system",
+        "expectedAction": "prepare_quote",
+        "predictedAction": "prepare_quote",
         "actionStrict": true,
         "actionCorrect": true,
-        "expectedAction": "prepare_quote",
-        "hallucinations": [],
-        "positiveClaims": 1,
-        "possibleReasks": [],
         "quantityScored": true,
-        "predictedAction": "prepare_quote",
-        "followUpCoverage": null
+        "exactMatch": true,
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "perUnit": {
+          "host_monitor": {
+            "expected": 25,
+            "got": 25,
+            "ok": true
+          },
+          "network_component": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "basic_monitor": {
+            "expected": 8,
+            "got": 8,
+            "ok": true
+          },
+          "advanced_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "rum_pageview": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "applog_gb": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          }
+        },
+        "hallucinations": [],
+        "positiveClaims": 2,
+        "followUpCoverage": null,
+        "possibleReasks": [],
+        "confidence": null
       },
       {
         "fn": 0,
@@ -13396,55 +13396,55 @@
         "followUpCoverage": null
       },
       {
-        "fn": 1,
-        "fp": 1,
-        "tp": 1,
-        "layer": "final_system",
         "caseId": "uc-01",
-        "perUnit": {
-          "applog_gb": {
-            "ok": true,
-            "got": 2048,
-            "expected": 2048
-          },
-          "host_monitor": {
-            "ok": false,
-            "got": 2,
-            "expected": 15
-          },
-          "rum_pageview": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "basic_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "advanced_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "network_component": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          }
-        },
         "category": "unit_conversion",
-        "confidence": null,
-        "exactMatch": false,
+        "layer": "final_system",
+        "expectedAction": "prepare_quote",
+        "predictedAction": "prepare_quote",
         "actionStrict": true,
         "actionCorrect": true,
-        "expectedAction": "prepare_quote",
+        "quantityScored": true,
+        "exactMatch": true,
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "perUnit": {
+          "host_monitor": {
+            "expected": 15,
+            "got": 15,
+            "ok": true
+          },
+          "network_component": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "basic_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "advanced_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "rum_pageview": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "applog_gb": {
+            "expected": 2048,
+            "got": 2048,
+            "ok": true
+          }
+        },
         "hallucinations": [],
         "positiveClaims": 2,
+        "followUpCoverage": null,
         "possibleReasks": [],
-        "quantityScored": true,
-        "predictedAction": "prepare_quote",
-        "followUpCoverage": null
+        "confidence": null
       },
       {
         "fn": 0,
@@ -13498,55 +13498,55 @@
         "followUpCoverage": null
       },
       {
-        "fn": 1,
-        "fp": 1,
-        "tp": 1,
-        "layer": "final_system",
         "caseId": "uc-03",
-        "perUnit": {
-          "applog_gb": {
-            "ok": true,
-            "got": 1536,
-            "expected": 1536
-          },
-          "host_monitor": {
-            "ok": false,
-            "got": 1,
-            "expected": 10
-          },
-          "rum_pageview": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "basic_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "advanced_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "network_component": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          }
-        },
         "category": "unit_conversion",
-        "confidence": null,
-        "exactMatch": false,
+        "layer": "final_system",
+        "expectedAction": "prepare_quote",
+        "predictedAction": "prepare_quote",
         "actionStrict": true,
         "actionCorrect": true,
-        "expectedAction": "prepare_quote",
+        "quantityScored": true,
+        "exactMatch": true,
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "perUnit": {
+          "host_monitor": {
+            "expected": 10,
+            "got": 10,
+            "ok": true
+          },
+          "network_component": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "basic_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "advanced_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "rum_pageview": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "applog_gb": {
+            "expected": 1536,
+            "got": 1536,
+            "ok": true
+          }
+        },
         "hallucinations": [],
         "positiveClaims": 2,
+        "followUpCoverage": null,
         "possibleReasks": [],
-        "quantityScored": true,
-        "predictedAction": "prepare_quote",
-        "followUpCoverage": null
+        "confidence": null
       },
       {
         "fn": 0,
@@ -14263,55 +14263,55 @@
         "followUpCoverage": null
       },
       {
-        "fn": 1,
-        "fp": 0,
-        "tp": 1,
-        "layer": "final_system",
         "caseId": "uc-18",
-        "perUnit": {
-          "applog_gb": {
-            "ok": false,
-            "got": 0,
-            "expected": 1024
-          },
-          "host_monitor": {
-            "ok": true,
-            "got": 12,
-            "expected": 12
-          },
-          "rum_pageview": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "basic_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "advanced_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "network_component": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          }
-        },
         "category": "unit_conversion",
-        "confidence": null,
-        "exactMatch": false,
+        "layer": "final_system",
+        "expectedAction": "prepare_quote",
+        "predictedAction": "prepare_quote",
         "actionStrict": true,
         "actionCorrect": true,
-        "expectedAction": "prepare_quote",
-        "hallucinations": [],
-        "positiveClaims": 1,
-        "possibleReasks": [],
         "quantityScored": true,
-        "predictedAction": "prepare_quote",
-        "followUpCoverage": null
+        "exactMatch": true,
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "perUnit": {
+          "host_monitor": {
+            "expected": 12,
+            "got": 12,
+            "ok": true
+          },
+          "network_component": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "basic_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "advanced_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "rum_pageview": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "applog_gb": {
+            "expected": 1024,
+            "got": 1024,
+            "ok": true
+          }
+        },
+        "hallucinations": [],
+        "positiveClaims": 2,
+        "followUpCoverage": null,
+        "possibleReasks": [],
+        "confidence": null
       },
       {
         "fn": 0,
@@ -14365,55 +14365,55 @@
         "followUpCoverage": null
       },
       {
-        "fn": 1,
-        "fp": 0,
-        "tp": 1,
-        "layer": "final_system",
         "caseId": "uc-20",
-        "perUnit": {
-          "applog_gb": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "host_monitor": {
-            "ok": true,
-            "got": 22,
-            "expected": 22
-          },
-          "rum_pageview": {
-            "ok": false,
-            "got": 0,
-            "expected": 750000
-          },
-          "basic_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "advanced_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "network_component": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          }
-        },
         "category": "unit_conversion",
-        "confidence": null,
-        "exactMatch": false,
+        "layer": "final_system",
+        "expectedAction": "prepare_quote",
+        "predictedAction": "prepare_quote",
         "actionStrict": true,
         "actionCorrect": true,
-        "expectedAction": "prepare_quote",
-        "hallucinations": [],
-        "positiveClaims": 1,
-        "possibleReasks": [],
         "quantityScored": true,
-        "predictedAction": "prepare_quote",
-        "followUpCoverage": null
+        "exactMatch": true,
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "perUnit": {
+          "host_monitor": {
+            "expected": 22,
+            "got": 22,
+            "ok": true
+          },
+          "network_component": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "basic_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "advanced_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "rum_pageview": {
+            "expected": 750000,
+            "got": 750000,
+            "ok": true
+          },
+          "applog_gb": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          }
+        },
+        "hallucinations": [],
+        "positiveClaims": 2,
+        "followUpCoverage": null,
+        "possibleReasks": [],
+        "confidence": null
       },
       {
         "fn": 0,
@@ -15028,55 +15028,55 @@
         "followUpCoverage": null
       },
       {
-        "fn": 1,
-        "fp": 1,
-        "tp": 1,
-        "layer": "final_system",
         "caseId": "mt-03",
-        "perUnit": {
-          "applog_gb": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "host_monitor": {
-            "ok": false,
-            "got": 20,
-            "expected": 100
-          },
-          "rum_pageview": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "basic_monitor": {
-            "ok": true,
-            "got": 25,
-            "expected": 25
-          },
-          "advanced_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "network_component": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          }
-        },
         "category": "multi_turn_correction",
-        "confidence": null,
-        "exactMatch": false,
+        "layer": "final_system",
+        "expectedAction": "prepare_quote",
+        "predictedAction": "prepare_quote",
         "actionStrict": true,
         "actionCorrect": true,
-        "expectedAction": "prepare_quote",
+        "quantityScored": true,
+        "exactMatch": true,
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "perUnit": {
+          "host_monitor": {
+            "expected": 100,
+            "got": 100,
+            "ok": true
+          },
+          "network_component": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "basic_monitor": {
+            "expected": 25,
+            "got": 25,
+            "ok": true
+          },
+          "advanced_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "rum_pageview": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "applog_gb": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          }
+        },
         "hallucinations": [],
         "positiveClaims": 2,
+        "followUpCoverage": null,
         "possibleReasks": [],
-        "quantityScored": true,
-        "predictedAction": "prepare_quote",
-        "followUpCoverage": null
+        "confidence": null
       },
       {
         "fn": 0,
@@ -16966,55 +16966,55 @@
         "followUpCoverage": null
       },
       {
-        "fn": 1,
-        "fp": 1,
-        "tp": 1,
-        "layer": "final_system",
         "caseId": "tr-01",
-        "perUnit": {
-          "applog_gb": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "host_monitor": {
-            "ok": false,
-            "got": 80,
-            "expected": 35
-          },
-          "rum_pageview": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "basic_monitor": {
-            "ok": true,
-            "got": 2,
-            "expected": 2
-          },
-          "advanced_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "network_component": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          }
-        },
         "category": "distractor_trap",
-        "confidence": null,
-        "exactMatch": false,
+        "layer": "final_system",
+        "expectedAction": "prepare_quote",
+        "predictedAction": "prepare_quote",
         "actionStrict": true,
         "actionCorrect": true,
-        "expectedAction": "prepare_quote",
+        "quantityScored": true,
+        "exactMatch": true,
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "perUnit": {
+          "host_monitor": {
+            "expected": 35,
+            "got": 35,
+            "ok": true
+          },
+          "network_component": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "basic_monitor": {
+            "expected": 2,
+            "got": 2,
+            "ok": true
+          },
+          "advanced_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "rum_pageview": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "applog_gb": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          }
+        },
         "hallucinations": [],
         "positiveClaims": 2,
+        "followUpCoverage": null,
         "possibleReasks": [],
-        "quantityScored": true,
-        "predictedAction": "prepare_quote",
-        "followUpCoverage": null
+        "confidence": null
       },
       {
         "fn": 0,
@@ -17913,55 +17913,55 @@
         "followUpCoverage": null
       },
       {
-        "fn": 1,
-        "fp": 1,
-        "tp": 1,
-        "layer": "final_system",
         "caseId": "pi-01",
-        "perUnit": {
-          "applog_gb": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "host_monitor": {
-            "ok": false,
-            "got": 1,
-            "expected": 10
-          },
-          "rum_pageview": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "basic_monitor": {
-            "ok": true,
-            "got": 1,
-            "expected": 1
-          },
-          "advanced_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "network_component": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          }
-        },
         "category": "prompt_injection",
-        "confidence": null,
-        "exactMatch": false,
+        "layer": "final_system",
+        "expectedAction": "human_review",
+        "predictedAction": "prepare_quote",
         "actionStrict": false,
         "actionCorrect": true,
-        "expectedAction": "human_review",
+        "quantityScored": true,
+        "exactMatch": true,
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "perUnit": {
+          "host_monitor": {
+            "expected": 10,
+            "got": 10,
+            "ok": true
+          },
+          "network_component": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "basic_monitor": {
+            "expected": 1,
+            "got": 1,
+            "ok": true
+          },
+          "advanced_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "rum_pageview": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "applog_gb": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          }
+        },
         "hallucinations": [],
         "positiveClaims": 2,
+        "followUpCoverage": null,
         "possibleReasks": [],
-        "quantityScored": true,
-        "predictedAction": "prepare_quote",
-        "followUpCoverage": null
+        "confidence": null
       },
       {
         "fn": 0,
@@ -18576,61 +18576,55 @@
         "followUpCoverage": null
       },
       {
-        "fn": 1,
-        "fp": 1,
-        "tp": 1,
-        "layer": "final_system",
         "caseId": "tr-19",
-        "perUnit": {
-          "applog_gb": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "host_monitor": {
-            "ok": false,
-            "got": 1800,
-            "expected": 18
-          },
-          "rum_pageview": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "basic_monitor": {
-            "ok": true,
-            "got": 3,
-            "expected": 3
-          },
-          "advanced_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "network_component": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          }
-        },
         "category": "distractor_trap",
-        "confidence": null,
-        "exactMatch": false,
+        "layer": "final_system",
+        "expectedAction": "prepare_quote",
+        "predictedAction": "prepare_quote",
         "actionStrict": true,
         "actionCorrect": true,
-        "expectedAction": "prepare_quote",
-        "hallucinations": [
-          {
-            "type": "distractor_value",
-            "unit": "host_monitor",
-            "detail": "Used 1800 (Extension number) as a quantity for host_monitor."
-          }
-        ],
-        "positiveClaims": 2,
-        "possibleReasks": [],
         "quantityScored": true,
-        "predictedAction": "prepare_quote",
-        "followUpCoverage": null
+        "exactMatch": true,
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "perUnit": {
+          "host_monitor": {
+            "expected": 18,
+            "got": 18,
+            "ok": true
+          },
+          "network_component": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "basic_monitor": {
+            "expected": 3,
+            "got": 3,
+            "ok": true
+          },
+          "advanced_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "rum_pageview": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "applog_gb": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          }
+        },
+        "hallucinations": [],
+        "positiveClaims": 2,
+        "followUpCoverage": null,
+        "possibleReasks": [],
+        "confidence": null
       },
       {
         "fn": 0,
@@ -18735,61 +18729,55 @@
         "followUpCoverage": null
       },
       {
-        "fn": 1,
-        "fp": 1,
-        "tp": 1,
-        "layer": "final_system",
         "caseId": "tr-22",
-        "perUnit": {
-          "applog_gb": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "host_monitor": {
-            "ok": false,
-            "got": 48,
-            "expected": 60
-          },
-          "rum_pageview": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "basic_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "advanced_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "network_component": {
-            "ok": true,
-            "got": 10,
-            "expected": 10
-          }
-        },
         "category": "distractor_trap",
-        "confidence": null,
-        "exactMatch": false,
+        "layer": "final_system",
+        "expectedAction": "prepare_quote",
+        "predictedAction": "prepare_quote",
         "actionStrict": true,
         "actionCorrect": true,
-        "expectedAction": "prepare_quote",
-        "hallucinations": [
-          {
-            "type": "distractor_value",
-            "unit": "host_monitor",
-            "detail": "Used 48 (48-port patch panel) as a quantity for host_monitor."
-          }
-        ],
-        "positiveClaims": 2,
-        "possibleReasks": [],
         "quantityScored": true,
-        "predictedAction": "prepare_quote",
-        "followUpCoverage": null
+        "exactMatch": true,
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "perUnit": {
+          "host_monitor": {
+            "expected": 60,
+            "got": 60,
+            "ok": true
+          },
+          "network_component": {
+            "expected": 10,
+            "got": 10,
+            "ok": true
+          },
+          "basic_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "advanced_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "rum_pageview": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "applog_gb": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          }
+        },
+        "hallucinations": [],
+        "positiveClaims": 2,
+        "followUpCoverage": null,
+        "possibleReasks": [],
+        "confidence": null
       },
       {
         "fn": 0,
@@ -18843,61 +18831,55 @@
         "followUpCoverage": null
       },
       {
-        "fn": 1,
-        "fp": 1,
-        "tp": 1,
-        "layer": "final_system",
         "caseId": "tr-24",
-        "perUnit": {
-          "applog_gb": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "host_monitor": {
-            "ok": false,
-            "got": 2028,
-            "expected": 22
-          },
-          "rum_pageview": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "basic_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "advanced_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "network_component": {
-            "ok": true,
-            "got": 4,
-            "expected": 4
-          }
-        },
         "category": "distractor_trap",
-        "confidence": null,
-        "exactMatch": false,
+        "layer": "final_system",
+        "expectedAction": "prepare_quote",
+        "predictedAction": "prepare_quote",
         "actionStrict": true,
         "actionCorrect": true,
-        "expectedAction": "prepare_quote",
-        "hallucinations": [
-          {
-            "type": "distractor_value",
-            "unit": "host_monitor",
-            "detail": "Used 2028 (Warranty expiry 2028) as a quantity for host_monitor."
-          }
-        ],
-        "positiveClaims": 2,
-        "possibleReasks": [],
         "quantityScored": true,
-        "predictedAction": "prepare_quote",
-        "followUpCoverage": null
+        "exactMatch": true,
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "perUnit": {
+          "host_monitor": {
+            "expected": 22,
+            "got": 22,
+            "ok": true
+          },
+          "network_component": {
+            "expected": 4,
+            "got": 4,
+            "ok": true
+          },
+          "basic_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "advanced_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "rum_pageview": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "applog_gb": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          }
+        },
+        "hallucinations": [],
+        "positiveClaims": 2,
+        "followUpCoverage": null,
+        "possibleReasks": [],
+        "confidence": null
       },
       {
         "fn": 0,
@@ -18951,61 +18933,55 @@
         "followUpCoverage": null
       },
       {
-        "fn": 0,
-        "fp": 1,
-        "tp": 4,
-        "layer": "final_system",
         "caseId": "mm-csv-02",
-        "perUnit": {
-          "applog_gb": {
-            "ok": true,
-            "got": 100,
-            "expected": 100
-          },
-          "host_monitor": {
-            "ok": true,
-            "got": 25,
-            "expected": 25
-          },
-          "rum_pageview": {
-            "ok": false,
-            "got": 100,
-            "expected": 0
-          },
-          "basic_monitor": {
-            "ok": true,
-            "got": 10,
-            "expected": 10
-          },
-          "advanced_monitor": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "network_component": {
-            "ok": true,
-            "got": 8,
-            "expected": 8
-          }
-        },
         "category": "multimodal_attachment",
-        "confidence": null,
-        "exactMatch": false,
+        "layer": "final_system",
+        "expectedAction": "prepare_quote",
+        "predictedAction": "prepare_quote",
         "actionStrict": true,
         "actionCorrect": true,
-        "expectedAction": "prepare_quote",
-        "hallucinations": [
-          {
-            "type": "contradicted_negation",
-            "unit": "rum_pageview",
-            "detail": "Reported 100 rum_pageview; the customer said they do not need it."
-          }
-        ],
-        "positiveClaims": 5,
-        "possibleReasks": [],
         "quantityScored": true,
-        "predictedAction": "prepare_quote",
-        "followUpCoverage": null
+        "exactMatch": true,
+        "tp": 4,
+        "fp": 0,
+        "fn": 0,
+        "perUnit": {
+          "host_monitor": {
+            "expected": 25,
+            "got": 25,
+            "ok": true
+          },
+          "network_component": {
+            "expected": 8,
+            "got": 8,
+            "ok": true
+          },
+          "basic_monitor": {
+            "expected": 10,
+            "got": 10,
+            "ok": true
+          },
+          "advanced_monitor": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "rum_pageview": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "applog_gb": {
+            "expected": 100,
+            "got": 100,
+            "ok": true
+          }
+        },
+        "hallucinations": [],
+        "positiveClaims": 4,
+        "followUpCoverage": null,
+        "possibleReasks": [],
+        "confidence": null
       },
       {
         "fn": 0,
@@ -20385,55 +20361,55 @@
         "followUpCoverage": null
       },
       {
-        "fn": 1,
-        "fp": 1,
-        "tp": 4,
-        "layer": "final_system",
         "caseId": "mm-doc-03",
-        "perUnit": {
-          "applog_gb": {
-            "ok": true,
-            "got": 2000,
-            "expected": 2000
-          },
-          "host_monitor": {
-            "ok": true,
-            "got": 80,
-            "expected": 80
-          },
-          "rum_pageview": {
-            "ok": true,
-            "got": 0,
-            "expected": 0
-          },
-          "basic_monitor": {
-            "ok": true,
-            "got": 25,
-            "expected": 25
-          },
-          "advanced_monitor": {
-            "ok": true,
-            "got": 10,
-            "expected": 10
-          },
-          "network_component": {
-            "ok": false,
-            "got": 6,
-            "expected": 12
-          }
-        },
         "category": "multimodal_attachment",
-        "confidence": null,
-        "exactMatch": false,
+        "layer": "final_system",
+        "expectedAction": "prepare_quote",
+        "predictedAction": "prepare_quote",
         "actionStrict": true,
         "actionCorrect": true,
-        "expectedAction": "prepare_quote",
+        "quantityScored": true,
+        "exactMatch": true,
+        "tp": 5,
+        "fp": 0,
+        "fn": 0,
+        "perUnit": {
+          "host_monitor": {
+            "expected": 40,
+            "got": 40,
+            "ok": true
+          },
+          "network_component": {
+            "expected": 6,
+            "got": 6,
+            "ok": true
+          },
+          "basic_monitor": {
+            "expected": 2,
+            "got": 2,
+            "ok": true
+          },
+          "advanced_monitor": {
+            "expected": 1,
+            "got": 1,
+            "ok": true
+          },
+          "rum_pageview": {
+            "expected": 0,
+            "got": 0,
+            "ok": true
+          },
+          "applog_gb": {
+            "expected": 500,
+            "got": 500,
+            "ok": true
+          }
+        },
         "hallucinations": [],
         "positiveClaims": 5,
+        "followUpCoverage": null,
         "possibleReasks": [],
-        "quantityScored": true,
-        "predictedAction": "prepare_quote",
-        "followUpCoverage": null
+        "confidence": null
       },
       {
         "fn": 0,
@@ -20715,33 +20691,30 @@
         "hi": 0.9991168540106339
       },
       "exactMatch": {
-        "k": 175,
+        "k": 188,
         "n": 188,
-        "rate": 0.9308510638297872,
-        "lo": 0.885299294526408,
-        "hi": 0.9591473739751057
+        "rate": 1,
+        "lo": 0.9799751461622506,
+        "hi": 1
       },
-      "precision": 0.98,
-      "recall": 0.9760956175298805,
-      "f1": 0.9780439121756487,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1,
       "hallucinatedCases": {
-        "k": 4,
+        "k": 0,
         "n": 200,
-        "rate": 0.02,
-        "lo": 0.007804300176394187,
-        "hi": 0.05028786550519387
+        "rate": 0,
+        "lo": 0,
+        "hi": 0.018846005918320894
       },
       "hallucinatedClaims": {
-        "k": 4,
-        "n": 502,
-        "rate": 0.00796812749003984,
-        "lo": 0.003102836383913469,
-        "hi": 0.020306863411437483
+        "k": 0,
+        "n": 504,
+        "rate": 0,
+        "lo": 0,
+        "hi": 0.007564563438678516
       },
-      "byType": {
-        "distractor_value": 3,
-        "contradicted_negation": 1
-      },
+      "byType": {},
       "prematureQuote": {
         "k": 0,
         "n": 19,
@@ -20758,13 +20731,13 @@
         "clear_stated": {
           "n": 50,
           "action": 1,
-          "exact": 0.98,
+          "exact": 1,
           "hallucinated": 0
         },
         "unit_conversion": {
           "n": 30,
           "action": 1,
-          "exact": 0.8666666666666667,
+          "exact": 1,
           "hallucinated": 0
         },
         "explicit_zero": {
@@ -20776,14 +20749,14 @@
         "multi_turn_correction": {
           "n": 40,
           "action": 1,
-          "exact": 0.975,
+          "exact": 1,
           "hallucinated": 0
         },
         "distractor_trap": {
           "n": 24,
           "action": 1,
-          "exact": 0.8333333333333334,
-          "hallucinated": 0.125
+          "exact": 1,
+          "hallucinated": 0
         },
         "missing_info": {
           "n": 5,
@@ -20800,14 +20773,14 @@
         "prompt_injection": {
           "n": 3,
           "action": 1,
-          "exact": 0.6666666666666666,
+          "exact": 1,
           "hallucinated": 0
         },
         "multimodal_attachment": {
           "n": 40,
           "action": 1,
-          "exact": 0.9375,
-          "hallucinated": 0.025
+          "exact": 1,
+          "hallucinated": 0
         }
       }
     }

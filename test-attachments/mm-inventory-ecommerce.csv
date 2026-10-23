@@ -1,38 +1,38 @@
-Host,OS,Type,Rack
-ec-node-1,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-2,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-3,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-4,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-5,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-6,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-7,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-8,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-9,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-10,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-11,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-12,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-13,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-14,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-15,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-16,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-17,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-18,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-19,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-20,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-21,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-22,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-23,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-24,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-25,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-26,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-27,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-28,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-29,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-30,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-31,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-32,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-33,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-34,Ubuntu 22.04,VM Instance,Rack-B1
-ec-node-35,Ubuntu 22.04,VM Instance,Rack-B1
-edge-gw-01,Junos,Network Switch,Rack-A1
-edge-gw-02,Junos,Network Switch,Rack-A2
+Node FQDN,Instance Type,Cluster,Subnet,IP,Role,Availability Zone
+cart-api-1.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.20,Host Server,ap-south-1a
+cart-api-2.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.21,Host Server,ap-south-1a
+cart-api-3.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.22,Host Server,ap-south-1a
+cart-api-4.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.23,Host Server,ap-south-1a
+cart-api-5.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.24,Host Server,ap-south-1a
+cart-api-6.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.25,Host Server,ap-south-1a
+cart-api-7.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.26,Host Server,ap-south-1a
+cart-api-8.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.27,Host Server,ap-south-1a
+cart-api-9.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.28,Host Server,ap-south-1a
+cart-api-10.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.29,Host Server,ap-south-1a
+cart-api-11.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.30,Host Server,ap-south-1a
+cart-api-12.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.31,Host Server,ap-south-1a
+cart-api-13.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.32,Host Server,ap-south-1a
+cart-api-14.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.33,Host Server,ap-south-1a
+cart-api-15.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.34,Host Server,ap-south-1a
+cart-api-16.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.35,Host Server,ap-south-1a
+cart-api-17.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.36,Host Server,ap-south-1a
+cart-api-18.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.37,Host Server,ap-south-1a
+cart-api-19.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.38,Host Server,ap-south-1a
+cart-api-20.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.39,Host Server,ap-south-1a
+cart-api-21.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.40,Host Server,ap-south-1a
+cart-api-22.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.41,Host Server,ap-south-1a
+cart-api-23.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.42,Host Server,ap-south-1a
+cart-api-24.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.43,Host Server,ap-south-1a
+cart-api-25.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.44,Host Server,ap-south-1a
+cart-api-26.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.45,Host Server,ap-south-1a
+cart-api-27.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.46,Host Server,ap-south-1a
+cart-api-28.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.47,Host Server,ap-south-1a
+cart-api-29.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.48,Host Server,ap-south-1a
+cart-api-30.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.49,Host Server,ap-south-1a
+cart-api-31.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.50,Host Server,ap-south-1a
+cart-api-32.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.51,Host Server,ap-south-1a
+cart-api-33.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.52,Host Server,ap-south-1a
+cart-api-34.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.53,Host Server,ap-south-1a
+cart-api-35.shop.internal,c6i.4xlarge,Checkout-Fleet,subnet-prod-a,10.2.1.54,Host Server,ap-south-1a
+edge-switch-01,Hardware,DMZ,subnet-mgmt,10.2.0.1,Network Switch,ap-south-1a
+edge-switch-02,Hardware,DMZ,subnet-mgmt,10.2.0.2,Network Switch,ap-south-1b

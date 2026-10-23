@@ -1,63 +1,63 @@
-DeviceID,Type,Location,IP Address
-HL7-NODE-1,Production Server,Hospital-Main,192.168.10.1
-HL7-NODE-2,Production Server,Hospital-Main,192.168.10.2
-HL7-NODE-3,Production Server,Hospital-Main,192.168.10.3
-HL7-NODE-4,Production Server,Hospital-Main,192.168.10.4
-HL7-NODE-5,Production Server,Hospital-Main,192.168.10.5
-HL7-NODE-6,Production Server,Hospital-Main,192.168.10.6
-HL7-NODE-7,Production Server,Hospital-Main,192.168.10.7
-HL7-NODE-8,Production Server,Hospital-Main,192.168.10.8
-HL7-NODE-9,Production Server,Hospital-Main,192.168.10.9
-HL7-NODE-10,Production Server,Hospital-Main,192.168.10.10
-HL7-NODE-11,Production Server,Hospital-Main,192.168.10.11
-HL7-NODE-12,Production Server,Hospital-Main,192.168.10.12
-HL7-NODE-13,Production Server,Hospital-Main,192.168.10.13
-HL7-NODE-14,Production Server,Hospital-Main,192.168.10.14
-HL7-NODE-15,Production Server,Hospital-Main,192.168.10.15
-HL7-NODE-16,Production Server,Hospital-Main,192.168.10.16
-HL7-NODE-17,Production Server,Hospital-Main,192.168.10.17
-HL7-NODE-18,Production Server,Hospital-Main,192.168.10.18
-HL7-NODE-19,Production Server,Hospital-Main,192.168.10.19
-HL7-NODE-20,Production Server,Hospital-Main,192.168.10.20
-HL7-NODE-21,Production Server,Hospital-Main,192.168.10.21
-HL7-NODE-22,Production Server,Hospital-Main,192.168.10.22
-HL7-NODE-23,Production Server,Hospital-Main,192.168.10.23
-HL7-NODE-24,Production Server,Hospital-Main,192.168.10.24
-HL7-NODE-25,Production Server,Hospital-Main,192.168.10.25
-HL7-NODE-26,Production Server,Hospital-Main,192.168.10.26
-HL7-NODE-27,Production Server,Hospital-Main,192.168.10.27
-HL7-NODE-28,Production Server,Hospital-Main,192.168.10.28
-HL7-NODE-29,Production Server,Hospital-Main,192.168.10.29
-HL7-NODE-30,Production Server,Hospital-Main,192.168.10.30
-HL7-NODE-31,Production Server,Hospital-Main,192.168.10.31
-HL7-NODE-32,Production Server,Hospital-Main,192.168.10.32
-HL7-NODE-33,Production Server,Hospital-Main,192.168.10.33
-HL7-NODE-34,Production Server,Hospital-Main,192.168.10.34
-HL7-NODE-35,Production Server,Hospital-Main,192.168.10.35
-HL7-NODE-36,Production Server,Hospital-Main,192.168.10.36
-HL7-NODE-37,Production Server,Hospital-Main,192.168.10.37
-HL7-NODE-38,Production Server,Hospital-Main,192.168.10.38
-HL7-NODE-39,Production Server,Hospital-Main,192.168.10.39
-HL7-NODE-40,Production Server,Hospital-Main,192.168.10.40
-HL7-NODE-41,Production Server,Hospital-Main,192.168.10.41
-HL7-NODE-42,Production Server,Hospital-Main,192.168.10.42
-HL7-NODE-43,Production Server,Hospital-Main,192.168.10.43
-HL7-NODE-44,Production Server,Hospital-Main,192.168.10.44
-HL7-NODE-45,Production Server,Hospital-Main,192.168.10.45
-HL7-NODE-46,Production Server,Hospital-Main,192.168.10.46
-HL7-NODE-47,Production Server,Hospital-Main,192.168.10.47
-HL7-NODE-48,Production Server,Hospital-Main,192.168.10.48
-HL7-NODE-49,Production Server,Hospital-Main,192.168.10.49
-HL7-NODE-50,Production Server,Hospital-Main,192.168.10.50
-HL7-NODE-51,Production Server,Hospital-Main,192.168.10.51
-HL7-NODE-52,Production Server,Hospital-Main,192.168.10.52
-HL7-NODE-53,Production Server,Hospital-Main,192.168.10.53
-HL7-NODE-54,Production Server,Hospital-Main,192.168.10.54
-HL7-NODE-55,Production Server,Hospital-Main,192.168.10.55
-HL7-NODE-56,Production Server,Hospital-Main,192.168.10.56
-HL7-NODE-57,Production Server,Hospital-Main,192.168.10.57
-HL7-NODE-58,Production Server,Hospital-Main,192.168.10.58
-HL7-NODE-59,Production Server,Hospital-Main,192.168.10.59
-HL7-NODE-60,Production Server,Hospital-Main,192.168.10.60
-CORE-RTR-01,Network Router,DataCenter,192.168.1.1
-CORE-SW-01,Network Switch,DataCenter,192.168.1.2
+Device Name,Classification,Hospital Wing,VLAN,IP Address,Serial Number,OS Version
+EMR-SRV-01,Production Server,East Wing Clinic,102,172.24.10.1,SN-HC-99210,Red Hat Enterprise Linux 9
+EMR-SRV-02,Production Server,East Wing Clinic,102,172.24.10.2,SN-HC-99211,Red Hat Enterprise Linux 9
+EMR-SRV-03,Production Server,East Wing Clinic,102,172.24.10.3,SN-HC-99212,Red Hat Enterprise Linux 9
+EMR-SRV-04,Production Server,East Wing Clinic,102,172.24.10.4,SN-HC-99213,Red Hat Enterprise Linux 9
+EMR-SRV-05,Production Server,East Wing Clinic,102,172.24.10.5,SN-HC-99214,Red Hat Enterprise Linux 9
+EMR-SRV-06,Production Server,East Wing Clinic,102,172.24.10.6,SN-HC-99215,Red Hat Enterprise Linux 9
+EMR-SRV-07,Production Server,East Wing Clinic,102,172.24.10.7,SN-HC-99216,Red Hat Enterprise Linux 9
+EMR-SRV-08,Production Server,East Wing Clinic,102,172.24.10.8,SN-HC-99217,Red Hat Enterprise Linux 9
+EMR-SRV-09,Production Server,East Wing Clinic,102,172.24.10.9,SN-HC-99218,Red Hat Enterprise Linux 9
+EMR-SRV-10,Production Server,East Wing Clinic,102,172.24.10.10,SN-HC-99219,Red Hat Enterprise Linux 9
+EMR-SRV-11,Production Server,East Wing Clinic,102,172.24.10.11,SN-HC-99220,Red Hat Enterprise Linux 9
+EMR-SRV-12,Production Server,East Wing Clinic,102,172.24.10.12,SN-HC-99221,Red Hat Enterprise Linux 9
+EMR-SRV-13,Production Server,East Wing Clinic,102,172.24.10.13,SN-HC-99222,Red Hat Enterprise Linux 9
+EMR-SRV-14,Production Server,East Wing Clinic,102,172.24.10.14,SN-HC-99223,Red Hat Enterprise Linux 9
+EMR-SRV-15,Production Server,East Wing Clinic,102,172.24.10.15,SN-HC-99224,Red Hat Enterprise Linux 9
+EMR-SRV-16,Production Server,East Wing Clinic,102,172.24.10.16,SN-HC-99225,Red Hat Enterprise Linux 9
+EMR-SRV-17,Production Server,East Wing Clinic,102,172.24.10.17,SN-HC-99226,Red Hat Enterprise Linux 9
+EMR-SRV-18,Production Server,East Wing Clinic,102,172.24.10.18,SN-HC-99227,Red Hat Enterprise Linux 9
+EMR-SRV-19,Production Server,East Wing Clinic,102,172.24.10.19,SN-HC-99228,Red Hat Enterprise Linux 9
+EMR-SRV-20,Production Server,East Wing Clinic,102,172.24.10.20,SN-HC-99229,Red Hat Enterprise Linux 9
+EMR-SRV-21,Production Server,East Wing Clinic,102,172.24.10.21,SN-HC-99230,Red Hat Enterprise Linux 9
+EMR-SRV-22,Production Server,East Wing Clinic,102,172.24.10.22,SN-HC-99231,Red Hat Enterprise Linux 9
+EMR-SRV-23,Production Server,East Wing Clinic,102,172.24.10.23,SN-HC-99232,Red Hat Enterprise Linux 9
+EMR-SRV-24,Production Server,East Wing Clinic,102,172.24.10.24,SN-HC-99233,Red Hat Enterprise Linux 9
+EMR-SRV-25,Production Server,East Wing Clinic,102,172.24.10.25,SN-HC-99234,Red Hat Enterprise Linux 9
+EMR-SRV-26,Production Server,East Wing Clinic,102,172.24.10.26,SN-HC-99235,Red Hat Enterprise Linux 9
+EMR-SRV-27,Production Server,East Wing Clinic,102,172.24.10.27,SN-HC-99236,Red Hat Enterprise Linux 9
+EMR-SRV-28,Production Server,East Wing Clinic,102,172.24.10.28,SN-HC-99237,Red Hat Enterprise Linux 9
+EMR-SRV-29,Production Server,East Wing Clinic,102,172.24.10.29,SN-HC-99238,Red Hat Enterprise Linux 9
+EMR-SRV-30,Production Server,East Wing Clinic,102,172.24.10.30,SN-HC-99239,Red Hat Enterprise Linux 9
+EMR-SRV-31,Production Server,East Wing Clinic,102,172.24.10.31,SN-HC-99240,Red Hat Enterprise Linux 9
+EMR-SRV-32,Production Server,East Wing Clinic,102,172.24.10.32,SN-HC-99241,Red Hat Enterprise Linux 9
+EMR-SRV-33,Production Server,East Wing Clinic,102,172.24.10.33,SN-HC-99242,Red Hat Enterprise Linux 9
+EMR-SRV-34,Production Server,East Wing Clinic,102,172.24.10.34,SN-HC-99243,Red Hat Enterprise Linux 9
+EMR-SRV-35,Production Server,East Wing Clinic,102,172.24.10.35,SN-HC-99244,Red Hat Enterprise Linux 9
+EMR-SRV-36,Production Server,East Wing Clinic,102,172.24.10.36,SN-HC-99245,Red Hat Enterprise Linux 9
+EMR-SRV-37,Production Server,East Wing Clinic,102,172.24.10.37,SN-HC-99246,Red Hat Enterprise Linux 9
+EMR-SRV-38,Production Server,East Wing Clinic,102,172.24.10.38,SN-HC-99247,Red Hat Enterprise Linux 9
+EMR-SRV-39,Production Server,East Wing Clinic,102,172.24.10.39,SN-HC-99248,Red Hat Enterprise Linux 9
+EMR-SRV-40,Production Server,East Wing Clinic,102,172.24.10.40,SN-HC-99249,Red Hat Enterprise Linux 9
+EMR-SRV-41,Production Server,East Wing Clinic,102,172.24.10.41,SN-HC-99250,Red Hat Enterprise Linux 9
+EMR-SRV-42,Production Server,East Wing Clinic,102,172.24.10.42,SN-HC-99251,Red Hat Enterprise Linux 9
+EMR-SRV-43,Production Server,East Wing Clinic,102,172.24.10.43,SN-HC-99252,Red Hat Enterprise Linux 9
+EMR-SRV-44,Production Server,East Wing Clinic,102,172.24.10.44,SN-HC-99253,Red Hat Enterprise Linux 9
+EMR-SRV-45,Production Server,East Wing Clinic,102,172.24.10.45,SN-HC-99254,Red Hat Enterprise Linux 9
+EMR-SRV-46,Production Server,East Wing Clinic,102,172.24.10.46,SN-HC-99255,Red Hat Enterprise Linux 9
+EMR-SRV-47,Production Server,East Wing Clinic,102,172.24.10.47,SN-HC-99256,Red Hat Enterprise Linux 9
+EMR-SRV-48,Production Server,East Wing Clinic,102,172.24.10.48,SN-HC-99257,Red Hat Enterprise Linux 9
+EMR-SRV-49,Production Server,East Wing Clinic,102,172.24.10.49,SN-HC-99258,Red Hat Enterprise Linux 9
+EMR-SRV-50,Production Server,East Wing Clinic,102,172.24.10.50,SN-HC-99259,Red Hat Enterprise Linux 9
+EMR-SRV-51,Production Server,East Wing Clinic,102,172.24.10.51,SN-HC-99260,Red Hat Enterprise Linux 9
+EMR-SRV-52,Production Server,East Wing Clinic,102,172.24.10.52,SN-HC-99261,Red Hat Enterprise Linux 9
+EMR-SRV-53,Production Server,East Wing Clinic,102,172.24.10.53,SN-HC-99262,Red Hat Enterprise Linux 9
+EMR-SRV-54,Production Server,East Wing Clinic,102,172.24.10.54,SN-HC-99263,Red Hat Enterprise Linux 9
+EMR-SRV-55,Production Server,East Wing Clinic,102,172.24.10.55,SN-HC-99264,Red Hat Enterprise Linux 9
+EMR-SRV-56,Production Server,East Wing Clinic,102,172.24.10.56,SN-HC-99265,Red Hat Enterprise Linux 9
+EMR-SRV-57,Production Server,East Wing Clinic,102,172.24.10.57,SN-HC-99266,Red Hat Enterprise Linux 9
+EMR-SRV-58,Production Server,East Wing Clinic,102,172.24.10.58,SN-HC-99267,Red Hat Enterprise Linux 9
+EMR-SRV-59,Production Server,East Wing Clinic,102,172.24.10.59,SN-HC-99268,Red Hat Enterprise Linux 9
+EMR-SRV-60,Production Server,East Wing Clinic,102,172.24.10.60,SN-HC-99269,Red Hat Enterprise Linux 9
+HOSP-GW-RTR,Network Router,Core DC,1,172.24.1.1,SN-CISCO-881,IOS-XE 17.6
+HOSP-CORE-SW,Network Switch,Core DC,1,172.24.1.2,SN-CATALYST-9500,IOS-XE 17.6

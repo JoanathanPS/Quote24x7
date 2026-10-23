@@ -1,82 +1,82 @@
-System,Device Class,Zone
-scada-srv-1,Industrial Server,Substation-A
-scada-srv-2,Industrial Server,Substation-A
-scada-srv-3,Industrial Server,Substation-A
-scada-srv-4,Industrial Server,Substation-A
-scada-srv-5,Industrial Server,Substation-A
-scada-srv-6,Industrial Server,Substation-A
-scada-srv-7,Industrial Server,Substation-A
-scada-srv-8,Industrial Server,Substation-A
-scada-srv-9,Industrial Server,Substation-A
-scada-srv-10,Industrial Server,Substation-A
-scada-srv-11,Industrial Server,Substation-A
-scada-srv-12,Industrial Server,Substation-A
-scada-srv-13,Industrial Server,Substation-A
-scada-srv-14,Industrial Server,Substation-A
-scada-srv-15,Industrial Server,Substation-A
-scada-srv-16,Industrial Server,Substation-A
-scada-srv-17,Industrial Server,Substation-A
-scada-srv-18,Industrial Server,Substation-A
-scada-srv-19,Industrial Server,Substation-A
-scada-srv-20,Industrial Server,Substation-A
-scada-srv-21,Industrial Server,Substation-A
-scada-srv-22,Industrial Server,Substation-A
-scada-srv-23,Industrial Server,Substation-A
-scada-srv-24,Industrial Server,Substation-A
-scada-srv-25,Industrial Server,Substation-A
-scada-srv-26,Industrial Server,Substation-A
-scada-srv-27,Industrial Server,Substation-A
-scada-srv-28,Industrial Server,Substation-A
-scada-srv-29,Industrial Server,Substation-A
-scada-srv-30,Industrial Server,Substation-A
-scada-srv-31,Industrial Server,Substation-A
-scada-srv-32,Industrial Server,Substation-A
-scada-srv-33,Industrial Server,Substation-A
-scada-srv-34,Industrial Server,Substation-A
-scada-srv-35,Industrial Server,Substation-A
-scada-srv-36,Industrial Server,Substation-A
-scada-srv-37,Industrial Server,Substation-A
-scada-srv-38,Industrial Server,Substation-A
-scada-srv-39,Industrial Server,Substation-A
-scada-srv-40,Industrial Server,Substation-A
-scada-srv-41,Industrial Server,Substation-A
-scada-srv-42,Industrial Server,Substation-A
-scada-srv-43,Industrial Server,Substation-A
-scada-srv-44,Industrial Server,Substation-A
-scada-srv-45,Industrial Server,Substation-A
-scada-srv-46,Industrial Server,Substation-A
-scada-srv-47,Industrial Server,Substation-A
-scada-srv-48,Industrial Server,Substation-A
-scada-srv-49,Industrial Server,Substation-A
-scada-srv-50,Industrial Server,Substation-A
-scada-srv-51,Industrial Server,Substation-A
-scada-srv-52,Industrial Server,Substation-A
-scada-srv-53,Industrial Server,Substation-A
-scada-srv-54,Industrial Server,Substation-A
-scada-srv-55,Industrial Server,Substation-A
-scada-srv-56,Industrial Server,Substation-A
-scada-srv-57,Industrial Server,Substation-A
-scada-srv-58,Industrial Server,Substation-A
-scada-srv-59,Industrial Server,Substation-A
-scada-srv-60,Industrial Server,Substation-A
-scada-srv-61,Industrial Server,Substation-A
-scada-srv-62,Industrial Server,Substation-A
-scada-srv-63,Industrial Server,Substation-A
-scada-srv-64,Industrial Server,Substation-A
-scada-srv-65,Industrial Server,Substation-A
-scada-srv-66,Industrial Server,Substation-A
-scada-srv-67,Industrial Server,Substation-A
-scada-srv-68,Industrial Server,Substation-A
-scada-srv-69,Industrial Server,Substation-A
-scada-srv-70,Industrial Server,Substation-A
-scada-srv-71,Industrial Server,Substation-A
-scada-srv-72,Industrial Server,Substation-A
-scada-srv-73,Industrial Server,Substation-A
-scada-srv-74,Industrial Server,Substation-A
-scada-srv-75,Industrial Server,Substation-A
-scada-sw-1,Network Switch,Substation-A
-scada-sw-2,Network Switch,Substation-A
-scada-sw-3,Network Switch,Substation-A
-scada-sw-4,Network Switch,Substation-A
-scada-sw-5,Network Switch,Substation-A
-scada-sw-6,Network Switch,Substation-A
+RTU Node ID,Substation Grid,Component Type,IP,Classification
+SCADA-HOST-01,Grid-Sector-4,Industrial Server,10.99.12.1,Compute Host
+SCADA-HOST-02,Grid-Sector-4,Industrial Server,10.99.12.2,Compute Host
+SCADA-HOST-03,Grid-Sector-4,Industrial Server,10.99.12.3,Compute Host
+SCADA-HOST-04,Grid-Sector-4,Industrial Server,10.99.12.4,Compute Host
+SCADA-HOST-05,Grid-Sector-4,Industrial Server,10.99.12.5,Compute Host
+SCADA-HOST-06,Grid-Sector-4,Industrial Server,10.99.12.6,Compute Host
+SCADA-HOST-07,Grid-Sector-4,Industrial Server,10.99.12.7,Compute Host
+SCADA-HOST-08,Grid-Sector-4,Industrial Server,10.99.12.8,Compute Host
+SCADA-HOST-09,Grid-Sector-4,Industrial Server,10.99.12.9,Compute Host
+SCADA-HOST-10,Grid-Sector-4,Industrial Server,10.99.12.10,Compute Host
+SCADA-HOST-11,Grid-Sector-4,Industrial Server,10.99.12.11,Compute Host
+SCADA-HOST-12,Grid-Sector-4,Industrial Server,10.99.12.12,Compute Host
+SCADA-HOST-13,Grid-Sector-4,Industrial Server,10.99.12.13,Compute Host
+SCADA-HOST-14,Grid-Sector-4,Industrial Server,10.99.12.14,Compute Host
+SCADA-HOST-15,Grid-Sector-4,Industrial Server,10.99.12.15,Compute Host
+SCADA-HOST-16,Grid-Sector-4,Industrial Server,10.99.12.16,Compute Host
+SCADA-HOST-17,Grid-Sector-4,Industrial Server,10.99.12.17,Compute Host
+SCADA-HOST-18,Grid-Sector-4,Industrial Server,10.99.12.18,Compute Host
+SCADA-HOST-19,Grid-Sector-4,Industrial Server,10.99.12.19,Compute Host
+SCADA-HOST-20,Grid-Sector-4,Industrial Server,10.99.12.20,Compute Host
+SCADA-HOST-21,Grid-Sector-4,Industrial Server,10.99.12.21,Compute Host
+SCADA-HOST-22,Grid-Sector-4,Industrial Server,10.99.12.22,Compute Host
+SCADA-HOST-23,Grid-Sector-4,Industrial Server,10.99.12.23,Compute Host
+SCADA-HOST-24,Grid-Sector-4,Industrial Server,10.99.12.24,Compute Host
+SCADA-HOST-25,Grid-Sector-4,Industrial Server,10.99.12.25,Compute Host
+SCADA-HOST-26,Grid-Sector-4,Industrial Server,10.99.12.26,Compute Host
+SCADA-HOST-27,Grid-Sector-4,Industrial Server,10.99.12.27,Compute Host
+SCADA-HOST-28,Grid-Sector-4,Industrial Server,10.99.12.28,Compute Host
+SCADA-HOST-29,Grid-Sector-4,Industrial Server,10.99.12.29,Compute Host
+SCADA-HOST-30,Grid-Sector-4,Industrial Server,10.99.12.30,Compute Host
+SCADA-HOST-31,Grid-Sector-4,Industrial Server,10.99.12.31,Compute Host
+SCADA-HOST-32,Grid-Sector-4,Industrial Server,10.99.12.32,Compute Host
+SCADA-HOST-33,Grid-Sector-4,Industrial Server,10.99.12.33,Compute Host
+SCADA-HOST-34,Grid-Sector-4,Industrial Server,10.99.12.34,Compute Host
+SCADA-HOST-35,Grid-Sector-4,Industrial Server,10.99.12.35,Compute Host
+SCADA-HOST-36,Grid-Sector-4,Industrial Server,10.99.12.36,Compute Host
+SCADA-HOST-37,Grid-Sector-4,Industrial Server,10.99.12.37,Compute Host
+SCADA-HOST-38,Grid-Sector-4,Industrial Server,10.99.12.38,Compute Host
+SCADA-HOST-39,Grid-Sector-4,Industrial Server,10.99.12.39,Compute Host
+SCADA-HOST-40,Grid-Sector-4,Industrial Server,10.99.12.40,Compute Host
+SCADA-HOST-41,Grid-Sector-4,Industrial Server,10.99.12.41,Compute Host
+SCADA-HOST-42,Grid-Sector-4,Industrial Server,10.99.12.42,Compute Host
+SCADA-HOST-43,Grid-Sector-4,Industrial Server,10.99.12.43,Compute Host
+SCADA-HOST-44,Grid-Sector-4,Industrial Server,10.99.12.44,Compute Host
+SCADA-HOST-45,Grid-Sector-4,Industrial Server,10.99.12.45,Compute Host
+SCADA-HOST-46,Grid-Sector-4,Industrial Server,10.99.12.46,Compute Host
+SCADA-HOST-47,Grid-Sector-4,Industrial Server,10.99.12.47,Compute Host
+SCADA-HOST-48,Grid-Sector-4,Industrial Server,10.99.12.48,Compute Host
+SCADA-HOST-49,Grid-Sector-4,Industrial Server,10.99.12.49,Compute Host
+SCADA-HOST-50,Grid-Sector-4,Industrial Server,10.99.12.50,Compute Host
+SCADA-HOST-51,Grid-Sector-4,Industrial Server,10.99.12.51,Compute Host
+SCADA-HOST-52,Grid-Sector-4,Industrial Server,10.99.12.52,Compute Host
+SCADA-HOST-53,Grid-Sector-4,Industrial Server,10.99.12.53,Compute Host
+SCADA-HOST-54,Grid-Sector-4,Industrial Server,10.99.12.54,Compute Host
+SCADA-HOST-55,Grid-Sector-4,Industrial Server,10.99.12.55,Compute Host
+SCADA-HOST-56,Grid-Sector-4,Industrial Server,10.99.12.56,Compute Host
+SCADA-HOST-57,Grid-Sector-4,Industrial Server,10.99.12.57,Compute Host
+SCADA-HOST-58,Grid-Sector-4,Industrial Server,10.99.12.58,Compute Host
+SCADA-HOST-59,Grid-Sector-4,Industrial Server,10.99.12.59,Compute Host
+SCADA-HOST-60,Grid-Sector-4,Industrial Server,10.99.12.60,Compute Host
+SCADA-HOST-61,Grid-Sector-4,Industrial Server,10.99.12.61,Compute Host
+SCADA-HOST-62,Grid-Sector-4,Industrial Server,10.99.12.62,Compute Host
+SCADA-HOST-63,Grid-Sector-4,Industrial Server,10.99.12.63,Compute Host
+SCADA-HOST-64,Grid-Sector-4,Industrial Server,10.99.12.64,Compute Host
+SCADA-HOST-65,Grid-Sector-4,Industrial Server,10.99.12.65,Compute Host
+SCADA-HOST-66,Grid-Sector-4,Industrial Server,10.99.12.66,Compute Host
+SCADA-HOST-67,Grid-Sector-4,Industrial Server,10.99.12.67,Compute Host
+SCADA-HOST-68,Grid-Sector-4,Industrial Server,10.99.12.68,Compute Host
+SCADA-HOST-69,Grid-Sector-4,Industrial Server,10.99.12.69,Compute Host
+SCADA-HOST-70,Grid-Sector-4,Industrial Server,10.99.12.70,Compute Host
+SCADA-HOST-71,Grid-Sector-4,Industrial Server,10.99.12.71,Compute Host
+SCADA-HOST-72,Grid-Sector-4,Industrial Server,10.99.12.72,Compute Host
+SCADA-HOST-73,Grid-Sector-4,Industrial Server,10.99.12.73,Compute Host
+SCADA-HOST-74,Grid-Sector-4,Industrial Server,10.99.12.74,Compute Host
+SCADA-HOST-75,Grid-Sector-4,Industrial Server,10.99.12.75,Compute Host
+SCADA-SW-1,Grid-Sector-4,Ethernet Switch,10.99.1.10,Network Switch
+SCADA-SW-2,Grid-Sector-4,Ethernet Switch,10.99.1.11,Network Switch
+SCADA-SW-3,Grid-Sector-4,Ethernet Switch,10.99.1.12,Network Switch
+SCADA-SW-4,Grid-Sector-4,Ethernet Switch,10.99.1.13,Network Switch
+SCADA-SW-5,Grid-Sector-4,Ethernet Switch,10.99.1.14,Network Switch
+SCADA-SW-6,Grid-Sector-4,Ethernet Switch,10.99.1.15,Network Switch

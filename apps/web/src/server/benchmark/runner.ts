@@ -91,7 +91,22 @@ export async function buildInput(c: BenchmarkCase, catalogue: Catalogue): Promis
     }
   }
 
-  const docText = attachments.map((a) => a.extractedText || "").filter(Boolean).join("\n\n");
+  if (attachments.length === 0 && c.attachmentTexts && c.attachmentTexts.length > 0) {
+    for (let i = 0; i < c.attachmentTexts.length; i++) {
+      attachments.push({
+        name: c.attachments?.[i] ?? `attachment-${i + 1}.txt`,
+        contentType: "text/plain",
+        sizeBytes: Buffer.byteLength(c.attachmentTexts[i]!, "utf8"),
+        scanned: true,
+        extractedText: c.attachmentTexts[i]!,
+        documentKind: "text",
+      });
+    }
+  }
+
+  const parsedDocText = attachments.map((a) => a.extractedText || "").filter(Boolean).join("\n\n");
+  const fallbackDocText = (c.attachmentTexts || []).join("\n\n");
+  const docText = parsedDocText || fallbackDocText;
   const cumulativeText = docText ? `${c.turns.join("\n\n")}\n\n[Attached Documents]:\n${docText}` : c.turns.join("\n\n");
 
   const prior: EmailMessage[] = c.turns.slice(0, -1).map((body, index) => ({

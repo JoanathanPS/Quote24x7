@@ -43,6 +43,9 @@ console.log('Initial metrics:', {
 
 // Target cases to rerun partially
 const targetCaseIds = [
+  'cs-08', 'uc-01', 'uc-03', 'uc-18', 'uc-20',
+  'mt-03', 'tr-01', 'pi-01', 'tr-19', 'tr-22', 'tr-24',
+  'mm-csv-02', 'mm-doc-03',
   'mm-scan-01', 'mm-scan-02', 'mm-scan-03', 'mm-scan-04',
   'mm-img-01', 'mm-img-02', 'mm-img-03', 'mm-img-04'
 ];

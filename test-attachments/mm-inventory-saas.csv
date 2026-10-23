@@ -1,95 +1,95 @@
-Server Name,Function,Tier,Monitoring Target
-saas-worker-1,Worker Node,Production,Host Server
-saas-worker-2,Worker Node,Production,Host Server
-saas-worker-3,Worker Node,Production,Host Server
-saas-worker-4,Worker Node,Production,Host Server
-saas-worker-5,Worker Node,Production,Host Server
-saas-worker-6,Worker Node,Production,Host Server
-saas-worker-7,Worker Node,Production,Host Server
-saas-worker-8,Worker Node,Production,Host Server
-saas-worker-9,Worker Node,Production,Host Server
-saas-worker-10,Worker Node,Production,Host Server
-saas-worker-11,Worker Node,Production,Host Server
-saas-worker-12,Worker Node,Production,Host Server
-saas-worker-13,Worker Node,Production,Host Server
-saas-worker-14,Worker Node,Production,Host Server
-saas-worker-15,Worker Node,Production,Host Server
-saas-worker-16,Worker Node,Production,Host Server
-saas-worker-17,Worker Node,Production,Host Server
-saas-worker-18,Worker Node,Production,Host Server
-saas-worker-19,Worker Node,Production,Host Server
-saas-worker-20,Worker Node,Production,Host Server
-saas-worker-21,Worker Node,Production,Host Server
-saas-worker-22,Worker Node,Production,Host Server
-saas-worker-23,Worker Node,Production,Host Server
-saas-worker-24,Worker Node,Production,Host Server
-saas-worker-25,Worker Node,Production,Host Server
-saas-worker-26,Worker Node,Production,Host Server
-saas-worker-27,Worker Node,Production,Host Server
-saas-worker-28,Worker Node,Production,Host Server
-saas-worker-29,Worker Node,Production,Host Server
-saas-worker-30,Worker Node,Production,Host Server
-saas-worker-31,Worker Node,Production,Host Server
-saas-worker-32,Worker Node,Production,Host Server
-saas-worker-33,Worker Node,Production,Host Server
-saas-worker-34,Worker Node,Production,Host Server
-saas-worker-35,Worker Node,Production,Host Server
-saas-worker-36,Worker Node,Production,Host Server
-saas-worker-37,Worker Node,Production,Host Server
-saas-worker-38,Worker Node,Production,Host Server
-saas-worker-39,Worker Node,Production,Host Server
-saas-worker-40,Worker Node,Production,Host Server
-saas-worker-41,Worker Node,Production,Host Server
-saas-worker-42,Worker Node,Production,Host Server
-saas-worker-43,Worker Node,Production,Host Server
-saas-worker-44,Worker Node,Production,Host Server
-saas-worker-45,Worker Node,Production,Host Server
-saas-worker-46,Worker Node,Production,Host Server
-saas-worker-47,Worker Node,Production,Host Server
-saas-worker-48,Worker Node,Production,Host Server
-saas-worker-49,Worker Node,Production,Host Server
-saas-worker-50,Worker Node,Production,Host Server
-saas-worker-51,Worker Node,Production,Host Server
-saas-worker-52,Worker Node,Production,Host Server
-saas-worker-53,Worker Node,Production,Host Server
-saas-worker-54,Worker Node,Production,Host Server
-saas-worker-55,Worker Node,Production,Host Server
-saas-worker-56,Worker Node,Production,Host Server
-saas-worker-57,Worker Node,Production,Host Server
-saas-worker-58,Worker Node,Production,Host Server
-saas-worker-59,Worker Node,Production,Host Server
-saas-worker-60,Worker Node,Production,Host Server
-saas-worker-61,Worker Node,Production,Host Server
-saas-worker-62,Worker Node,Production,Host Server
-saas-worker-63,Worker Node,Production,Host Server
-saas-worker-64,Worker Node,Production,Host Server
-saas-worker-65,Worker Node,Production,Host Server
-saas-worker-66,Worker Node,Production,Host Server
-saas-worker-67,Worker Node,Production,Host Server
-saas-worker-68,Worker Node,Production,Host Server
-saas-worker-69,Worker Node,Production,Host Server
-saas-worker-70,Worker Node,Production,Host Server
-saas-worker-71,Worker Node,Production,Host Server
-saas-worker-72,Worker Node,Production,Host Server
-saas-worker-73,Worker Node,Production,Host Server
-saas-worker-74,Worker Node,Production,Host Server
-saas-worker-75,Worker Node,Production,Host Server
-saas-worker-76,Worker Node,Production,Host Server
-saas-worker-77,Worker Node,Production,Host Server
-saas-worker-78,Worker Node,Production,Host Server
-saas-worker-79,Worker Node,Production,Host Server
-saas-worker-80,Worker Node,Production,Host Server
-saas-worker-81,Worker Node,Production,Host Server
-saas-worker-82,Worker Node,Production,Host Server
-saas-worker-83,Worker Node,Production,Host Server
-saas-worker-84,Worker Node,Production,Host Server
-saas-worker-85,Worker Node,Production,Host Server
-saas-worker-86,Worker Node,Production,Host Server
-saas-worker-87,Worker Node,Production,Host Server
-saas-worker-88,Worker Node,Production,Host Server
-saas-worker-89,Worker Node,Production,Host Server
-saas-worker-90,Worker Node,Production,Host Server
-sw-access-01,Switch,Infrastructure,Network Switch
-sw-access-02,Switch,Infrastructure,Network Switch
-sw-access-03,Switch,Infrastructure,Network Switch
-sw-access-04,Switch,Infrastructure,Network Switch
+Instance ID,Host Tag,Tier,Internal IP,Disk GB,CPU,Service Unit
+i-0987afc001,saas-worker-1,Processing Tier,10.80.4.1,500 GB NVMe,32 vCPU,Host Server
+i-0987afc002,saas-worker-2,Processing Tier,10.80.4.2,500 GB NVMe,32 vCPU,Host Server
+i-0987afc003,saas-worker-3,Processing Tier,10.80.4.3,500 GB NVMe,32 vCPU,Host Server
+i-0987afc004,saas-worker-4,Processing Tier,10.80.4.4,500 GB NVMe,32 vCPU,Host Server
+i-0987afc005,saas-worker-5,Processing Tier,10.80.4.5,500 GB NVMe,32 vCPU,Host Server
+i-0987afc006,saas-worker-6,Processing Tier,10.80.4.6,500 GB NVMe,32 vCPU,Host Server
+i-0987afc007,saas-worker-7,Processing Tier,10.80.4.7,500 GB NVMe,32 vCPU,Host Server
+i-0987afc008,saas-worker-8,Processing Tier,10.80.4.8,500 GB NVMe,32 vCPU,Host Server
+i-0987afc009,saas-worker-9,Processing Tier,10.80.4.9,500 GB NVMe,32 vCPU,Host Server
+i-0987afc010,saas-worker-10,Processing Tier,10.80.4.10,500 GB NVMe,32 vCPU,Host Server
+i-0987afc011,saas-worker-11,Processing Tier,10.80.4.11,500 GB NVMe,32 vCPU,Host Server
+i-0987afc012,saas-worker-12,Processing Tier,10.80.4.12,500 GB NVMe,32 vCPU,Host Server
+i-0987afc013,saas-worker-13,Processing Tier,10.80.4.13,500 GB NVMe,32 vCPU,Host Server
+i-0987afc014,saas-worker-14,Processing Tier,10.80.4.14,500 GB NVMe,32 vCPU,Host Server
+i-0987afc015,saas-worker-15,Processing Tier,10.80.4.15,500 GB NVMe,32 vCPU,Host Server
+i-0987afc016,saas-worker-16,Processing Tier,10.80.4.16,500 GB NVMe,32 vCPU,Host Server
+i-0987afc017,saas-worker-17,Processing Tier,10.80.4.17,500 GB NVMe,32 vCPU,Host Server
+i-0987afc018,saas-worker-18,Processing Tier,10.80.4.18,500 GB NVMe,32 vCPU,Host Server
+i-0987afc019,saas-worker-19,Processing Tier,10.80.4.19,500 GB NVMe,32 vCPU,Host Server
+i-0987afc020,saas-worker-20,Processing Tier,10.80.4.20,500 GB NVMe,32 vCPU,Host Server
+i-0987afc021,saas-worker-21,Processing Tier,10.80.4.21,500 GB NVMe,32 vCPU,Host Server
+i-0987afc022,saas-worker-22,Processing Tier,10.80.4.22,500 GB NVMe,32 vCPU,Host Server
+i-0987afc023,saas-worker-23,Processing Tier,10.80.4.23,500 GB NVMe,32 vCPU,Host Server
+i-0987afc024,saas-worker-24,Processing Tier,10.80.4.24,500 GB NVMe,32 vCPU,Host Server
+i-0987afc025,saas-worker-25,Processing Tier,10.80.4.25,500 GB NVMe,32 vCPU,Host Server
+i-0987afc026,saas-worker-26,Processing Tier,10.80.4.26,500 GB NVMe,32 vCPU,Host Server
+i-0987afc027,saas-worker-27,Processing Tier,10.80.4.27,500 GB NVMe,32 vCPU,Host Server
+i-0987afc028,saas-worker-28,Processing Tier,10.80.4.28,500 GB NVMe,32 vCPU,Host Server
+i-0987afc029,saas-worker-29,Processing Tier,10.80.4.29,500 GB NVMe,32 vCPU,Host Server
+i-0987afc030,saas-worker-30,Processing Tier,10.80.4.30,500 GB NVMe,32 vCPU,Host Server
+i-0987afc031,saas-worker-31,Processing Tier,10.80.4.31,500 GB NVMe,32 vCPU,Host Server
+i-0987afc032,saas-worker-32,Processing Tier,10.80.4.32,500 GB NVMe,32 vCPU,Host Server
+i-0987afc033,saas-worker-33,Processing Tier,10.80.4.33,500 GB NVMe,32 vCPU,Host Server
+i-0987afc034,saas-worker-34,Processing Tier,10.80.4.34,500 GB NVMe,32 vCPU,Host Server
+i-0987afc035,saas-worker-35,Processing Tier,10.80.4.35,500 GB NVMe,32 vCPU,Host Server
+i-0987afc036,saas-worker-36,Processing Tier,10.80.4.36,500 GB NVMe,32 vCPU,Host Server
+i-0987afc037,saas-worker-37,Processing Tier,10.80.4.37,500 GB NVMe,32 vCPU,Host Server
+i-0987afc038,saas-worker-38,Processing Tier,10.80.4.38,500 GB NVMe,32 vCPU,Host Server
+i-0987afc039,saas-worker-39,Processing Tier,10.80.4.39,500 GB NVMe,32 vCPU,Host Server
+i-0987afc040,saas-worker-40,Processing Tier,10.80.4.40,500 GB NVMe,32 vCPU,Host Server
+i-0987afc041,saas-worker-41,Processing Tier,10.80.4.41,500 GB NVMe,32 vCPU,Host Server
+i-0987afc042,saas-worker-42,Processing Tier,10.80.4.42,500 GB NVMe,32 vCPU,Host Server
+i-0987afc043,saas-worker-43,Processing Tier,10.80.4.43,500 GB NVMe,32 vCPU,Host Server
+i-0987afc044,saas-worker-44,Processing Tier,10.80.4.44,500 GB NVMe,32 vCPU,Host Server
+i-0987afc045,saas-worker-45,Processing Tier,10.80.4.45,500 GB NVMe,32 vCPU,Host Server
+i-0987afc046,saas-worker-46,Processing Tier,10.80.4.46,500 GB NVMe,32 vCPU,Host Server
+i-0987afc047,saas-worker-47,Processing Tier,10.80.4.47,500 GB NVMe,32 vCPU,Host Server
+i-0987afc048,saas-worker-48,Processing Tier,10.80.4.48,500 GB NVMe,32 vCPU,Host Server
+i-0987afc049,saas-worker-49,Processing Tier,10.80.4.49,500 GB NVMe,32 vCPU,Host Server
+i-0987afc050,saas-worker-50,Processing Tier,10.80.4.50,500 GB NVMe,32 vCPU,Host Server
+i-0987afc051,saas-worker-51,Processing Tier,10.80.4.51,500 GB NVMe,32 vCPU,Host Server
+i-0987afc052,saas-worker-52,Processing Tier,10.80.4.52,500 GB NVMe,32 vCPU,Host Server
+i-0987afc053,saas-worker-53,Processing Tier,10.80.4.53,500 GB NVMe,32 vCPU,Host Server
+i-0987afc054,saas-worker-54,Processing Tier,10.80.4.54,500 GB NVMe,32 vCPU,Host Server
+i-0987afc055,saas-worker-55,Processing Tier,10.80.4.55,500 GB NVMe,32 vCPU,Host Server
+i-0987afc056,saas-worker-56,Processing Tier,10.80.4.56,500 GB NVMe,32 vCPU,Host Server
+i-0987afc057,saas-worker-57,Processing Tier,10.80.4.57,500 GB NVMe,32 vCPU,Host Server
+i-0987afc058,saas-worker-58,Processing Tier,10.80.4.58,500 GB NVMe,32 vCPU,Host Server
+i-0987afc059,saas-worker-59,Processing Tier,10.80.4.59,500 GB NVMe,32 vCPU,Host Server
+i-0987afc060,saas-worker-60,Processing Tier,10.80.4.60,500 GB NVMe,32 vCPU,Host Server
+i-0987afc061,saas-worker-61,Processing Tier,10.80.4.61,500 GB NVMe,32 vCPU,Host Server
+i-0987afc062,saas-worker-62,Processing Tier,10.80.4.62,500 GB NVMe,32 vCPU,Host Server
+i-0987afc063,saas-worker-63,Processing Tier,10.80.4.63,500 GB NVMe,32 vCPU,Host Server
+i-0987afc064,saas-worker-64,Processing Tier,10.80.4.64,500 GB NVMe,32 vCPU,Host Server
+i-0987afc065,saas-worker-65,Processing Tier,10.80.4.65,500 GB NVMe,32 vCPU,Host Server
+i-0987afc066,saas-worker-66,Processing Tier,10.80.4.66,500 GB NVMe,32 vCPU,Host Server
+i-0987afc067,saas-worker-67,Processing Tier,10.80.4.67,500 GB NVMe,32 vCPU,Host Server
+i-0987afc068,saas-worker-68,Processing Tier,10.80.4.68,500 GB NVMe,32 vCPU,Host Server
+i-0987afc069,saas-worker-69,Processing Tier,10.80.4.69,500 GB NVMe,32 vCPU,Host Server
+i-0987afc070,saas-worker-70,Processing Tier,10.80.4.70,500 GB NVMe,32 vCPU,Host Server
+i-0987afc071,saas-worker-71,Processing Tier,10.80.4.71,500 GB NVMe,32 vCPU,Host Server
+i-0987afc072,saas-worker-72,Processing Tier,10.80.4.72,500 GB NVMe,32 vCPU,Host Server
+i-0987afc073,saas-worker-73,Processing Tier,10.80.4.73,500 GB NVMe,32 vCPU,Host Server
+i-0987afc074,saas-worker-74,Processing Tier,10.80.4.74,500 GB NVMe,32 vCPU,Host Server
+i-0987afc075,saas-worker-75,Processing Tier,10.80.4.75,500 GB NVMe,32 vCPU,Host Server
+i-0987afc076,saas-worker-76,Processing Tier,10.80.4.76,500 GB NVMe,32 vCPU,Host Server
+i-0987afc077,saas-worker-77,Processing Tier,10.80.4.77,500 GB NVMe,32 vCPU,Host Server
+i-0987afc078,saas-worker-78,Processing Tier,10.80.4.78,500 GB NVMe,32 vCPU,Host Server
+i-0987afc079,saas-worker-79,Processing Tier,10.80.4.79,500 GB NVMe,32 vCPU,Host Server
+i-0987afc080,saas-worker-80,Processing Tier,10.80.4.80,500 GB NVMe,32 vCPU,Host Server
+i-0987afc081,saas-worker-81,Processing Tier,10.80.4.81,500 GB NVMe,32 vCPU,Host Server
+i-0987afc082,saas-worker-82,Processing Tier,10.80.4.82,500 GB NVMe,32 vCPU,Host Server
+i-0987afc083,saas-worker-83,Processing Tier,10.80.4.83,500 GB NVMe,32 vCPU,Host Server
+i-0987afc084,saas-worker-84,Processing Tier,10.80.4.84,500 GB NVMe,32 vCPU,Host Server
+i-0987afc085,saas-worker-85,Processing Tier,10.80.4.85,500 GB NVMe,32 vCPU,Host Server
+i-0987afc086,saas-worker-86,Processing Tier,10.80.4.86,500 GB NVMe,32 vCPU,Host Server
+i-0987afc087,saas-worker-87,Processing Tier,10.80.4.87,500 GB NVMe,32 vCPU,Host Server
+i-0987afc088,saas-worker-88,Processing Tier,10.80.4.88,500 GB NVMe,32 vCPU,Host Server
+i-0987afc089,saas-worker-89,Processing Tier,10.80.4.89,500 GB NVMe,32 vCPU,Host Server
+i-0987afc090,saas-worker-90,Processing Tier,10.80.4.90,500 GB NVMe,32 vCPU,Host Server
+i-sw-01,sw-tor-01,Network Gear,10.80.0.1,N/A,N/A,Network Switch
+i-sw-02,sw-tor-02,Network Gear,10.80.0.2,N/A,N/A,Network Switch
+i-sw-03,sw-tor-03,Network Gear,10.80.0.3,N/A,N/A,Network Switch
+i-sw-04,sw-tor-04,Network Gear,10.80.0.4,N/A,N/A,Network Switch
