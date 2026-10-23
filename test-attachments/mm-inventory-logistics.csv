@@ -1,58 +1,58 @@
-Host,Role,Subnet
-wh-node-1,Warehouse Host,10.200.1.1
-wh-node-2,Warehouse Host,10.200.1.2
-wh-node-3,Warehouse Host,10.200.1.3
-wh-node-4,Warehouse Host,10.200.1.4
-wh-node-5,Warehouse Host,10.200.1.5
-wh-node-6,Warehouse Host,10.200.1.6
-wh-node-7,Warehouse Host,10.200.1.7
-wh-node-8,Warehouse Host,10.200.1.8
-wh-node-9,Warehouse Host,10.200.1.9
-wh-node-10,Warehouse Host,10.200.1.10
-wh-node-11,Warehouse Host,10.200.1.11
-wh-node-12,Warehouse Host,10.200.1.12
-wh-node-13,Warehouse Host,10.200.1.13
-wh-node-14,Warehouse Host,10.200.1.14
-wh-node-15,Warehouse Host,10.200.1.15
-wh-node-16,Warehouse Host,10.200.1.16
-wh-node-17,Warehouse Host,10.200.1.17
-wh-node-18,Warehouse Host,10.200.1.18
-wh-node-19,Warehouse Host,10.200.1.19
-wh-node-20,Warehouse Host,10.200.1.20
-wh-node-21,Warehouse Host,10.200.1.21
-wh-node-22,Warehouse Host,10.200.1.22
-wh-node-23,Warehouse Host,10.200.1.23
-wh-node-24,Warehouse Host,10.200.1.24
-wh-node-25,Warehouse Host,10.200.1.25
-wh-node-26,Warehouse Host,10.200.1.26
-wh-node-27,Warehouse Host,10.200.1.27
-wh-node-28,Warehouse Host,10.200.1.28
-wh-node-29,Warehouse Host,10.200.1.29
-wh-node-30,Warehouse Host,10.200.1.30
-wh-node-31,Warehouse Host,10.200.1.31
-wh-node-32,Warehouse Host,10.200.1.32
-wh-node-33,Warehouse Host,10.200.1.33
-wh-node-34,Warehouse Host,10.200.1.34
-wh-node-35,Warehouse Host,10.200.1.35
-wh-node-36,Warehouse Host,10.200.1.36
-wh-node-37,Warehouse Host,10.200.1.37
-wh-node-38,Warehouse Host,10.200.1.38
-wh-node-39,Warehouse Host,10.200.1.39
-wh-node-40,Warehouse Host,10.200.1.40
-wh-node-41,Warehouse Host,10.200.1.41
-wh-node-42,Warehouse Host,10.200.1.42
-wh-node-43,Warehouse Host,10.200.1.43
-wh-node-44,Warehouse Host,10.200.1.44
-wh-node-45,Warehouse Host,10.200.1.45
-wh-node-46,Warehouse Host,10.200.1.46
-wh-node-47,Warehouse Host,10.200.1.47
-wh-node-48,Warehouse Host,10.200.1.48
-wh-node-49,Warehouse Host,10.200.1.49
-wh-node-50,Warehouse Host,10.200.1.50
-wh-node-51,Warehouse Host,10.200.1.51
-wh-node-52,Warehouse Host,10.200.1.52
-wh-node-53,Warehouse Host,10.200.1.53
-wh-node-54,Warehouse Host,10.200.1.54
-wh-node-55,Warehouse Host,10.200.1.55
-wh-switch-01,Network Switch,10.200.0.1
-wh-switch-02,Network Switch,10.200.0.2
+Host Identifier,Facility Location,Operational Role,IP,Sizing Unit
+wh-srv-1,Chicago Hub,WMS Application Host,10.210.4.1,Host Server
+wh-srv-2,Chicago Hub,WMS Application Host,10.210.4.2,Host Server
+wh-srv-3,Chicago Hub,WMS Application Host,10.210.4.3,Host Server
+wh-srv-4,Chicago Hub,WMS Application Host,10.210.4.4,Host Server
+wh-srv-5,Chicago Hub,WMS Application Host,10.210.4.5,Host Server
+wh-srv-6,Chicago Hub,WMS Application Host,10.210.4.6,Host Server
+wh-srv-7,Chicago Hub,WMS Application Host,10.210.4.7,Host Server
+wh-srv-8,Chicago Hub,WMS Application Host,10.210.4.8,Host Server
+wh-srv-9,Chicago Hub,WMS Application Host,10.210.4.9,Host Server
+wh-srv-10,Chicago Hub,WMS Application Host,10.210.4.10,Host Server
+wh-srv-11,Chicago Hub,WMS Application Host,10.210.4.11,Host Server
+wh-srv-12,Chicago Hub,WMS Application Host,10.210.4.12,Host Server
+wh-srv-13,Chicago Hub,WMS Application Host,10.210.4.13,Host Server
+wh-srv-14,Chicago Hub,WMS Application Host,10.210.4.14,Host Server
+wh-srv-15,Chicago Hub,WMS Application Host,10.210.4.15,Host Server
+wh-srv-16,Chicago Hub,WMS Application Host,10.210.4.16,Host Server
+wh-srv-17,Chicago Hub,WMS Application Host,10.210.4.17,Host Server
+wh-srv-18,Chicago Hub,WMS Application Host,10.210.4.18,Host Server
+wh-srv-19,Chicago Hub,WMS Application Host,10.210.4.19,Host Server
+wh-srv-20,Chicago Hub,WMS Application Host,10.210.4.20,Host Server
+wh-srv-21,Chicago Hub,WMS Application Host,10.210.4.21,Host Server
+wh-srv-22,Chicago Hub,WMS Application Host,10.210.4.22,Host Server
+wh-srv-23,Chicago Hub,WMS Application Host,10.210.4.23,Host Server
+wh-srv-24,Chicago Hub,WMS Application Host,10.210.4.24,Host Server
+wh-srv-25,Chicago Hub,WMS Application Host,10.210.4.25,Host Server
+wh-srv-26,Chicago Hub,WMS Application Host,10.210.4.26,Host Server
+wh-srv-27,Chicago Hub,WMS Application Host,10.210.4.27,Host Server
+wh-srv-28,Chicago Hub,WMS Application Host,10.210.4.28,Host Server
+wh-srv-29,Chicago Hub,WMS Application Host,10.210.4.29,Host Server
+wh-srv-30,Chicago Hub,WMS Application Host,10.210.4.30,Host Server
+wh-srv-31,Chicago Hub,WMS Application Host,10.210.4.31,Host Server
+wh-srv-32,Chicago Hub,WMS Application Host,10.210.4.32,Host Server
+wh-srv-33,Chicago Hub,WMS Application Host,10.210.4.33,Host Server
+wh-srv-34,Chicago Hub,WMS Application Host,10.210.4.34,Host Server
+wh-srv-35,Chicago Hub,WMS Application Host,10.210.4.35,Host Server
+wh-srv-36,Chicago Hub,WMS Application Host,10.210.4.36,Host Server
+wh-srv-37,Chicago Hub,WMS Application Host,10.210.4.37,Host Server
+wh-srv-38,Chicago Hub,WMS Application Host,10.210.4.38,Host Server
+wh-srv-39,Chicago Hub,WMS Application Host,10.210.4.39,Host Server
+wh-srv-40,Chicago Hub,WMS Application Host,10.210.4.40,Host Server
+wh-srv-41,Chicago Hub,WMS Application Host,10.210.4.41,Host Server
+wh-srv-42,Chicago Hub,WMS Application Host,10.210.4.42,Host Server
+wh-srv-43,Chicago Hub,WMS Application Host,10.210.4.43,Host Server
+wh-srv-44,Chicago Hub,WMS Application Host,10.210.4.44,Host Server
+wh-srv-45,Chicago Hub,WMS Application Host,10.210.4.45,Host Server
+wh-srv-46,Chicago Hub,WMS Application Host,10.210.4.46,Host Server
+wh-srv-47,Chicago Hub,WMS Application Host,10.210.4.47,Host Server
+wh-srv-48,Chicago Hub,WMS Application Host,10.210.4.48,Host Server
+wh-srv-49,Chicago Hub,WMS Application Host,10.210.4.49,Host Server
+wh-srv-50,Chicago Hub,WMS Application Host,10.210.4.50,Host Server
+wh-srv-51,Chicago Hub,WMS Application Host,10.210.4.51,Host Server
+wh-srv-52,Chicago Hub,WMS Application Host,10.210.4.52,Host Server
+wh-srv-53,Chicago Hub,WMS Application Host,10.210.4.53,Host Server
+wh-srv-54,Chicago Hub,WMS Application Host,10.210.4.54,Host Server
+wh-srv-55,Chicago Hub,WMS Application Host,10.210.4.55,Host Server
+wh-cisco-core-01,Chicago Hub,Distribution Switch,10.210.0.1,Network Switch
+wh-cisco-core-02,Chicago Hub,Distribution Switch,10.210.0.2,Network Switch

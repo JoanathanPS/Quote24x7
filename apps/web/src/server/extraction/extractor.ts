@@ -357,11 +357,8 @@ export function maskModelTokens(text: string): string {
     .replace(/\b\d[\d,.]*\s*(?:per|\/)\s*(?:server|host|device|switch|router|vm|month|year|annum|hr|hour|day|user|seat|gb|tb)\b(?:\s*(?:per|\/)\s*[a-z]+)*/gi, "PRICE_TOKEN");
 }
 
-const TENS_WORDS = "twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety";
-const ONES_WORDS = "one|two|three|four|five|six|seven|eight|nine";
-const TEENS_WORDS = "ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen";
-const ALL_NUM_WORDS = `${TENS_WORDS}|${ONES_WORDS}|${TEENS_WORDS}|hundred|thousand|million`;
-export const WORD_NUMBER_REGEX_PART = `(?:(?:${TENS_WORDS})[\\s-]+(?:${ONES_WORDS})|${ALL_NUM_WORDS}|(?:[a-z]+(?:\\s+[a-z]+){1,4}))`;
+const NUM_TOKEN = `(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|a|an)`;
+export const WORD_NUMBER_REGEX_PART = `(?:${NUM_TOKEN}(?:[\\s-]+(?:and\\s+)?${NUM_TOKEN})*)`;
 
 export function parseWordNumber(str: string): number | null {
   const clean = str.toLowerCase().trim().replace(/-/g, " ");
@@ -512,8 +509,8 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   let serverState: IntakeUnitState = "unknown";
 
   const authoritativeHostMatch =
-    inboundRawText.match(/Total\s+(?:Host\s+Server|Host|Server)\s+Requirement\s*[:=]\s*(\d+)/i) ||
-    inboundRawText.match(/Total\s+Requirement\s*[:=]\s*(\d+)\s*(?:Host|Server)/i);
+    rawText.match(/Total\s+(?:Host\s+Server|Host|Server)\s+Requirement\s*[:=]\s*(\d+)/i) ||
+    rawText.match(/Total\s+Requirement\s*[:=]\s*(\d+)\s*(?:Host|Server)/i);
 
   const serverChangeMatch =
     text.match(/(?:reduce|lower|increase|change|adjust)\s*(?:the\s+)?(?:servers?|hosts?|vms?)\s*(?:from\s+\d+\s+)?to\s*(\d+)/i) ||
@@ -522,7 +519,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const inlineServerMatches = [
     ...text.matchAll(
-      /(?<![a-zA-Z0-9])(\d+)[^\S\r\n]*(?:(?!(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|websites?|urls?|endpoints?|routers?|switches?|firewalls?|checks?)\b)[a-zA-Z0-9_-]+[^\S\r\n]*){0,6}\b(servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|bare-metal(?:\s+blades?)?|ec2(?:\s+instances?)?|branch\s+servers?|compute\s+nodes?)\b/gi,
+      /(?<![a-zA-Z0-9.])(\d+)[^\S\r\n]*(?:(?!(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|websites?|urls?|endpoints?|routers?|switches?|firewalls?|checks?|tb|gb|mb|pb)\b)(?!\d+)[a-zA-Z0-9_-]+[^\S\r\n]*){0,6}\b(servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|bare-metal(?:\s+blades?)?|ec2(?:\s+instances?)?|branch\s+servers?|compute\s+nodes?)\b/gi,
     ),
   ].filter(
     (m) =>
@@ -553,20 +550,27 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const serverMatch =
     text.match(
-      /(?<![a-zA-Z0-9])(\d+)[^\S\r\n]*(?:(?!(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|websites?|urls?|endpoints?|routers?|switches?|firewalls?|checks?)\b)[a-zA-Z0-9_-]+[^\S\r\n]*){0,6}\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|bare-metal(?:\s+blades?)?|ec2(?:\s+instances?)?|branch\s+servers?|compute\s+nodes?)\b/i,
+      /(?<![a-zA-Z0-9.])(\d+)[^\S\r\n]*(?:(?!(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|websites?|urls?|endpoints?|routers?|switches?|firewalls?|checks?|tb|gb|mb|pb)\b)(?!\d+)[a-zA-Z0-9_-]+[^\S\r\n]*){0,6}\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|bare-metal(?:\s+blades?)?|ec2(?:\s+instances?)?|branch\s+servers?|compute\s+nodes?)\b/i,
     ) ||
     text.match(
-      /(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
+      /(?:^|\n)[^\n\r]*?\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?)[^:\n\r\d,|]{0,50}[:=,\t|]\s*"?(\d+)"?\s*(?:\r?\n|$)/i,
     ) ||
     text.match(
-      /(?:servers?|hosts?|nodes?|instances?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
+      /\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?)[^:\n\r\d,|]{0,50}[:=\t|]\s*"?(\d+)"?/i,
+    ) ||
+    text.match(
+      /\b(?:servers?|hosts?|nodes?|instances?)\s*(?:count|total|:|=)\s*"?(\d+)"?/i,
     );
 
   const wordServerMatch = text.match(
     new RegExp(`\\b(${WORD_NUMBER_REGEX_PART})\\s*(?:production\\s+|prod\\s+|linux\\s+|windows\\s+|database\\s+|app\\s+|application\\s+|web\\s+|virtual\\s+|cloud\\s+|bare-metal\\s+)?\\b(servers?|hosts?|vms?|instances?|nodes?|machines?|blades?)\\b`, "i"),
   );
 
-  const hasPositiveHost = Boolean(authoritativeHostMatch || serverChangeMatch || inlineHostSum > 0 || itemLineHostSum > 0 || (serverMatch && serverMatch[1]) || (wordServerMatch && wordServerMatch[1]));
+  const inventoryHostRows = hasDocAttachment
+    ? (rawText.match(/\b(?:Host\s+Monitor|Host\s+Server|Production\s+Host\s+Server)\b/gi) || []).length
+    : 0;
+
+  const hasPositiveHost = Boolean(authoritativeHostMatch || serverChangeMatch || inlineHostSum > 0 || itemLineHostSum > 0 || (serverMatch && serverMatch[1]) || (wordServerMatch && wordServerMatch[1]) || inventoryHostRows > 0);
   const serverNone =
     (!hasPositiveHost && scopeClosed && !serverMentioned) ||
     Boolean(serverNoneMatch) ||
@@ -700,6 +704,24 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       previousValue: null,
       materialToPricing: true,
     });
+  } else if (inventoryHostRows > 0) {
+    serverCount = inventoryHostRows;
+    serverState = "stated";
+    serverEvidence = rawText.match(/\b(?:Host\s+Monitor|Host\s+Server|Production\s+Host\s+Server)\b/i)?.[0] ?? "Host Monitor";
+    fields.push({
+      key: "servers",
+      label: "Server / Host Monitors",
+      group: "infrastructure",
+      value: serverCount,
+      unit: "servers",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.95,
+      evidence: serverEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
   } else if (serverMentioned) {
     serverState = "unknown";
     missingMaterialFields.push("servers");
@@ -735,7 +757,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const inlineNetMatches = [
     ...text.matchAll(
-      /(?<![a-zA-Z0-9])(\d+)\s*(?:[a-z\s]{0,25}?)\b(switches?|routers?|firewalls?|gateways?|vpc\s+gateways?|sd-wan\s+routers?|cloud\s+routers?|top-of-rack\s+switches?|tor\s+switches?|network\s+(?:devices?|components?|gear)?)\b/gi,
+      /(?<![a-zA-Z0-9.])(\d+)\s*(?:[a-z\s]{0,25}?)\b(switches?|routers?|firewalls?|gateways?|vpc\s+gateways?|sd-wan\s+routers?|cloud\s+routers?|top-of-rack\s+switches?|tor\s+switches?|network\s+(?:devices?|components?|gear)?)\b/gi,
     ),
   ].filter(
     (m) =>
@@ -767,24 +789,31 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const netMatch =
     text.match(
-      /(?<![a-zA-Z0-9])(\d+)[^\S\r\n]*(?:[a-z \t]{0,30}?)\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|gateways?|vpc\s+gateways?|sd-wan\s+routers?|cloud\s+routers?|top-of-rack\s+switches?)\b(?!\s*(?:servers?|hosts?|vms?|nodes?|instances?|machines?))/i,
+      /(?<![a-zA-Z0-9.])(\d+)[^\S\r\n]*(?:[a-z \t]{0,30}?)\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|gateways?|vpc\s+gateways?|sd-wan\s+routers?|cloud\s+routers?|top-of-rack\s+switches?)\b(?!\s*(?:servers?|hosts?|vms?|nodes?|instances?|machines?))/i,
     ) ||
     text.match(
-      /(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|gateways?)[^:\n\r\d,|]{0,50}[:=\t|]\s*"?(\d+)"?/i,
+      /(?:^|\n)[^\n\r]*?\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|gateways?)[^:\n\r\d,|]{0,50}[:=,\t|]\s*"?(\d+)"?\s*(?:\r?\n|$)/i,
     ) ||
     text.match(
-      /(?:network(?:\s+devices?)?|switches?|routers?|gateways?)\s*(?:count|total|:|=|,|\||\t)\s*"?(\d+)"?/i,
+      /\b(?:network(?:\s+devices?)?|switches?|routers?|firewalls?|gateways?)[^:\n\r\d,|]{0,50}[:=\t|]\s*"?(\d+)"?/i,
+    ) ||
+    text.match(
+      /\b(?:network(?:\s+devices?)?|switches?|routers?|gateways?)\s*(?:count|total|:|=)\s*"?(\d+)"?/i,
     );
 
   const wordNetMatch = text.match(
     new RegExp(`\\b(${WORD_NUMBER_REGEX_PART})\\s*(?:network\\s+|core\\s+|access\\s+|cisco\\s+)?\\b(switches?|routers?|firewalls?|gateways?|network(?:\\s+devices?)?)\\b`, "i"),
   );
 
+  const inventoryNetRows = hasDocAttachment
+    ? (rawText.match(/\b(?:Network\s+Component|Edge\s+Network\s+Switch|Top-of-Rack\s+Switch|Network\s+Switch)\b/gi) || []).length
+    : 0;
+
   const netNoneMatch = text.match(
     /\b(?:no\s+network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?|gear|gateways?))?|without\s+network(?:\s+(?:devices?|switches?|routers?|components?|firewalls?|interfaces?|gear|gateways?))?|zero\s+network|0\s+network|don'?t\s+need\s+network|network\s*:\s*(?:none|0|no)|no\s+(?:switches|routers|firewalls|gateways)|without\s+(?:switches|routers|firewalls|gateways)|remove\s+(?:all\s+)?network(?:\s+devices?)?)\b/i,
   );
 
-  const hasPositiveNet = Boolean(authoritativeNetMatch || netChangeMatch || inlineNetSum > 0 || itemLineNetSum > 0 || (netMatch && netMatch[1]) || (wordNetMatch && wordNetMatch[1]));
+  const hasPositiveNet = Boolean(authoritativeNetMatch || netChangeMatch || inlineNetSum > 0 || itemLineNetSum > 0 || (netMatch && netMatch[1]) || (wordNetMatch && wordNetMatch[1]) || inventoryNetRows > 0);
 
   const netNone =
     serversOnly ||
@@ -920,6 +949,24 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
       previousValue: null,
       materialToPricing: true,
     });
+  } else if (inventoryNetRows > 0) {
+    networkCount = inventoryNetRows;
+    networkState = "stated";
+    networkEvidence = rawText.match(/\b(?:Network\s+Component|Edge\s+Network\s+Switch|Top-of-Rack\s+Switch|Network\s+Switch)\b/i)?.[0] ?? "Network Component";
+    fields.push({
+      key: "network_devices",
+      label: "Network Devices",
+      group: "infrastructure",
+      value: networkCount,
+      unit: "devices",
+      state: "provided",
+      intakeState: "stated",
+      confidence: 0.95,
+      evidence: networkEvidence,
+      conflictWith: null,
+      previousValue: null,
+      materialToPricing: true,
+    });
   } else if (netMentioned) {
     networkState = "unknown";
     missingMaterialFields.push("network_devices");
@@ -982,7 +1029,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
   if (!basicCountCandidate) {
     const inlineBasicMatches = [
       ...text.matchAll(
-        /(?<![a-zA-Z0-9])(\d+)\s*(?:(?:public|external|internal|secure|monitored|active|news|web)\s+){0,2}\b(websites?|urls?|portal\s+urls?|web\s+portals?|portals?|web\s+sites?|api\s+endpoints?|rest\s+apis?|web\s+endpoints?|alb\s+endpoints?|endpoints?|ingress(?:\s+services?)?|web\s+checks?|website\s+checks?|website\s+monitors?|web\s+consoles?|consoles?|web\s+applications?|web\s+dashboards?|dashboards?|internal\s+web\s+pages?|web\s+pages?|public\s+storefronts?|storefronts?|basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?|\s+checks?)?|uptime(?:\s+monitors?|\s+checks?)?|tcp\s+port\s+checks?)\b/gi,
+        /(?<![a-zA-Z0-9.])(\d+)\s*(?:(?:public|external|internal|secure|monitored|active|news|web)\s+){0,2}\b(websites?|urls?|portal\s+urls?|web\s+portals?|portals?|web\s+sites?|api\s+endpoints?|rest\s+apis?|web\s+endpoints?|alb\s+endpoints?|endpoints?|ingress(?:\s+services?)?|web\s+checks?|website\s+checks?|website\s+monitors?|web\s+consoles?|consoles?|web\s+applications?|web\s+dashboards?|dashboards?|internal\s+web\s+pages?|web\s+pages?|public\s+storefronts?|storefronts?|basic(?:\s+monitors?)?|ping(?:\s+monitors?)?|port(?:\s+monitors?|\s+checks?)?|uptime(?:\s+monitors?|\s+checks?)?|tcp\s+port\s+checks?)\b/gi,
       ),
     ].filter((m) => {
       const raw = m[0].toLowerCase();
@@ -1153,10 +1200,10 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const advMatch =
     text.match(
-      /(?<![a-zA-Z0-9])(\d+(?:\s*k|\s*thousand)?)[^\S\r\n]*(?:(?:multi[- ]step|real[- ]browser)\s+){0,2}\b(?:synthetic(?:\s+(?:transaction|web|browser|login))?|advanced(?:\s+web)?|browser[- ]based\s+transaction|critical\s+web)\s*(?:monitors?|endpoints?|urls?|checks?|transactions?|flows?|journeys?)?\b(?!\s*(?:servers?|hosts?|vms?|nodes?|instances?|machines?|logs?))/i,
+      /(?<![a-zA-Z0-9.])(\d+(?:\s*k|\s*thousand)?)[^\S\r\n]*(?:[a-zA-Z-]+\s+){0,4}\b(?:synthetic(?:\s+(?:transaction|web|browser|login|flow))?|advanced(?:\s+web)?|browser[- ]based\s+transaction|critical\s+web)\s*(?:monitors?|endpoints?|urls?|checks?|transactions?|flows?|journeys?)?\b(?!\s*(?:servers?|hosts?|vms?|nodes?|instances?|machines?|logs?))/i,
     ) ||
     text.match(
-      /(?:synthetic(?:\s+transaction|\s+web|\s+browser)?|advanced(?:\s+web)?|browser[- ]based\s+transaction)[^:\n\r\d,|]{0,50}[:=\t|,]\s*"?(\d+(?:\s*k|\s*thousand)?)"?/i,
+      /(?:synthetic(?:\s+transaction|\s+web|\s+browser)?|advanced(?:\s+monitors?|\s+web)?|browser[- ]based\s+transaction)[^:\n\r\d,|]{0,50}[:=\t|,]\s*"?(\d+(?:\s*k|\s*thousand)?)"?/i,
     ) ||
     text.match(
       /(?<![a-zA-Z0-9])(\d+(?:\s*k|\s*thousand)?)[^\S\r\n]*(?:synthetic|advanced|browser[- ]based\s+transaction)\s*(?:(?:transaction|web|browser)\s+)?(?:monitors?|endpoints?|checks?|urls?|apis?|transactions?|flows?|journeys?)/i,
@@ -1354,7 +1401,15 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     } else if (wordRumMatch && wordRumMatch[1] && parseWordNumber(wordRumMatch[1]) !== null) {
       const wordValue = parseWordNumber(wordRumMatch[1])!;
       const suffix = wordRumMatch[0].toLowerCase();
-      rumPageviews = suffix.includes("million") ? wordValue * 1_000_000 : suffix.includes("thousand") ? wordValue * 1_000 : wordValue;
+      if (wordValue >= 1000) {
+        rumPageviews = wordValue;
+      } else if (suffix.includes("million") || suffix.includes(" m ")) {
+        rumPageviews = wordValue * 1_000_000;
+      } else if (suffix.includes("thousand") || suffix.includes(" k ")) {
+        rumPageviews = wordValue * 1_000;
+      } else {
+        rumPageviews = wordValue;
+      }
       rumEvidence = wordRumMatch[0].trim();
     }
     rumState = "stated";
