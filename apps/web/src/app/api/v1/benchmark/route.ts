@@ -168,6 +168,8 @@ export async function GET(req: Request) {
       success: true,
       dataset,
       totalCases: activeCases.length,
+      sharedBaselineCases: dataset === "v2" ? BENCHMARK_CASES_V1.length : 0,
+      additionalCases: dataset === "v2" ? activeCases.length - BENCHMARK_CASES_V1.length : 0,
       availableRuns,
       benchmarkCases,
       metrics: selectedResult?.final?.metrics || null,
