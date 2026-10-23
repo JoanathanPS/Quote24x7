@@ -14,6 +14,10 @@ import {
   DownloadSimple,
   ArrowsIn,
   ArrowsOut,
+  EnvelopeSimple,
+  Receipt,
+  Copy,
+  Info,
 } from "@phosphor-icons/react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +53,41 @@ interface BenchmarkCaseItem {
     hallucinations: string[];
     perUnit: Record<string, { expected: number; got: number; ok: boolean }> | null;
   };
+  replyEmail?: {
+    subject: string;
+    bodyText: string;
+    type: "quote" | "clarification" | "review";
+  } | null;
+  pricingDetails?: {
+    status: "quoted" | "awaiting_clarification" | "enterprise_review";
+    recommendedPlan: string;
+    optionType: string;
+    totalFormatted: string;
+    currency: string;
+    billingPeriod: string;
+    comparisonLine: string | null;
+    lineItems: Array<{
+      description: string;
+      quantity: number;
+      unitPriceFormatted: string;
+      lineTotalFormatted: string;
+      covers: string;
+    }>;
+    coverage: Array<{
+      unit: string;
+      label: string;
+      required: number;
+      included: number;
+      additional: number;
+      totalCovered: number;
+      isSufficient: boolean;
+    }>;
+    alternativeOptions: Array<{
+      planName: string;
+      optionType: string;
+      totalFormatted: string;
+    }>;
+  } | null;
 }
 
 interface BenchmarkApiResponse {
@@ -85,6 +124,7 @@ export default function BenchmarkPage() {
   const [activeCategory, setActiveCategory] = React.useState<string>("all");
   const [searchQuery, setSearchQuery] = React.useState<string>("");
   const [expandedCases, setExpandedCases] = React.useState<Record<string, boolean>>({});
+  const [copiedCaseId, setCopiedCaseId] = React.useState<string | null>(null);
 
   const fetchOverview = React.useCallback(async () => {
     try {
@@ -774,6 +814,201 @@ export default function BenchmarkPage() {
                         )}
                       </div>
                     </div>
+
+                    {/* 4. Generated Outbound Reply Mail */}
+                    {c.replyEmail && (
+                      <div className="space-y-1">
+                        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <EnvelopeSimple size={13} className="text-primary" />
+                            <span>Generated Outbound Reply Mail</span>
+                          </div>
+                          <Badge
+                            variant={
+                              c.replyEmail.type === "quote"
+                                ? "success"
+                                : c.replyEmail.type === "clarification"
+                                ? "info"
+                                : "warning"
+                            }
+                            className="text-[10px] capitalize"
+                          >
+                            {c.replyEmail.type === "quote"
+                              ? "Quotation Email"
+                              : c.replyEmail.type === "clarification"
+                              ? "Clarification Request"
+                              : "Enterprise Review"}
+                          </Badge>
+                        </div>
+                        <div className="bg-background/95 border border-border/60 rounded-lg overflow-hidden shadow-xs">
+                          <div className="bg-muted/40 px-3 py-1.5 border-b border-border/50 flex flex-wrap items-center justify-between text-[11px] gap-2">
+                            <div className="flex items-center gap-2 text-muted-foreground min-w-0">
+                              <span className="font-semibold text-foreground shrink-0">Subject:</span>
+                              <span className="truncate max-w-[280px] sm:max-w-md font-mono">{c.replyEmail.subject}</span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-[10px] flex items-center gap-1 cursor-pointer text-muted-foreground hover:text-foreground shrink-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (c.replyEmail?.bodyText) {
+                                  navigator.clipboard.writeText(c.replyEmail.bodyText);
+                                  setCopiedCaseId(c.id);
+                                  setTimeout(() => setCopiedCaseId(null), 2000);
+                                }
+                              }}
+                            >
+                              {copiedCaseId === c.id ? (
+                                <>
+                                  <Check size={11} className="text-success" />
+                                  <span className="text-success font-semibold">Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={11} />
+                                  <span>Copy Email</span>
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                          <div className="p-3 text-xs text-foreground font-mono whitespace-pre-wrap leading-relaxed select-text bg-card/40 max-h-72 overflow-y-auto">
+                            {c.replyEmail.bodyText}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 5. Pricing & Sizing Breakdown (Financial Audit) */}
+                    {c.pricingDetails && (
+                      <div className="space-y-1">
+                        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <Receipt size={13} className="text-primary" />
+                            <span>Pricing & Sizing Breakdown (Commercial Audit)</span>
+                          </div>
+                          <Badge
+                            variant={
+                              c.pricingDetails.status === "quoted"
+                                ? "success"
+                                : c.pricingDetails.status === "awaiting_clarification"
+                                ? "neutral"
+                                : "warning"
+                            }
+                            className="text-[10px]"
+                          >
+                            {c.pricingDetails.status === "quoted"
+                              ? "Quoted & Validated"
+                              : c.pricingDetails.status === "awaiting_clarification"
+                              ? "Awaiting Information"
+                              : "Senior Sales Review"}
+                          </Badge>
+                        </div>
+
+                        {c.pricingDetails.status === "quoted" ? (
+                          <div className="bg-background/95 border border-border/60 rounded-lg p-3 space-y-3 shadow-xs">
+                            {/* Summary Cards */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <div className="p-2 rounded-md bg-muted/40 border border-border/40">
+                                <span className="text-[10px] text-muted-foreground uppercase font-semibold block">Recommended Plan</span>
+                                <span className="text-sm font-bold text-foreground">{c.pricingDetails.recommendedPlan}</span>
+                              </div>
+                              <div className="p-2 rounded-md bg-primary/5 border border-primary/20">
+                                <span className="text-[10px] text-muted-foreground uppercase font-semibold block">Total Annual Price</span>
+                                <span className="text-sm font-bold text-primary">{c.pricingDetails.totalFormatted}</span>
+                              </div>
+                              <div className="p-2 rounded-md bg-muted/40 border border-border/40">
+                                <span className="text-[10px] text-muted-foreground uppercase font-semibold block">Billing Cadence</span>
+                                <span className="text-sm font-bold text-foreground">Annual ({c.pricingDetails.currency})</span>
+                              </div>
+                            </div>
+
+                            {/* Comparison Line */}
+                            {c.pricingDetails.comparisonLine && (
+                              <div className="text-[11px] text-muted-foreground bg-muted/20 border-l-2 border-primary/50 pl-2.5 py-1 italic">
+                                {c.pricingDetails.comparisonLine}
+                              </div>
+                            )}
+
+                            {/* Line items table */}
+                            {c.pricingDetails.lineItems.length > 0 && (
+                              <div className="border border-border/60 rounded-md overflow-hidden">
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow className="bg-muted/30 border-b border-border/50">
+                                      <TableHead className="text-[11px] py-1.5 px-3 font-semibold text-left">Item / Subscription</TableHead>
+                                      <TableHead className="text-[11px] py-1.5 px-2 font-semibold text-center">Qty</TableHead>
+                                      <TableHead className="text-[11px] py-1.5 px-3 font-semibold text-left">What it covers</TableHead>
+                                      <TableHead className="text-[11px] py-1.5 px-2 font-semibold text-right">Unit Rate</TableHead>
+                                      <TableHead className="text-[11px] py-1.5 px-3 font-semibold text-right">Annual Total</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {c.pricingDetails.lineItems.map((item, idx) => (
+                                      <TableRow key={idx} className="border-b border-border/30 hover:bg-muted/10">
+                                        <TableCell className="text-xs py-1.5 px-3 font-medium text-foreground">
+                                          {item.description}
+                                        </TableCell>
+                                        <TableCell className="text-xs py-1.5 px-2 text-center text-muted-foreground">
+                                          {item.quantity}
+                                        </TableCell>
+                                        <TableCell className="text-xs py-1.5 px-3 text-muted-foreground">
+                                          {item.covers}
+                                        </TableCell>
+                                        <TableCell className="text-xs py-1.5 px-2 text-right text-muted-foreground font-mono">
+                                          {item.unitPriceFormatted}
+                                        </TableCell>
+                                        <TableCell className="text-xs py-1.5 px-3 text-right font-semibold text-foreground font-mono">
+                                          {item.lineTotalFormatted}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                    <TableRow className="bg-muted/20 font-bold">
+                                      <TableCell colSpan={4} className="text-xs py-2 px-3 text-right">
+                                        Grand Total (Billed Annually):
+                                      </TableCell>
+                                      <TableCell className="text-xs py-2 px-3 text-right text-primary font-bold font-mono">
+                                        {c.pricingDetails.totalFormatted}
+                                      </TableCell>
+                                    </TableRow>
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            )}
+
+                            {/* Resource Coverage Checklist */}
+                            {c.pricingDetails.coverage.length > 0 && (
+                              <div className="space-y-1.5 pt-1">
+                                <span className="text-[10px] text-muted-foreground uppercase font-semibold block">Resource Coverage Audit</span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {c.pricingDetails.coverage.map((cov) => (
+                                    <span
+                                      key={cov.unit}
+                                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${
+                                        cov.isSufficient
+                                          ? "bg-success-soft text-success-soft-foreground border-success/30"
+                                          : "bg-danger-soft text-danger-soft-foreground border-danger/30"
+                                      }`}
+                                    >
+                                      {cov.isSufficient ? <Check size={11} weight="bold" /> : <X size={11} weight="bold" />}
+                                      <span>
+                                        {cov.label}: <strong>{cov.totalCovered}</strong> covered
+                                        {cov.required > 0 ? ` (demanded: ${cov.required})` : ""}
+                                      </span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="bg-muted/20 border border-border/50 rounded-lg p-3 text-xs text-muted-foreground flex items-center gap-2">
+                            <Info size={14} className="text-primary shrink-0" />
+                            <span>{c.pricingDetails.comparisonLine}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </CardContent>
                 )}
               </Card>

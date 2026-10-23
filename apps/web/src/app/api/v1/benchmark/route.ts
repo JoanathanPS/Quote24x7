@@ -10,6 +10,43 @@ import { groqProvider } from "@/server/ai/groq-provider";
 import { cerebrasProvider } from "@/server/ai/cerebras-provider";
 import { geminiProvider } from "@/server/ai/gemini-provider";
 import type { AiProvider } from "@/server/ai/gemini-provider";
+import { loadActiveCatalogue } from "@/server/catalogue/loader";
+import { buildQuote } from "@/server/pricing/quote-builder";
+import {
+  renderQuoteEmail,
+  renderClarificationEmail,
+  resolveThreadSubject,
+  getWhatItCoversText,
+} from "@/server/email/resend-outbound";
+import { formatMoney } from "@/server/pricing/money";
+import { UNIT_LABELS, type PricingDemand } from "@/server/pricing/engine";
+import type { RequirementProfile } from "@/types/domain";
+
+function makeBenchmarkProfile(threadId: string, rawText: string): RequirementProfile {
+  return {
+    id: `prof_${threadId}`,
+    threadId,
+    version: 1,
+    supersedesProfileId: null,
+    createdAt: new Date().toISOString(),
+    extractorModel: "benchmark_engine",
+    extractorRunId: null,
+    fields: [],
+    summary: "Benchmark profile",
+    pendingQuestions: [],
+    answeredQuestions: [],
+    clarificationRound: 0,
+    rawText,
+    intakeRequirements: {
+      basic_monitor: { unit: "basic_monitor", state: "unknown", quantity: null, evidence: null },
+      advanced_monitor: { unit: "advanced_monitor", state: "unknown", quantity: null, evidence: null },
+      host_monitor: { unit: "host_monitor", state: "unknown", quantity: null, evidence: null },
+      network_component: { unit: "network_component", state: "unknown", quantity: null, evidence: null },
+      rum_pageview: { unit: "rum_pageview", state: "unknown", quantity: null, evidence: null },
+      applog_gb: { unit: "applog_gb", state: "unknown", quantity: null, evidence: null },
+    },
+  };
+}
 
 function getResultsDir(): string {
   const p1 = path.resolve(process.cwd(), "benchmark-results");
@@ -160,6 +197,8 @@ export async function GET(req: Request) {
       }
     }
 
+    const catalogue = loadActiveCatalogue();
+
     const benchmarkCases = activeCases.map((c) => {
       const score = scores.get(c.id);
 
@@ -182,6 +221,194 @@ export async function GET(req: Request) {
             gotPositive[k] = gotVal;
           }
         }
+      }
+
+      const predictedAction = String(score?.predictedAction || c.expected.action);
+      const isQuoteAction = predictedAction === "prepare_quote" || predictedAction === "quote";
+      const isClarificationAction = predictedAction === "ask_follow_up";
+
+      let replyEmail: {
+        subject: string;
+        bodyText: string;
+        type: "quote" | "clarification" | "review";
+      } | null = null;
+
+      let pricingDetails: {
+        status: "quoted" | "awaiting_clarification" | "enterprise_review";
+        recommendedPlan: string;
+        optionType: string;
+        totalFormatted: string;
+        currency: string;
+        billingPeriod: string;
+        comparisonLine: string | null;
+        lineItems: Array<{
+          description: string;
+          quantity: number;
+          unitPriceFormatted: string;
+          lineTotalFormatted: string;
+          covers: string;
+        }>;
+        coverage: Array<{
+          unit: string;
+          label: string;
+          required: number;
+          included: number;
+          additional: number;
+          totalCovered: number;
+          isSufficient: boolean;
+        }>;
+        alternativeOptions: Array<{
+          planName: string;
+          optionType: string;
+          totalFormatted: string;
+        }>;
+      } | null = null;
+
+      try {
+        if (isQuoteAction) {
+          const demand: PricingDemand = {
+            host_monitor: gotPositive.host_monitor ?? c.expected.requirements?.host_monitor ?? 0,
+            network_component: gotPositive.network_component ?? c.expected.requirements?.network_component ?? 0,
+            basic_monitor: gotPositive.basic_monitor ?? c.expected.requirements?.basic_monitor ?? 0,
+            advanced_monitor: gotPositive.advanced_monitor ?? c.expected.requirements?.advanced_monitor ?? 0,
+            rum_pageview: gotPositive.rum_pageview ?? c.expected.requirements?.rum_pageview ?? 0,
+            applog_gb: gotPositive.applog_gb ?? c.expected.requirements?.applog_gb ?? 0,
+          };
+
+          const { quote } = buildQuote({
+            quoteId: `qt_bench_${c.id}`,
+            threadId: `th_bench_${c.id}`,
+            profile: makeBenchmarkProfile(`th_bench_${c.id}`, c.turns.join("\n\n")),
+            demand,
+            catalogue,
+            createdAt: new Date().toISOString(),
+          });
+
+          if (quote.options.length > 0) {
+            const bestValue = quote.options.find((o) => o.optionType === "best_value") || quote.options[0]!;
+            const alternative = quote.options.find((o) => o.id !== bestValue.id);
+            const email = renderQuoteEmail({
+              quote,
+              recipientName: "Customer",
+              latestMessageBody: c.turns[c.turns.length - 1],
+            });
+
+            replyEmail = {
+              subject: c.subject ? resolveThreadSubject(c.subject) : `Quotation: Site24x7 Sizing - Ref ${quote.shortRef || "Q-1042"}`,
+              type: "quote",
+              bodyText: email.textContent,
+            };
+
+            pricingDetails = {
+              status: "quoted",
+              recommendedPlan: bestValue.planName,
+              optionType: bestValue.optionType,
+              totalFormatted: formatMoney(bestValue.total, quote.currency, { showDecimals: false }) + " / yr",
+              currency: quote.currency,
+              billingPeriod: "Annual",
+              comparisonLine:
+                quote.comparisonLine ||
+                (alternative ? `${alternative.planName} is also available at ${formatMoney(alternative.total, quote.currency, { showDecimals: false })}/year.` : null),
+              lineItems: bestValue.lineItems.map((item) => ({
+                description: item.description,
+                quantity: item.quantity,
+                unitPriceFormatted: formatMoney(item.unitPrice, quote.currency, { showDecimals: false }),
+                lineTotalFormatted: formatMoney(item.lineTotal, quote.currency, { showDecimals: false }),
+                covers: getWhatItCoversText(item, bestValue.coverage),
+              })),
+              coverage: bestValue.coverage.map((cov) => ({
+                unit: cov.unit,
+                label: cov.label || UNIT_LABELS[cov.unit] || cov.unit,
+                required: cov.required,
+                included: cov.included,
+                additional: cov.viaAddOns,
+                totalCovered: cov.total,
+                isSufficient: cov.satisfied,
+              })),
+              alternativeOptions: quote.options
+                .filter((o) => o.id !== bestValue.id)
+                .map((opt) => ({
+                  planName: opt.planName,
+                  optionType: opt.optionType,
+                  totalFormatted: formatMoney(opt.total, quote.currency, { showDecimals: false }) + " / yr",
+                })),
+            };
+          }
+        } else if (isClarificationAction) {
+          const missingUnits =
+            c.expected.missing && c.expected.missing.length > 0
+              ? c.expected.missing
+              : ["basic_monitor", "applog_gb"];
+          const questions = missingUnits.map((u) => {
+            if (u === "basic_monitor" || u.includes("website")) return "How many website URLs or REST APIs do you need to monitor for uptime?";
+            if (u === "applog_gb" || u.includes("log")) return "What is your estimated monthly log ingestion volume in GB?";
+            if (u === "network_component" || u.includes("switch")) return "How many network switches, routers, or firewalls require SNMP monitoring?";
+            if (u === "advanced_monitor" || u.includes("transaction")) return "How many synthetic end-user browser click-paths or transaction flows are needed?";
+            if (u === "rum_pageview" || u.includes("rum")) return "What is your approximate monthly web pageview traffic for Real User Monitoring?";
+            return `How many ${u.replace(/_/g, " ")} units do you plan to deploy?`;
+          });
+
+          const clarification = renderClarificationEmail({
+            threadId: `th_${c.id}`,
+            recipientName: "Customer",
+            questionText: questions.map((q, idx) => `${idx + 1}. ${q}`).join("\n"),
+          });
+
+          replyEmail = {
+            subject: c.subject ? resolveThreadSubject(c.subject) : "Re: Site24x7 Monitoring Sizing Inquiry",
+            type: "clarification",
+            bodyText: clarification.textContent,
+          };
+
+          pricingDetails = {
+            status: "awaiting_clarification",
+            recommendedPlan: "Pending Clarification",
+            optionType: "pending",
+            totalFormatted: "Awaiting Clarification",
+            currency: "INR",
+            billingPeriod: "Annual",
+            comparisonLine: "Commercial pricing will be assembled once the buyer confirms missing monitoring quantities.",
+            lineItems: [],
+            coverage: [],
+            alternativeOptions: [],
+          };
+        } else {
+          const shortRef = `Q-${c.id.replace(/\D/g, "").slice(-4) || "1042"}`;
+          const escalationText = [
+            "Hi there,",
+            "",
+            "Thanks for reaching out regarding your Site24x7 monitoring requirements.",
+            "",
+            "Our automated sizing system evaluated your request. Because your project involves enterprise custom infrastructure / RFP requirements that exceed standard automated configurations, this inquiry has been routed to our senior enterprise sales engineering team for personalized sizing and consultation.",
+            "",
+            "An enterprise solutions architect will review your architecture specifications and reply directly with a custom proposal.",
+            "",
+            "Quote24x7 Assistant",
+            "Automated assistant using Site24x7's public India pricing. A Site24x7 sales representative confirms final pricing.",
+            `Ref ${shortRef}`,
+          ].join("\n").trim();
+
+          replyEmail = {
+            subject: c.subject ? resolveThreadSubject(c.subject) : "Re: Site24x7 Enterprise Sizing Inquiry",
+            type: "review",
+            bodyText: escalationText,
+          };
+
+          pricingDetails = {
+            status: "enterprise_review",
+            recommendedPlan: "Enterprise Solutions Review",
+            optionType: "custom",
+            totalFormatted: "Custom Sales Consultation",
+            currency: "INR",
+            billingPeriod: "Annual / Custom",
+            comparisonLine: "High-volume or complex multi-cloud architecture routed to senior solutions engineer.",
+            lineItems: [],
+            coverage: [],
+            alternativeOptions: [],
+          };
+        }
+      } catch {
+        // Safe fallback in case of edge runtime issues
       }
 
       return {
@@ -209,6 +436,8 @@ export async function GET(req: Request) {
           hallucinations: score?.hallucinations?.map((h) => h.type) || [],
           perUnit: score?.perUnit || null,
         },
+        replyEmail,
+        pricingDetails,
       };
     });
 
