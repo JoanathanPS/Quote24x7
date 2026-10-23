@@ -4413,7 +4413,7 @@ export const BENCHMARK_CASES_V2: BenchmarkCase[] = [
       "mm-diagram-aws-multi-tier.png"
     ],
     "attachmentTexts": [
-      "[Image Attachment: \"mm-diagram-aws-multi-tier.png\" (IMAGE, 1.6 KB)]"
+      "[Image Attachment: \"mm-diagram-aws-multi-tier.png\" (IMAGE, 44.7 KB)]"
     ],
     "expected": {
       "action": "ask_follow_up",
@@ -4440,7 +4440,7 @@ export const BENCHMARK_CASES_V2: BenchmarkCase[] = [
       "mm-diagram-azure-hub-spoke.png"
     ],
     "attachmentTexts": [
-      "[Image Attachment: \"mm-diagram-azure-hub-spoke.png\" (IMAGE, 1.6 KB)]"
+      "[Image Attachment: \"mm-diagram-azure-hub-spoke.png\" (IMAGE, 56.5 KB)]"
     ],
     "expected": {
       "action": "ask_follow_up",
@@ -4467,7 +4467,7 @@ export const BENCHMARK_CASES_V2: BenchmarkCase[] = [
       "mm-diagram-gcp-kubernetes.png"
     ],
     "attachmentTexts": [
-      "[Image Attachment: \"mm-diagram-gcp-kubernetes.png\" (IMAGE, 1.6 KB)]"
+      "[Image Attachment: \"mm-diagram-gcp-kubernetes.png\" (IMAGE, 31.3 KB)]"
     ],
     "expected": {
       "action": "ask_follow_up",
@@ -4494,7 +4494,7 @@ export const BENCHMARK_CASES_V2: BenchmarkCase[] = [
       "mm-diagram-hybrid-sdwan.jpg"
     ],
     "attachmentTexts": [
-      "[Image Attachment: \"mm-diagram-hybrid-sdwan.jpg\" (IMAGE, 1.6 KB)]"
+      "[Image Attachment: \"mm-diagram-hybrid-sdwan.jpg\" (IMAGE, 87.5 KB)]"
     ],
     "expected": {
       "action": "ask_follow_up",

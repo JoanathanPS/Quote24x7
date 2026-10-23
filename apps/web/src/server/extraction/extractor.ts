@@ -119,8 +119,12 @@ export function triageInboundEmail(
     /\b(?:feature\s+request|can\s+you\s+build\s+feature|custom\s+feature\s+development|need\s+a\s+custom\s+feature|please\s+add\s+support\s+for)\b/i.test(
       combined,
     );
+  const isRfpTender =
+    /\b(?:rfp\s+tender|formal\s+bidding|tender\s+doc(?:ument)?|bid\s+submission)\b/i.test(
+      combined,
+    );
 
-  if (isReseller || isNonIndia || isFeatureRequest) {
+  if (isReseller || isNonIndia || isFeatureRequest || isRfpTender) {
     return "unsupported";
   }
 
@@ -343,6 +347,8 @@ export function maskModelTokens(text: string): string {
     .replace(/\bapi\s+keys?\b/gi, "API_KEY_TOKEN")
     .replace(/\b\d+\s*(?:employees?|staff|people|workers)\b/gi, "EMPLOYEE_COUNT")
     .replace(/\b(?:5G|4G|3G|2G)\b/gi, "CELLULAR_GEN")
+    .replace(/\bCase-\d+-[a-zA-Z0-9_.-]+\b/gi, "CASE_FILENAME_TOKEN")
+    .replace(/\[Attached\s+[a-zA-Z0-9 ]+:\s*"[^"]*"/gi, "")
     .replace(/\b(?:ticket|case|issue|ref)\s*#?\s*\d+\b/gi, "TICKET_NUMBER")
     .replace(/\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/gi, "PHONE_NUMBER")
     .replace(/\b\d{10,12}\b/gi, "PHONE_NUMBER")
@@ -448,7 +454,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     /\b(?:no\s+other\s+(?:monitoring|needs?|requirements?|checks?|services?)|nothing\s+else|no\s+others?|nothing\s+else\s+needed|no\s+other\s+monitoring\s+needed|no\s+other\s+checks?|no\s+other\s+services?)\b/i,
   );
   const noOtherNeeds = Boolean(noOtherNeedsMatch);
-  const scopeClosureMatch = rawText.match(/\b(?:that\s+is\s+(?:all|everything)|nothing\s+else|only)\b/i);
+  const scopeClosureMatch = rawText.match(/\b(?:that\s+is\s+(?:all|everything)|that['’]s\s+(?:all|everything)|nothing\s+else|only\s+(?:those|these|the\s+above))\b/i);
   const scopeClosed = noOtherNeeds || Boolean(scopeClosureMatch);
 
   // Collect all negated clauses in text across all 6 units
@@ -516,7 +522,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const inlineServerMatches = [
     ...text.matchAll(
-      /(?<![a-zA-Z0-9])(\d+)\s*(?:[a-zA-Z0-9 ._-]{0,35}?)\b(servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|bare-metal(?:\s+blades?)?|ec2(?:\s+instances?)?|branch\s+servers?|compute\s+nodes?)\b/gi,
+      /(?<![a-zA-Z0-9])(\d+)[^\S\r\n]*(?:(?!(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|websites?|urls?|endpoints?|routers?|switches?|firewalls?|checks?)\b)[a-zA-Z0-9_-]+[^\S\r\n]*){0,6}\b(servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|bare-metal(?:\s+blades?)?|ec2(?:\s+instances?)?|branch\s+servers?|compute\s+nodes?)\b/gi,
     ),
   ].filter(
     (m) =>
@@ -547,7 +553,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const serverMatch =
     text.match(
-      /(?<![a-zA-Z0-9])(\d+)[^\S\r\n]*(?:[a-zA-Z0-9 ._-]{0,35}?)\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|bare-metal(?:\s+blades?)?|ec2(?:\s+instances?)?|branch\s+servers?|compute\s+nodes?)\b/i,
+      /(?<![a-zA-Z0-9])(\d+)[^\S\r\n]*(?:(?!(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|websites?|urls?|endpoints?|routers?|switches?|firewalls?|checks?)\b)[a-zA-Z0-9_-]+[^\S\r\n]*){0,6}\b(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?|bare-metal(?:\s+blades?)?|ec2(?:\s+instances?)?|branch\s+servers?|compute\s+nodes?)\b/i,
     ) ||
     text.match(
       /(?:servers?|hosts?|vms?|instances?|nodes?|machines?|blades?)[^:\n\r\d,|]{0,50}[:=,|\t]\s*"?(\d+)"?/i,
@@ -1173,7 +1179,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
 
   const advNone =
     serversOnly ||
-    (!hasPositiveAdv && scopeClosed) ||
+    (!hasPositiveAdv && scopeClosed && !advMentioned) ||
     Boolean(advNoneMatch) ||
     /\bno\s+[^.!?\n;]{0,80}\b(?:synthetic|advanced|transactions?|journeys?)\b/i.test(inboundText) ||
     Boolean(compoundNegPhrase && /\b(?:synthetics?|synthetic|browser\s+transactions?|transactions?)\b/i.test(compoundNegInner)) ||
@@ -1800,7 +1806,7 @@ export function extractRequirements(input: ExtractionInput): ExtractionResult {
     profile,
     demand,
     isComplete,
-    missingMaterialFields: unknownUnits.filter((u) => !scopeClosed && !negatedUnitMap.has(u)).map((u) => UNIT_TO_FIELD_KEY[u]),
+    missingMaterialFields,
     suggestedQuestion,
     clarificationQuestions,
     organization,

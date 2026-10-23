@@ -132,10 +132,12 @@ export function isModelEvidenceSupported(
     return true;
   }
 
-  if (quantitySupported && normEvidence.length > 0) {
+  if (normEvidence.length > 0) {
     const words = normEvidence.split(/\s+/).filter((w) => w.length > 3);
     if (words.length > 0 && words.some((w) => normSource.includes(w))) {
-      return true;
+      if (quantitySupported || quantity === 1) {
+        return true;
+      }
     }
   }
 
@@ -535,7 +537,7 @@ function buildAiDecision(
     const deterministicState = deterministicReq?.state;
     const deterministicEvidence = deterministicReq?.evidence;
     const rulesHasEvidence =
-      (deterministicState === "stated" || (Boolean(deterministicEvidence) && deterministicEvidence!.trim().length > 0)) &&
+      deterministicState === "stated" &&
       deterministicVal !== null &&
       deterministicVal !== undefined;
 
@@ -690,6 +692,15 @@ function buildAiDecision(
     .map((field) => field.key);
 
   const humanReviewReasons = [...output.humanReviewReasons, ...disagreementReasons];
+  const hasScannedDocReview =
+    (input.attachments || []).some(
+      (a) =>
+        a.extractedText?.includes("Operator review required") ||
+        a.extractedText?.includes("Scanned image-only PDF with no text layer"),
+    ) || /\b(?:Operator review required|Scanned image-only PDF with no text layer)\b/i.test(input.cumulativeText);
+  if (hasScannedDocReview) {
+    humanReviewReasons.push("Attachment is a scanned image-only document with no extractable text layer.");
+  }
   let action: AiAction;
 
   if (errors.length > 0) {
@@ -858,6 +869,13 @@ function buildFallbackDecision(
 
   const hasEscalationTrigger =
     rulesResult.triageCategory === "unsupported" ||
+    (input.attachments || []).some(
+      (a) =>
+        a.extractedText?.includes("Operator review required") ||
+        a.extractedText?.includes("Scanned image-only PDF with no text layer") ||
+        a.extractedText?.includes("no extractable text layer"),
+    ) ||
+    /\b(?:Operator review required|Scanned image-only PDF with no text layer)\b/i.test(input.cumulativeText) ||
     /\b(?:reseller|wholesale(?:\s+pricing)?|partner\s+discount|margin\s+for\s+our\s+customers)\b/i.test(input.cumulativeText) ||
     /\b(?:discount|payment\s+terms|net-\d+|gst\s+invoicing|tax\s+invoicing)\b/i.test(input.latestMessageText) ||
     /\b(?:endpoint\s+antivirus|antivirus|email\s+security\s+suite)\b/i.test(input.latestMessageText) ||

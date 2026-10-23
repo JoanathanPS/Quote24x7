@@ -339,6 +339,81 @@ export function extractPdfStreamText(buffer: Buffer): string {
   return texts.join("\n").replace(/[^\x20-\x7E\n]/g, " ").replace(/ +/g, " ").trim();
 }
 
+async function extractImageWithVision(
+  buffer: Buffer,
+  filename: string,
+  contentType: string,
+): Promise<string | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (
+    !apiKey ||
+    process.env.DISABLE_AI === "true" ||
+    process.env.NODE_ENV === "test" ||
+    process.env.npm_lifecycle_event === "test" ||
+    process.execArgv.some((arg) => arg.includes("--test"))
+  ) {
+    return null;
+  }
+
+  const mime = contentType.startsWith("image/")
+    ? contentType
+    : filename.toLowerCase().endsWith(".png")
+      ? "image/png"
+      : "image/jpeg";
+
+  const base64 = buffer.toString("base64");
+  const models = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
+
+  for (const model of models) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          signal: controller.signal,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text:
+                      "You are a technical architecture and document parser. Extract all infrastructure components, servers, network devices, databases, and specifications visible in this diagram. Provide a concise bulleted list with exact names and quantities.",
+                  },
+                  { inline_data: { mime_type: mime, data: base64 } },
+                ],
+              },
+            ],
+            generationConfig: { temperature: 0, maxOutputTokens: 600 },
+          }),
+        },
+      );
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = (await res.json()) as {
+          candidates?: Array<{
+            content?: {
+              parts?: Array<{
+                text?: string;
+              }>;
+            };
+          }>;
+        };
+        const out = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (out && typeof out === "string" && out.trim().length > 0) {
+          return out.trim();
+        }
+      }
+    } catch {
+      clearTimeout(timer);
+    }
+  }
+
+  return null;
+}
+
 /**
  * Extracts plain text and structured content from email attachments:
  * - PDF documents (.pdf) -> pdf-lib stream traversal -> pdf-parse -> raw zlib stream regex -> ASCII scanner
@@ -522,6 +597,16 @@ export async function parseInboundDocument(
           contentBase64 = buffer.toString("base64");
         }
         text = `[Image Attachment: "${filename}" (${kind.toUpperCase()}, ${(sizeBytes / 1024).toFixed(1)} KB)]`;
+        if (contentBase64 && process.env.GEMINI_API_KEY && process.env.DISABLE_AI !== "true") {
+          try {
+            const visionText = await extractImageWithVision(buffer, filename, contentType);
+            if (visionText) {
+              text = `${text}\n\n[Vision OCR Extracted Content]:\n${visionText}`;
+            }
+          } catch {
+            // retain fallback text
+          }
+        }
         break;
       }
 
