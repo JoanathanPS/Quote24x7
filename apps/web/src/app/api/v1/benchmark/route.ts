@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
-import { BENCHMARK_CASES } from "@/server/benchmark/cases";
+import { BENCHMARK_CASES, BENCHMARK_CASES_V1 } from "@/server/benchmark/cases";
+import { getSupabaseClient } from "@/server/db/supabase";
 import type { CaseScore } from "@/server/benchmark/types";
 import { runBenchmark, type BenchmarkResult, type CaseRun } from "@/server/benchmark/runner";
 import { groqProvider } from "@/server/ai/groq-provider";
@@ -21,15 +22,18 @@ function getResultsDir(): string {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
+    const dataset = searchParams.get("dataset") === "v1" ? "v1" : "v2";
+    const activeCases = dataset === "v1" ? BENCHMARK_CASES_V1 : BENCHMARK_CASES;
     if (searchParams.get("download") === "dataset") {
-      const datasetPath = fsSync.existsSync(path.resolve(process.cwd(), "benchmark-dataset-v1.json"))
-        ? path.resolve(process.cwd(), "benchmark-dataset-v1.json")
-        : path.resolve(process.cwd(), "apps/web/benchmark-dataset-v1.json");
+      const filename = dataset === "v1" ? "benchmark-dataset-v1.json" : "benchmark-dataset-v2.json";
+      const datasetPath = fsSync.existsSync(path.resolve(process.cwd(), filename))
+        ? path.resolve(process.cwd(), filename)
+        : path.resolve(process.cwd(), "apps/web", filename);
       const content = await fs.readFile(datasetPath, "utf-8");
       return new NextResponse(content, {
         headers: {
           "Content-Type": "application/json",
-          "Content-Disposition": 'attachment; filename="benchmark-dataset-v1.json"',
+          "Content-Disposition": `attachment; filename="${filename}"`,
         },
       });
     }
@@ -45,6 +49,7 @@ export async function GET(req: Request) {
 
     const availableRuns: Array<{
       filename: string;
+      dataset: "v1" | "v2";
       provider: string;
       timestamp: string;
       casesCount: number;
@@ -54,15 +59,38 @@ export async function GET(req: Request) {
       f1: number;
     }> = [];
 
-    let cerebrasResult: BenchmarkResult | null = null;
+    const persistedRuns = getSupabaseClient()
+      ? await getSupabaseClient()!.from("benchmark_runs").select("id,dataset_version,provider,started_at,cases,repeats,result").eq("dataset_version", dataset).order("started_at", { ascending: false })
+      : { data: null, error: null };
+    let selectedResult: BenchmarkResult | null = null;
+
+    for (const row of persistedRuns.data ?? []) {
+      const parsed = row.result as BenchmarkResult;
+      if (!parsed?.meta || !parsed.final?.metrics) continue;
+      availableRuns.push({
+        filename: `supabase:${row.id}`,
+        dataset: row.dataset_version,
+        provider: parsed.meta.provider,
+        timestamp: parsed.meta.startedAt,
+        casesCount: parsed.meta.cases,
+        actionAccuracy: parsed.final.metrics.actionStrict.rate,
+        exactMatch: parsed.final.metrics.exactMatch.rate,
+        hallucinatedCaseRate: parsed.final.metrics.hallucinatedCases.rate,
+        f1: parsed.final.metrics.f1 ?? 0,
+      });
+      if (!selectedResult || parsed.meta.startedAt > selectedResult.meta.startedAt) selectedResult = parsed;
+    }
 
     for (const file of files) {
       try {
         const content = await fs.readFile(path.join(resultsDir, file), "utf-8");
         const parsed = JSON.parse(content) as BenchmarkResult;
         if (parsed?.meta && parsed?.final?.metrics) {
+          const parsedDataset = parsed.meta.datasetVersion === "v1" ? "v1" : "v2";
+          if (parsedDataset !== dataset) continue;
           availableRuns.push({
             filename: file,
+            dataset: parsedDataset,
             provider: parsed.meta.provider,
             timestamp: parsed.meta.startedAt,
             casesCount: parsed.meta.cases,
@@ -72,14 +100,7 @@ export async function GET(req: Request) {
             f1: parsed.final.metrics.f1 ?? 0,
           });
 
-          // Pick the 40-case Cerebras run for per-case detailed evaluation
-          if (
-            file.startsWith("cerebras-") &&
-            parsed.meta.cases === 40 &&
-            (!cerebrasResult || parsed.meta.startedAt > cerebrasResult.meta.startedAt)
-          ) {
-            cerebrasResult = parsed;
-          }
+          if (!selectedResult || parsed.meta.startedAt > selectedResult.meta.startedAt) selectedResult = parsed;
         }
       } catch {
         // Skip malformed files
@@ -89,16 +110,15 @@ export async function GET(req: Request) {
     // Sort newest first
     availableRuns.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
-    // Map cerebras scores by case ID
-    const cerebrasScores = new Map<string, CaseScore>();
-    if (cerebrasResult?.final?.scores) {
-      for (const s of cerebrasResult.final.scores) {
-        cerebrasScores.set(s.caseId, s);
+    const scores = new Map<string, CaseScore>();
+    if (selectedResult?.final?.scores) {
+      for (const s of selectedResult.final.scores) {
+        scores.set(s.caseId, s);
       }
     }
 
-    const benchmarkCases = BENCHMARK_CASES.map((c) => {
-      const score = cerebrasScores.get(c.id);
+    const benchmarkCases = activeCases.map((c) => {
+      const score = scores.get(c.id);
 
       // Positive expected units only
       const expectedPositive: Record<string, number> = {};
@@ -146,17 +166,40 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       success: true,
-      totalCases: BENCHMARK_CASES.length,
+      dataset,
+      totalCases: activeCases.length,
       availableRuns,
       benchmarkCases,
-      cerebrasMetrics: cerebrasResult?.final?.metrics || null,
-      supabaseDatasetUrl: "https://rezunroklwuzwahzknbz.supabase.co/storage/v1/object/public/benchmark-datasets/benchmark-dataset-v1.json",
+      metrics: selectedResult?.final?.metrics || null,
+      supabaseDatasetUrl: null,
     });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: (error as Error).message },
       { status: 500 },
     );
+  }
+}
+
+export async function PUT(req: Request) {
+  try {
+    const body = (await req.json()) as { dataset?: "v1" | "v2"; result?: BenchmarkResult };
+    if (!body.result || !body.dataset) return NextResponse.json({ success: false, error: "dataset and result are required" }, { status: 400 });
+    const supabase = getSupabaseClient();
+    if (!supabase) return NextResponse.json({ success: false, error: "Supabase is not configured" }, { status: 503 });
+    const { error } = await supabase.from("benchmark_runs").upsert({
+      id: `${body.dataset}-${body.result.meta.startedAt}`,
+      dataset_version: body.dataset,
+      provider: body.result.meta.provider,
+      started_at: body.result.meta.startedAt,
+      cases: body.result.meta.cases,
+      repeats: body.result.meta.repeats,
+      result: body.result,
+    });
+    if (error) throw error;
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: (error as Error).message }, { status: 500 });
   }
 }
 

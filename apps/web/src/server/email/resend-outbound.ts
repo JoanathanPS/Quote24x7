@@ -1203,9 +1203,11 @@ export async function sendQuoteEmail(input: SendQuoteEmailInput): Promise<Outbou
   const emailTotalRupees = emailTotalMatch ? parseInt(emailTotalMatch[1]!.replace(/,/g, ""), 10) : null;
 
   const pdfExtractedText = extractPdfText(input.pdfBuffer);
+  const pdfClean = pdfExtractedText.replace(/[,\s]/g, "");
   const pdfHasTotal =
     pdfExtractedText.includes(formattedRupees) ||
-    pdfExtractedText.replace(/\s+/g, "").includes(formattedRupees.replace(/\s+/g, ""));
+    pdfExtractedText.replace(/\s+/g, "").includes(formattedRupees.replace(/\s+/g, "")) ||
+    pdfClean.includes(quoteTotalRupees.toString());
 
   if (
     recOption.total !== minValidPaise ||

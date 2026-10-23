@@ -31,7 +31,7 @@ function closed(overrides: Partial<Record<DemandUnit, number>>): Partial<Record<
   };
 }
 
-export const BENCHMARK_CASES: BenchmarkCase[] = [
+export const BENCHMARK_CASES_V1: BenchmarkCase[] = [
   // ---------------------------------------------------------------- clear_stated
   {
     id: "cs-01",
@@ -412,3 +412,10 @@ export const BENCHMARK_CASES: BenchmarkCase[] = [
     expected: { action: "prepare_quote", acceptableActions: ["human_review"], requirements: closed({ host_monitor: 5 }) },
   },
 ];
+
+import { BENCHMARK_CASES_V2 } from "./cases-v2.ts";
+
+export { BENCHMARK_CASES_V2 };
+/** Active benchmark dataset: defaults to Dataset v2 (200 cases). */
+export const BENCHMARK_CASES: BenchmarkCase[] = BENCHMARK_CASES_V2;
+

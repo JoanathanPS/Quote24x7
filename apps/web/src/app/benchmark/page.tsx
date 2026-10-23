@@ -52,6 +52,7 @@ interface BenchmarkCaseItem {
 
 interface BenchmarkApiResponse {
   success: boolean;
+  dataset: "v1" | "v2";
   totalCases: number;
   availableRuns: Array<{
     filename: string;
@@ -68,13 +69,14 @@ interface BenchmarkApiResponse {
 
 export default function BenchmarkPage() {
   const [data, setData] = React.useState<BenchmarkApiResponse | null>(null);
+  const [dataset, setDataset] = React.useState<"v1" | "v2">("v2");
   const [activeCategory, setActiveCategory] = React.useState<string>("all");
   const [searchQuery, setSearchQuery] = React.useState<string>("");
   const [expandedCases, setExpandedCases] = React.useState<Record<string, boolean>>({});
 
   const fetchOverview = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/benchmark");
+      const res = await fetch(`/api/v1/benchmark?dataset=${dataset}`);
       if (res.ok) {
         const json = await res.json();
         setData(json);
@@ -86,7 +88,7 @@ export default function BenchmarkPage() {
     } catch {
       // ignore
     }
-  }, []);
+  }, [dataset]);
 
   React.useEffect(() => {
     fetchOverview();
@@ -114,8 +116,8 @@ export default function BenchmarkPage() {
 
   const handleDownloadDataset = () => {
     const link = document.createElement("a");
-    link.href = "/api/v1/benchmark?download=dataset";
-    link.download = "benchmark-dataset-v1.json";
+    link.href = `/api/v1/benchmark?dataset=${dataset}&download=dataset`;
+    link.download = `benchmark-dataset-${dataset}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -125,6 +127,9 @@ export default function BenchmarkPage() {
     if (!data?.benchmarkCases) return [];
     return Array.from(new Set(data.benchmarkCases.map((c) => c.category)));
   }, [data?.benchmarkCases]);
+
+  const latestRun = data?.availableRuns[0];
+  const percent = (value: number | undefined) => `${((value ?? 0) * 100).toFixed(1)}%`;
 
   const filteredCases = React.useMemo(() => {
     if (!data?.benchmarkCases) return [];
@@ -155,7 +160,7 @@ export default function BenchmarkPage() {
                 AI Evaluation Benchmark
               </h1>
               <Badge variant="neutral" className="text-xs">
-                Dataset v1 (40 Cases)
+                Dataset {dataset} ({data?.totalCases ?? "..."} Cases)
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -164,15 +169,19 @@ export default function BenchmarkPage() {
           </div>
         </div>
 
-        {/* Download dataset */}
-        <Button
-          variant="outline"
-          onClick={handleDownloadDataset}
-          className="flex items-center gap-2 text-xs font-medium h-8 px-3.5 bg-card/80 hover:bg-muted border-border/80 shadow-xs cursor-pointer self-start md:self-auto"
-        >
-          <DownloadSimple size={15} weight="bold" className="text-primary" />
-          <span>Download Dataset (JSON)</span>
-        </Button>
+        <div className="flex items-center gap-2 self-start md:self-auto">
+          <div className="flex rounded-lg border border-border/70 bg-muted/30 p-0.5" role="tablist" aria-label="Benchmark dataset">
+            {(["v1", "v2"] as const).map((version) => (
+              <Button key={version} variant={dataset === version ? "default" : "ghost"} onClick={() => setDataset(version)} className="h-8 px-3 text-xs" role="tab" aria-selected={dataset === version}>
+                {version.toUpperCase()}
+              </Button>
+            ))}
+          </div>
+          <Button variant="outline" onClick={handleDownloadDataset} className="flex items-center gap-2 text-xs font-medium h-8 px-3.5 bg-card/80 hover:bg-muted border-border/80 shadow-xs cursor-pointer">
+            <DownloadSimple size={15} weight="bold" className="text-primary" />
+            <span>Download JSON</span>
+          </Button>
+        </div>
       </div>
 
       {/* Metric Highlights — Clean, normal fonts, concise text */}
@@ -184,12 +193,12 @@ export default function BenchmarkPage() {
               <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
                 Exact Match (6 Units)
               </span>
-              <Badge variant="success" className="text-[10px]">
-                34 / 36 Stated
+              <Badge variant={latestRun && latestRun.exactMatch >= 0.95 ? "success" : "neutral"} className="text-[10px]">
+                {latestRun ? `${(latestRun.exactMatch * latestRun.casesCount).toFixed(0)} / ${latestRun.casesCount}` : "Awaiting run"}
               </Badge>
             </div>
             <div className="text-2xl font-bold tracking-tight text-foreground whitespace-nowrap">
-              94.4%
+              {latestRun ? percent(latestRun.exactMatch) : "n/a"}
             </div>
             <p className="text-[11px] text-muted-foreground">
               Across all 6 demand units
@@ -206,7 +215,7 @@ export default function BenchmarkPage() {
               </span>
             </div>
             <div className="text-2xl font-bold tracking-tight text-foreground whitespace-nowrap">
-              98.4%
+              {latestRun ? percent(latestRun.f1) : "n/a"}
             </div>
             <p className="text-[11px] text-muted-foreground">
               Precision & recall harmonic mean
@@ -221,12 +230,12 @@ export default function BenchmarkPage() {
               <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
                 Action Accuracy
               </span>
-              <Badge variant="neutral" className="text-[10px]">
-                32 / 40 Cases
+              <Badge variant={latestRun && latestRun.actionAccuracy >= 0.95 ? "success" : "neutral"} className="text-[10px]">
+                {latestRun ? `${(latestRun.actionAccuracy * latestRun.casesCount).toFixed(0)} / ${latestRun.casesCount} strict` : "Awaiting run"}
               </Badge>
             </div>
             <div className="text-2xl font-bold tracking-tight text-foreground whitespace-nowrap">
-              80.0%
+              {latestRun ? percent(latestRun.actionAccuracy) : "n/a"}
             </div>
             <p className="text-[11px] text-muted-foreground">
               Quote vs follow-up vs review
@@ -243,7 +252,7 @@ export default function BenchmarkPage() {
               </span>
             </div>
             <div className="text-2xl font-bold tracking-tight text-foreground whitespace-nowrap">
-              5.0%
+              {latestRun ? percent(latestRun.hallucinatedCaseRate) : "n/a"}
             </div>
             <p className="text-[11px] text-muted-foreground">
               95% CI: [1.4%, 16.5%]

@@ -379,14 +379,6 @@ create unique index if not exists idx_catalogue_versions_one_active
   on public.catalogue_versions(market, currency)
   where status = 'active';
 
--- ==============================================================================
--- ROW LEVEL SECURITY (RLS) & STRICT ACCESS CONTROLS
--- ==============================================================================
--- RLS is enabled on all tables.
--- Per security requirements, NO permissive policies exist for anon or authenticated
--- roles. Anon key cannot read or write to any table.
--- Backend operations must authenticate using SUPABASE_SERVICE_ROLE_KEY.
--- ==============================================================================
 
 alter table public.email_threads enable row level security;
 alter table public.email_messages enable row level security;
@@ -412,6 +404,18 @@ alter table public.catalogue_licence_rules enable row level security;
 alter table public.catalogue_notes enable row level security;
 alter table public.knowledge_snippets enable row level security;
 
+create table if not exists public.benchmark_runs (
+  id text primary key,
+  dataset_version text not null check (dataset_version in ('v1', 'v2')),
+  provider text not null,
+  started_at timestamptz not null,
+  cases integer not null,
+  repeats integer not null default 1,
+  result jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.benchmark_runs enable row level security;
 -- Drop legacy permissive "Allow all access" policies if present
 do $$
 declare

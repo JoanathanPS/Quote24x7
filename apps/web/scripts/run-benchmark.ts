@@ -50,8 +50,8 @@ async function main() {
 
   const exportPath = arg("export-dataset");
   if (exportPath) {
-    fs.writeFileSync(exportPath, JSON.stringify({ version: "v1", cases: BENCHMARK_CASES }, null, 2), "utf8");
-    console.log(`Dataset (${BENCHMARK_CASES.length} cases) written to ${exportPath}`);
+    fs.writeFileSync(exportPath, JSON.stringify({ version: "v2", cases: BENCHMARK_CASES }, null, 2), "utf8");
+    console.log(`Dataset v2 (${BENCHMARK_CASES.length} cases) written to ${exportPath}`);
     return;
   }
 

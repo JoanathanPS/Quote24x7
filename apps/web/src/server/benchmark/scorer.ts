@@ -30,9 +30,9 @@ export function normalise(text: string): string {
     .trim();
 }
 
-/** Everything the customer wrote (subject + all turns), normalised. */
+/** Everything the customer wrote (subject + all turns + attachment texts), normalised. */
 export function sourceTextOf(c: BenchmarkCase): string {
-  return normalise([c.subject ?? "", ...c.turns].join("\n"));
+  return normalise([c.subject ?? "", ...c.turns, ...(c.attachmentTexts ?? [])].join("\n"));
 }
 
 const WORD_VALUES: Record<string, number> = {

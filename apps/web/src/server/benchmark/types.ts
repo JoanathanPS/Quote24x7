@@ -23,6 +23,7 @@ export const CATEGORIES = [
   "missing_info",
   "escalation",
   "prompt_injection",
+  "multimodal_attachment",
 ] as const;
 export type CaseCategory = (typeof CATEGORIES)[number];
 
@@ -38,6 +39,10 @@ export interface BenchmarkCase {
   subject?: string;
   /** Customer messages in order. The last one is the message being decided on. */
   turns: string[];
+  /** Optional file attachment names from test-attachments/ */
+  attachments?: string[];
+  /** Optional text extracted from attachments or ground truth reference text. */
+  attachmentTexts?: string[];
   expected: {
     action: BenchAction;
     /** Other actions that are defensible under the written policy. Scored as "lenient" correct. */
