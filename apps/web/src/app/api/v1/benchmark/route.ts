@@ -49,6 +49,7 @@ export async function GET(req: Request) {
 
     const availableRuns: Array<{
       filename: string;
+      dataset: "v1" | "v2";
       provider: string;
       timestamp: string;
       casesCount: number;
@@ -58,15 +59,38 @@ export async function GET(req: Request) {
       f1: number;
     }> = [];
 
-    let cerebrasResult: BenchmarkResult | null = null;
+    const persistedRuns = getSupabaseClient()
+      ? await getSupabaseClient()!.from("benchmark_runs").select("id,dataset_version,provider,started_at,cases,repeats,result").eq("dataset_version", dataset).order("started_at", { ascending: false })
+      : { data: null, error: null };
+    let selectedResult: BenchmarkResult | null = null;
+
+    for (const row of persistedRuns.data ?? []) {
+      const parsed = row.result as BenchmarkResult;
+      if (!parsed?.meta || !parsed.final?.metrics) continue;
+      availableRuns.push({
+        filename: `supabase:${row.id}`,
+        dataset: row.dataset_version,
+        provider: parsed.meta.provider,
+        timestamp: parsed.meta.startedAt,
+        casesCount: parsed.meta.cases,
+        actionAccuracy: parsed.final.metrics.actionStrict.rate,
+        exactMatch: parsed.final.metrics.exactMatch.rate,
+        hallucinatedCaseRate: parsed.final.metrics.hallucinatedCases.rate,
+        f1: parsed.final.metrics.f1 ?? 0,
+      });
+      if (!selectedResult || parsed.meta.startedAt > selectedResult.meta.startedAt) selectedResult = parsed;
+    }
 
     for (const file of files) {
       try {
         const content = await fs.readFile(path.join(resultsDir, file), "utf-8");
         const parsed = JSON.parse(content) as BenchmarkResult;
         if (parsed?.meta && parsed?.final?.metrics) {
+          const parsedDataset = parsed.meta.datasetVersion === "v1" ? "v1" : "v2";
+          if (parsedDataset !== dataset) continue;
           availableRuns.push({
             filename: file,
+            dataset: parsedDataset,
             provider: parsed.meta.provider,
             timestamp: parsed.meta.startedAt,
             casesCount: parsed.meta.cases,
@@ -76,14 +100,7 @@ export async function GET(req: Request) {
             f1: parsed.final.metrics.f1 ?? 0,
           });
 
-          // Pick the 40-case Cerebras run for per-case detailed evaluation
-          if (
-            file.startsWith("cerebras-") &&
-            parsed.meta.cases === 40 &&
-            (!cerebrasResult || parsed.meta.startedAt > cerebrasResult.meta.startedAt)
-          ) {
-            cerebrasResult = parsed;
-          }
+          if (!selectedResult || parsed.meta.startedAt > selectedResult.meta.startedAt) selectedResult = parsed;
         }
       } catch {
         // Skip malformed files
@@ -93,16 +110,15 @@ export async function GET(req: Request) {
     // Sort newest first
     availableRuns.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
-    // Map cerebras scores by case ID
-    const cerebrasScores = new Map<string, CaseScore>();
-    if (cerebrasResult?.final?.scores) {
-      for (const s of cerebrasResult.final.scores) {
-        cerebrasScores.set(s.caseId, s);
+    const scores = new Map<string, CaseScore>();
+    if (selectedResult?.final?.scores) {
+      for (const s of selectedResult.final.scores) {
+        scores.set(s.caseId, s);
       }
     }
 
     const benchmarkCases = activeCases.map((c) => {
-      const score = cerebrasScores.get(c.id);
+      const score = scores.get(c.id);
 
       // Positive expected units only
       const expectedPositive: Record<string, number> = {};
@@ -154,7 +170,7 @@ export async function GET(req: Request) {
       totalCases: activeCases.length,
       availableRuns,
       benchmarkCases,
-      cerebrasMetrics: cerebrasResult?.final?.metrics || null,
+      metrics: selectedResult?.final?.metrics || null,
       supabaseDatasetUrl: null,
     });
   } catch (error) {
