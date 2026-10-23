@@ -70,6 +70,14 @@ export function candidateValues(text: string): Set<number> {
     }
   }
 
+  // Daily rate multiplied by 30 days in a month (e.g. 100 GB per day -> 3000 GB monthly)
+  for (const match of t.matchAll(/(\d[\d,]*(?:\.\d+)?)\s*(?:gb|tb)?\s*(?:per|\/)\s*day/g)) {
+    const daily = Number.parseFloat((match[1] ?? "").replace(/,/g, ""));
+    if (Number.isFinite(daily)) {
+      values.add(daily * 30);
+    }
+  }
+
   for (const match of t.matchAll(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-](one|two|three|four|five|six|seven|eight|nine)\b/g)) {
     const sum = (WORD_VALUES[match[1] ?? ""] ?? 0) + (WORD_VALUES[match[2] ?? ""] ?? 0);
     literals.push(sum);

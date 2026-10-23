@@ -1,5 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
+import { parseInboundDocument } from "../src/server/documents/inbound-document-parser.ts";
+
+async function getAttachmentText(filename) {
+  const p = path.resolve(process.cwd(), "apps/web/test-attachments", filename);
+  if (!fs.existsSync(p)) return "";
+  const buffer = fs.readFileSync(p);
+  const parsed = await parseInboundDocument({ filename, buffer });
+  return parsed.text || "";
+}
 
 function closed(overrides) {
   return {
@@ -615,27 +624,30 @@ distractorData.forEach((d, idx) => {
 
 // ============================================================================
 // 5. MULTIMODAL DOCUMENT ATTACHMENTS (40 Cases): mm-01 to mm-40
+// Document extraction benchmarks: email turns MUST NOT spoil the numbers!
+// All numbers must be parsed from attached CSV, XLSX, PDF, and DOCX files.
 // ============================================================================
 // CSV & Excel (15 Cases): mm-csv-01 to mm-csv-15
 const mmCsvData = [
-  { id: "mm-csv-01", file: "Case-3-Server-Inventory.csv", hosts: 20, nets: 4, webs: 6, logs: 50, desc: "Production nodes CSV with follow-up", body: "Please find attached our current server inventory CSV with 20 production nodes. Also we have 4 network switches, 6 public websites, and 50 GB logs monthly. No synthetic checks or RUM." },
-  { id: "mm-csv-02", file: "Case-4-Hardware-Devices-Inventory.xlsx", hosts: 25, nets: 8, webs: 10, logs: 100, desc: "Hardware inventory Excel sheet", body: "Please find our infrastructure hardware inventory attached in the Excel sheet (25 servers, 8 network switches). No synthetic checks or RUM needed, 100 GB logs per month, 10 websites." },
-  { id: "mm-csv-03", file: "mm-inventory-fintech.csv", hosts: 45, nets: 3, desc: "Fintech server inventory CSV", body: "Attached is our fintech infrastructure inventory CSV (45 servers, 3 network components). No websites, synthetic, logs, or RUM." },
-  { id: "mm-csv-04", file: "mm-inventory-healthcare.csv", hosts: 60, nets: 2, desc: "Healthcare hospital inventory CSV", body: "Hospital server list attached (60 servers, 2 network components). No other monitoring needed." },
-  { id: "mm-csv-05", file: "mm-inventory-ecommerce.csv", hosts: 35, nets: 2, desc: "E-commerce infrastructure CSV", body: "Attached is our server roster CSV with 35 servers and 2 network switches. No other monitoring needed." },
-  { id: "mm-csv-06", file: "mm-inventory-saas.csv", hosts: 90, nets: 4, desc: "SaaS worker node cluster CSV", body: "Worker node cluster attached in CSV (90 servers, 4 network switches). No logs, websites, or RUM." },
-  { id: "mm-csv-07", file: "mm-inventory-telecom.csv", hosts: 110, nets: 15, desc: "Telecom compute PoP inventory CSV", body: "Telecom PoP inventory CSV attached (110 servers, 15 network switches). Nothing else to monitor." },
-  { id: "mm-csv-08", file: "mm-inventory-media.csv", hosts: 28, nets: 2, desc: "Media encoding farm CSV", body: "Transcoding farm CSV attached (28 servers, 2 network switches). No other monitoring." },
-  { id: "mm-csv-09", file: "mm-inventory-logistics.csv", hosts: 55, nets: 2, desc: "Warehouse server list CSV", body: "Attached warehouse inventory CSV with 55 servers and 2 network switches. No other checks." },
-  { id: "mm-csv-10", file: "mm-inventory-energy.csv", hosts: 75, nets: 6, desc: "Industrial SCADA network CSV", body: "SCADA server inventory CSV attached (75 servers, 6 network switches). No other monitoring." },
-  { id: "mm-csv-11", file: "mm-datacenter-audit.xlsx", hosts: 65, nets: 8, desc: "Datacenter audit multi-sheet Excel", body: "Attached datacenter audit spreadsheet (65 servers, 8 network switches). No logs or RUM." },
-  { id: "mm-csv-12", file: "mm-cloud-migration.xlsx", hosts: 40, nets: 5, desc: "Cloud migration inventory Excel", body: "Migration inventory attached in Excel (40 servers, 5 network switches). No other monitoring." },
-  { id: "mm-csv-13", file: "mm-switch-fabric.xlsx", hosts: 30, nets: 20, desc: "Switch fabric inventory Excel", body: "Switch fabric audit attached (30 servers, 20 network switches). Nothing else." },
-  { id: "mm-csv-14", file: "mm-hybrid-workloads.xlsx", hosts: 50, nets: 10, desc: "Hybrid baremetal workload Excel", body: "Attached Excel list of 50 servers and 10 network components. No other monitoring." },
-  { id: "mm-csv-15", file: "mm-multi-region-servers.xlsx", hosts: 75, nets: 6, desc: "Multi-region global infrastructure Excel", body: "Multi-region inventory attached in Excel (75 servers, 6 network switches). Nothing else needed." },
+  { id: "mm-csv-01", file: "Case-3-Server-Inventory.csv", hosts: 20, nets: 4, webs: 6, logs: 50, desc: "Production nodes CSV with follow-up", body: "Please find attached our current server inventory CSV for our production nodes. In addition, we have 4 network switches, 6 public websites, and 50 GB logs monthly. No synthetic checks or RUM." },
+  { id: "mm-csv-02", file: "Case-4-Hardware-Devices-Inventory.xlsx", hosts: 25, nets: 8, webs: 10, logs: 100, desc: "Hardware inventory Excel sheet", body: "Please find our infrastructure hardware inventory attached in the Excel sheet. Beyond the hardware devices in the sheet, we have 10 public websites and 100 GB logs per month. No synthetic checks or RUM needed." },
+  { id: "mm-csv-03", file: "mm-inventory-fintech.csv", hosts: 45, nets: 3, desc: "Fintech server inventory CSV", body: "Attached is our fintech infrastructure inventory CSV. Please provide a quotation to monitor all the equipment listed in the document. No websites, synthetic, logs, or RUM." },
+  { id: "mm-csv-04", file: "mm-inventory-healthcare.csv", hosts: 60, nets: 2, desc: "Healthcare hospital inventory CSV", body: "Please find attached our hospital IT infrastructure roster. We need full monitoring coverage for all servers and networking devices itemized in the CSV. No other monitoring needed." },
+  { id: "mm-csv-05", file: "mm-inventory-ecommerce.csv", hosts: 35, nets: 2, desc: "E-commerce infrastructure CSV", body: "Attached is our e-commerce server and network switch roster CSV. Please prepare a quote for the devices in the roster. No other monitoring needed." },
+  { id: "mm-csv-06", file: "mm-inventory-saas.csv", hosts: 90, nets: 4, desc: "SaaS worker node cluster CSV", body: "Worker node cluster and ToR switches attached in the CSV inventory. Please quote for all listed assets. No logs, websites, or RUM." },
+  { id: "mm-csv-07", file: "mm-inventory-telecom.csv", hosts: 110, nets: 15, desc: "Telecom compute PoP inventory CSV", body: "Telecom PoP inventory CSV attached. We require monitoring for every host compute node and network switch detailed in the file. Nothing else to monitor." },
+  { id: "mm-csv-08", file: "mm-inventory-media.csv", hosts: 28, nets: 2, desc: "Media encoding farm CSV", body: "Transcoding farm CSV attached. Please quote monitoring for all transcoding servers and switches in the sheet. No other monitoring." },
+  { id: "mm-csv-09", file: "mm-inventory-logistics.csv", hosts: 55, nets: 2, desc: "Warehouse server list CSV", body: "Attached is our warehouse IT infrastructure CSV. We need coverage for all application servers and distribution switches listed. No other checks." },
+  { id: "mm-csv-10", file: "mm-inventory-energy.csv", hosts: 75, nets: 6, desc: "Industrial SCADA network CSV", body: "SCADA server inventory CSV attached. Please provide a formal quote for monitoring all substation compute hosts and Ethernet switches listed in the document. No other monitoring." },
+  { id: "mm-csv-11", file: "mm-datacenter-audit.xlsx", hosts: 65, nets: 8, desc: "Datacenter audit multi-sheet Excel", body: "Attached is our datacenter audit spreadsheet covering our production servers and network infrastructure. Please quote for the production inventory. No logs or RUM." },
+  { id: "mm-csv-12", file: "mm-cloud-migration.xlsx", hosts: 40, nets: 5, desc: "Cloud migration inventory Excel", body: "Migration inventory attached in Excel. Please quote monitoring for our EC2 fleet and transit gateways detailed in the workbook. No other monitoring." },
+  { id: "mm-csv-13", file: "mm-switch-fabric.xlsx", hosts: 30, nets: 18, desc: "Switch fabric inventory Excel", body: "Switch fabric audit attached in Excel. We need monitoring for all compute nodes and fabric switches in the workbook. Nothing else." },
+  { id: "mm-csv-14", file: "mm-hybrid-workloads.xlsx", hosts: 50, nets: 10, desc: "Hybrid baremetal workload Excel", body: "Attached Excel list of our VMware private cloud VMs and Top-of-Rack switches. Please prepare a quote based on the sheets. No other monitoring." },
+  { id: "mm-csv-15", file: "mm-multi-region-servers.xlsx", hosts: 80, nets: 12, desc: "Multi-region global infrastructure Excel", body: "Multi-region inventory attached in Excel for APAC and EMEA alongside our core backbone. Please quote monitoring for all devices in the workbook. Nothing else needed." },
 ];
 
-mmCsvData.forEach((c) => {
+for (const c of mmCsvData) {
+  const text = await getAttachmentText(c.file);
   cases.push({
     id: c.id,
     category: "multimodal_attachment",
@@ -643,6 +655,7 @@ mmCsvData.forEach((c) => {
     subject: `Quote request: ${c.desc}`,
     turns: [c.body],
     attachments: [c.file],
+    attachmentTexts: text ? [text] : [],
     expected: {
       action: "prepare_quote",
       requirements: closed({
@@ -653,25 +666,26 @@ mmCsvData.forEach((c) => {
       }),
     },
   });
-});
+}
 
 // PDF RFPs (12 Cases): mm-pdf-01 to mm-pdf-12
 const mmPdfData = [
-  { id: "mm-pdf-01", file: "Case-1-Production-Infrastructure.pdf", hosts: 50, nets: 8, webs: 5, syn: 2, logs: 600, desc: "Production Infrastructure PDF Tender", body: "Please review the attached PDF document containing our current infrastructure inventory and sizing breakdown (50 servers, 8 network components, 5 basic monitors, 2 synthetic checks, 600 GB logs). No other monitoring needed." },
-  { id: "mm-pdf-02", file: "mm-rfp-government-cloud.pdf", hosts: 150, nets: 12, webs: 20, syn: 4, logs: 800, desc: "Government Cloud Tender PDF", body: "Attached tender specification PDF (150 servers, 12 network components, 20 basic monitors, 4 synthetic checks, 800 GB logs). No RUM." },
-  { id: "mm-pdf-03", file: "mm-rfp-banking-cluster.pdf", hosts: 80, nets: 16, webs: 8, syn: 6, logs: 1200, desc: "Banking Cluster Observability RFP PDF", body: "Core banking RFP attached in PDF (80 servers, 16 network components, 8 basic monitors, 6 synthetic checks, 1200 GB logs). No RUM." },
-  { id: "mm-pdf-04", file: "mm-rfp-retail-pos.pdf", hosts: 120, nets: 24, webs: 15, syn: 5, logs: 500, rum: 2_000_000, desc: "Retail POS Enterprise PDF", body: "Retail sizing document attached in PDF (120 servers, 24 network components, 15 basic monitors, 5 synthetic checks, 500 GB logs, 2 million pageviews). No other monitoring." },
-  { id: "mm-pdf-05", file: "mm-rfp-hospital-network.pdf", hosts: 40, nets: 8, webs: 5, logs: 300, desc: "Hospital Information System PDF", body: "Hospital RFQ PDF attached (40 servers, 8 network components, 5 basic monitors, 300 GB logs). No synthetic checks or RUM." },
-  { id: "mm-pdf-06", file: "mm-rfp-university-campus.pdf", hosts: 60, nets: 15, webs: 10, logs: 250, desc: "University IT Infrastructure PDF", body: "Campus monitoring spec attached in PDF (60 servers, 15 network components, 10 basic monitors, 250 GB logs). No synthetic or RUM." },
-  { id: "mm-pdf-07", file: "mm-rfp-fintech-gateway.pdf", hosts: 50, nets: 10, webs: 12, syn: 4, logs: 600, desc: "Payment Switch Performance PDF", body: "Payment switch sizing attached in PDF (50 servers, 10 network components, 12 basic monitors, 4 synthetic checks, 600 GB logs). No RUM." },
-  { id: "mm-pdf-08", file: "mm-rfp-smartcity-iot.pdf", hosts: 70, nets: 20, webs: 6, logs: 1000, desc: "Smart City IoT Broker PDF", body: "Smart city broker RFP attached in PDF (70 servers, 20 network components, 6 basic monitors, 1000 GB logs). No synthetic or RUM." },
-  { id: "mm-pdf-09", file: "mm-rfp-airline-ops.pdf", hosts: 45, nets: 12, webs: 8, syn: 3, logs: 400, rum: 1_500_000, desc: "Airline Operations Dispatch PDF", body: "Airline operations spec attached in PDF (45 servers, 12 network components, 8 basic monitors, 3 synthetic checks, 400 GB logs, 1.5 million pageviews). Nothing else." },
-  { id: "mm-pdf-10", file: "mm-rfp-automotive-mfg.pdf", hosts: 55, nets: 14, webs: 4, logs: 350, desc: "Automotive Factory Telemetry PDF", body: "Factory telemetry RFP attached in PDF (55 servers, 14 network components, 4 basic monitors, 350 GB logs). No synthetic or RUM." },
-  { id: "mm-pdf-11", file: "mm-rfp-telco-core.pdf", hosts: 100, nets: 25, webs: 10, logs: 1500, desc: "5G Core Network Spec PDF", body: "5G Core network spec attached in PDF (100 servers, 25 network components, 10 basic monitors, 1500 GB logs). No synthetic or RUM." },
-  { id: "mm-pdf-12", file: "mm-rfp-insurance-portal.pdf", hosts: 35, nets: 7, webs: 6, syn: 2, logs: 200, rum: 500_000, desc: "Insurance Claims Engine PDF", body: "Claims engine RFP attached in PDF (35 servers, 7 network components, 6 basic monitors, 2 synthetic checks, 200 GB logs, 500k pageviews). Nothing else." },
+  { id: "mm-pdf-01", file: "Case-1-Production-Infrastructure.pdf", hosts: 50, nets: 8, webs: 5, syn: 2, logs: 600, desc: "Production Infrastructure PDF Tender", body: "Please review the attached PDF document containing our production infrastructure inventory and sizing breakdown. We need a quotation for the entire scope detailed in the specification. No other monitoring needed." },
+  { id: "mm-pdf-02", file: "mm-rfp-government-cloud.pdf", hosts: 80, nets: 15, webs: 12, syn: 5, logs: 800, rum: 2_000_000, desc: "Government Cloud Tender PDF", body: "Please find attached our official Government Portal Infrastructure Tender specification PDF. Please prepare a formal proposal for the sizing specified in Section 2." },
+  { id: "mm-pdf-03", file: "mm-rfp-banking-cluster.pdf", hosts: 40, nets: 6, webs: 8, syn: 4, logs: 500, desc: "Banking Cluster Observability RFP PDF", body: "Please review our attached Core Banking Infrastructure Tender RFP PDF. We require pricing for the bill of materials summarized in Section 3.2 of the tender." },
+  { id: "mm-pdf-04", file: "mm-rfp-retail-pos.pdf", hosts: 45, nets: 8, webs: 6, syn: 3, logs: 150, rum: 1_000_000, desc: "Retail POS Enterprise PDF", body: "Attached is our Retail POS & Inventory Telemetry RFP PDF. Please provide quotation details according to the requirements specification table." },
+  { id: "mm-pdf-05", file: "mm-rfp-hospital-network.pdf", hosts: 50, nets: 10, webs: 4, syn: 1, logs: 300, desc: "Hospital Information System PDF", body: "Attached is our Hospital Network Telemetry RFP PDF. Please quote as per the Bill of Quantities in Section 2." },
+  { id: "mm-pdf-06", file: "mm-rfp-university-campus.pdf", hosts: 35, nets: 16, webs: 5, logs: 200, desc: "University IT Infrastructure PDF", body: "Please find attached our University Campus Wi-Fi and Core Infrastructure specification PDF. We require monitoring according to the Scope Matrix in Section 2." },
+  { id: "mm-pdf-07", file: "mm-rfp-fintech-gateway.pdf", hosts: 30, nets: 4, webs: 5, syn: 2, logs: 250, desc: "Payment Switch Performance PDF", body: "Attached is our Fintech Payment Gateway monitoring scope PDF. Please provide a proposal based on the Technical Scope of Work in Section 2." },
+  { id: "mm-pdf-08", file: "mm-rfp-smartcity-iot.pdf", hosts: 70, nets: 20, webs: 6, logs: 1000, desc: "Smart City IoT Broker PDF", body: "Attached is our Smart City IoT Broker sizing RFP PDF. Please review Section 2 for the sizing summary and quote accordingly." },
+  { id: "mm-pdf-09", file: "mm-rfp-airline-ops.pdf", hosts: 45, nets: 12, webs: 8, syn: 3, logs: 400, rum: 1_500_000, desc: "Airline Operations Dispatch PDF", body: "Please find attached our Airline Operations Dispatch System RFP PDF. We need pricing for the full technical scope outlined in Section 2. Nothing else." },
+  { id: "mm-pdf-10", file: "mm-rfp-automotive-mfg.pdf", hosts: 55, nets: 14, webs: 4, logs: 350, desc: "Automotive Factory Telemetry PDF", body: "Attached is our Automotive Factory Telemetry specification PDF. Please prepare a quote based on the Component Requirements in Section 2." },
+  { id: "mm-pdf-11", file: "mm-rfp-telco-core.pdf", hosts: 100, nets: 25, webs: 10, logs: 1500, desc: "5G Core Network Spec PDF", body: "Attached is our 5G Core Network monitoring specification PDF. Please send a proposal covering the Core Sizing listed in Section 2." },
+  { id: "mm-pdf-12", file: "mm-rfp-insurance-portal.pdf", hosts: 35, nets: 7, webs: 6, syn: 2, logs: 200, rum: 500_000, desc: "Insurance Claims Engine PDF", body: "Please find attached our Insurance Claims Engine RFP PDF. Provide pricing for all components in the Scope Matrix in Section 2. Nothing else." },
 ];
 
-mmPdfData.forEach((p) => {
+for (const p of mmPdfData) {
+  const text = await getAttachmentText(p.file);
   cases.push({
     id: p.id,
     category: "multimodal_attachment",
@@ -679,6 +693,7 @@ mmPdfData.forEach((p) => {
     subject: `RFP Submission: ${p.desc}`,
     turns: [p.body],
     attachments: [p.file],
+    attachmentTexts: text ? [text] : [],
     expected: {
       action: "prepare_quote",
       requirements: closed({
@@ -691,18 +706,19 @@ mmPdfData.forEach((p) => {
       }),
     },
   });
-});
+}
 
 // Word Specs (5 Cases): mm-doc-01 to mm-doc-05
 const mmDocData = [
-  { id: "mm-doc-01", file: "Case-2-Enterprise-Architecture-Spec.docx", hosts: 80, nets: 12, webs: 25, syn: 10, logs: 2000, desc: "Enterprise Architecture Spec DOCX", body: "Attached is our enterprise architecture specification for IT monitoring (80 servers, 12 network switches, 25 basic monitors, 10 synthetic checks, 2000 GB logs). No RUM." },
-  { id: "mm-doc-02", file: "mm-spec-defense-infra.docx", hosts: 80, nets: 12, webs: 25, syn: 10, logs: 2000, desc: "Defense Infrastructure Spec DOCX", body: "Defense infrastructure specification attached in DOCX (80 servers, 12 network switches, 25 basic monitors, 10 synthetic checks, 2000 GB logs). No RUM." },
-  { id: "mm-doc-03", file: "mm-spec-analytics-lake.docx", hosts: 80, nets: 12, webs: 25, syn: 10, logs: 2000, desc: "Analytics Lake Architecture DOCX", body: "Data lake spec attached in DOCX (80 servers, 12 network switches, 25 basic monitors, 10 synthetic checks, 2000 GB logs). No RUM." },
-  { id: "mm-doc-04", file: "mm-spec-payment-processor.docx", hosts: 80, nets: 12, webs: 25, syn: 10, logs: 2000, desc: "Payment Processor Spec DOCX", body: "Payment processor architecture spec attached in DOCX (80 servers, 12 network switches, 25 basic monitors, 10 synthetic checks, 2000 GB logs). No RUM." },
-  { id: "mm-doc-05", file: "mm-spec-gaming-backend.docx", hosts: 80, nets: 12, webs: 25, syn: 10, logs: 2000, desc: "Gaming Backend Architecture DOCX", body: "Gaming backend spec attached in DOCX (80 servers, 12 network switches, 25 basic monitors, 10 synthetic checks, 2000 GB logs). No RUM." },
+  { id: "mm-doc-01", file: "Case-2-Enterprise-Architecture-Spec.docx", hosts: 80, nets: 16, webs: 0, syn: 10, rum: 1_000_000, logs: 3000, desc: "Enterprise Architecture Spec DOCX", body: "Attached is our enterprise architecture specification for IT monitoring. Please review our infrastructure inventory in the document and provide an itemized proposal." },
+  { id: "mm-doc-02", file: "mm-spec-defense-infra.docx", hosts: 60, nets: 8, webs: 4, syn: 0, logs: 300, desc: "Defense Infrastructure Spec DOCX", body: "Please find attached our defense infrastructure specification in DOCX. Please quote the appropriate monitoring tiers based on the compute host and network requirements in the file." },
+  { id: "mm-doc-03", file: "mm-spec-analytics-lake.docx", hosts: 40, nets: 6, webs: 2, syn: 1, logs: 500, desc: "Analytics Lake Architecture DOCX", body: "Attached is our enterprise data lake and analytics specification in DOCX. Please provide pricing for the servers, interconnect switches, reporting portals, and log ingestion outlined." },
+  { id: "mm-doc-04", file: "mm-spec-payment-processor.docx", hosts: 50, nets: 10, webs: 6, syn: 3, logs: 400, rum: 2_000_000, desc: "Payment Processor Spec DOCX", body: "Attached is our payment processor architecture specification document. We need full coverage for our host fleet, PCI hardware, synthetic payment journeys, and audit trail." },
+  { id: "mm-doc-05", file: "mm-spec-gaming-backend.docx", hosts: 75, nets: 12, webs: 8, syn: 0, logs: 600, rum: 500_000, desc: "Gaming Backend Architecture DOCX", body: "Attached is our multiplayer gaming backend specification in DOCX. Please quote monitoring for the matchmaking servers, edge routers, lobby portals, and telemetry stream in the document." },
 ];
 
-mmDocData.forEach((d) => {
+for (const d of mmDocData) {
+  const text = await getAttachmentText(d.file);
   cases.push({
     id: d.id,
     category: "multimodal_attachment",
@@ -710,6 +726,7 @@ mmDocData.forEach((d) => {
     subject: `Architecture Spec: ${d.desc}`,
     turns: [d.body],
     attachments: [d.file],
+    attachmentTexts: text ? [text] : [],
     expected: {
       action: "prepare_quote",
       requirements: closed({
@@ -717,11 +734,12 @@ mmDocData.forEach((d) => {
         network_component: d.nets || 0,
         basic_monitor: d.webs || 0,
         advanced_monitor: d.syn || 0,
+        rum_pageview: d.rum || 0,
         applog_gb: d.logs || 0,
       }),
     },
   });
-});
+}
 
 // Scanned / Image-Only PDFs (4 Cases): mm-scan-01 to mm-scan-04
 // Must route to human_review as text is non-extractable raster!
@@ -732,7 +750,8 @@ const mmScanData = [
   { id: "mm-scan-04", file: "mm-scanned-faxed-scope.pdf", desc: "Low-contrast legacy scan (Image Only)", body: "Attached is our legacy infrastructure scan. Let us know the price." },
 ];
 
-mmScanData.forEach((s) => {
+for (const s of mmScanData) {
+  const text = await getAttachmentText(s.file);
   cases.push({
     id: s.id,
     category: "multimodal_attachment",
@@ -740,6 +759,7 @@ mmScanData.forEach((s) => {
     subject: `Scanned Document: ${s.desc}`,
     turns: [s.body],
     attachments: [s.file],
+    attachmentTexts: text ? [text] : [],
     expected: {
       action: "human_review",
       acceptableActions: ["ask_follow_up"],
@@ -747,17 +767,19 @@ mmScanData.forEach((s) => {
       scoreQuantities: false,
     },
   });
-});
+}
 
 // Network Diagrams (4 Cases): mm-img-01 to mm-img-04
+// Unquantified image diagrams must trigger follow-up questions to clarify topology nodes!
 const mmImgData = [
-  { id: "mm-img-01", file: "mm-diagram-aws-multi-tier.png", hosts: 20, nets: 4, webs: 2, desc: "AWS Multi-Tier Architecture Diagram", body: "Attached is our AWS architecture diagram showing 20 EC2 servers, 4 VPC gateways, and 2 public ALB endpoints. No logs, synthetic, or RUM." },
-  { id: "mm-img-02", file: "mm-diagram-azure-hub-spoke.png", hosts: 35, nets: 6, webs: 4, desc: "Azure Hub-Spoke Network Diagram", body: "Attached is our Azure hub-spoke topology diagram (35 virtual machines, 6 virtual network gateways, and 4 web portals). No other monitoring." },
-  { id: "mm-img-03", file: "mm-diagram-gcp-kubernetes.png", hosts: 50, nets: 8, webs: 5, desc: "GCP Kubernetes Cluster Diagram", body: "Attached is our GKE cluster topology diagram with 50 worker nodes, 8 cloud routers, and 5 ingress services. No logs or RUM." },
-  { id: "mm-img-04", file: "mm-diagram-hybrid-sdwan.jpg", hosts: 60, nets: 12, webs: 6, desc: "Hybrid SD-WAN Topology Diagram", body: "Attached is our SD-WAN branch topology diagram (60 branch servers, 12 SD-WAN routers, and 6 portal URLs). No other monitoring." },
+  { id: "mm-img-01", file: "mm-diagram-aws-multi-tier.png", desc: "AWS Multi-Tier Architecture Diagram", body: "Please see our attached AWS multi-tier architecture diagram. Could you review it and advise on what information you need from our topology to provide a quote?" },
+  { id: "mm-img-02", file: "mm-diagram-azure-hub-spoke.png", desc: "Azure Hub-Spoke Network Diagram", body: "Attached is our Azure hub-spoke topology diagram. Can you follow up with us regarding how to size monitoring for the nodes in the diagram?" },
+  { id: "mm-img-03", file: "mm-diagram-gcp-kubernetes.png", desc: "GCP Kubernetes Cluster Diagram", body: "Attached is our GKE cluster topology diagram. Please let us know the details required to estimate our monitoring plan." },
+  { id: "mm-img-04", file: "mm-diagram-hybrid-sdwan.jpg", desc: "Hybrid SD-WAN Topology Diagram", body: "Attached is our SD-WAN branch topology diagram. Please review and follow up with the required sizing questions." },
 ];
 
-mmImgData.forEach((m) => {
+for (const m of mmImgData) {
+  const text = await getAttachmentText(m.file);
   cases.push({
     id: m.id,
     category: "multimodal_attachment",
@@ -765,34 +787,21 @@ mmImgData.forEach((m) => {
     subject: `Architecture Diagram: ${m.desc}`,
     turns: [m.body],
     attachments: [m.file],
+    attachmentTexts: text ? [text] : [],
     expected: {
-      action: "prepare_quote",
-      requirements: closed({
-        host_monitor: m.hosts || 0,
-        network_component: m.nets || 0,
-        basic_monitor: m.webs || 0,
-      }),
+      action: "ask_follow_up",
+      acceptableActions: ["human_review"],
+      missing: ["host_monitor", "network_component"],
+      requirements: {},
+      scoreQuantities: false,
     },
   });
-});
+}
 
 console.log(`Total generated cases: ${cases.length}`);
 
 // Write cases-v2.ts
-const code = `import type { BenchmarkCase, DemandUnit } from "./types.ts";
-
-/** Builds a fully-closed requirement set: every unit is 0 unless overridden. */
-function closed(overrides: Partial<Record<DemandUnit, number>>): Partial<Record<DemandUnit, number>> {
-  return {
-    host_monitor: 0,
-    network_component: 0,
-    basic_monitor: 0,
-    advanced_monitor: 0,
-    rum_pageview: 0,
-    applog_gb: 0,
-    ...overrides,
-  };
-}
+const code = `import type { BenchmarkCase } from "./types.ts";
 
 /**
  * Quote24x7 Benchmark Dataset v2 — 200 Cases Total.
@@ -810,3 +819,11 @@ export const BENCHMARK_CASES_V2: BenchmarkCase[] = ${JSON.stringify(cases, null,
 const outputPath = path.resolve(process.cwd(), "apps/web/src/server/benchmark/cases-v2.ts");
 fs.writeFileSync(outputPath, code, "utf8");
 console.log(`Saved ${cases.length} cases to ${outputPath}`);
+
+const jsonPath1 = path.resolve(process.cwd(), "apps/web/benchmark-dataset-v2.json");
+fs.writeFileSync(jsonPath1, JSON.stringify(cases, null, 2), "utf8");
+const jsonPath2 = path.resolve(process.cwd(), "benchmark-dataset-v2.json");
+if (fs.existsSync(jsonPath2)) {
+  fs.writeFileSync(jsonPath2, JSON.stringify(cases, null, 2), "utf8");
+}
+console.log(`Saved benchmark-dataset-v2.json successfully.`);

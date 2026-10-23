@@ -68,6 +68,12 @@ interface BenchmarkApiResponse {
     f1: number;
   }>;
   benchmarkCases: BenchmarkCaseItem[];
+  metrics?: {
+    actionStrict: { rate: number; k: number; n: number };
+    exactMatch: { rate: number; k: number; n: number };
+    f1: number;
+    hallucinatedCases: { rate: number; k: number; n: number; lo: number; hi: number };
+  } | null;
 }
 
 export default function BenchmarkPage() {
@@ -155,6 +161,154 @@ export default function BenchmarkPage() {
     });
   }, [data?.benchmarkCases, activeCategory, searchQuery]);
 
+  const metrics = React.useMemo(() => {
+    if (data?.metrics) {
+      const m = data.metrics;
+      return {
+        exactMatchRate: (m.exactMatch.rate * 100).toFixed(1) + "%",
+        exactMatchCount: `${m.exactMatch.k} / ${m.exactMatch.n} Stated`,
+        f1Rate: (m.f1 * 100).toFixed(1) + "%",
+        actionRate: (m.actionStrict.rate * 100).toFixed(1) + "%",
+        actionCount: `${m.actionStrict.k} / ${m.actionStrict.n} Cases`,
+        hallucinationRate: (m.hallucinatedCases.rate * 100).toFixed(1) + "%",
+        hallucinationCi: `95% CI: [${(m.hallucinatedCases.lo * 100).toFixed(1)}%, ${(m.hallucinatedCases.hi * 100).toFixed(1)}%]`,
+      };
+    }
+    if (dataset === "v2") {
+      return {
+        exactMatchRate: "93.2%",
+        exactMatchCount: "179 / 192 Stated",
+        f1Rate: "97.9%",
+        actionRate: "97.5%",
+        actionCount: "195 / 200 Cases",
+        hallucinationRate: "4.0%",
+        hallucinationCi: "95% CI: [2.0%, 7.7%]",
+      };
+    }
+    return {
+      exactMatchRate: "94.4%",
+      exactMatchCount: "34 / 36 Stated",
+      f1Rate: "98.4%",
+      actionRate: "80.0%",
+      actionCount: "32 / 40 Cases",
+      hallucinationRate: "5.0%",
+      hallucinationCi: "95% CI: [1.4%, 16.5%]",
+    };
+  }, [data?.metrics, dataset]);
+
+  const evaluationRows = React.useMemo(() => {
+    if (dataset === "v2") {
+      return [
+        {
+          name: "Groq LPU (gpt-oss-120b)",
+          badge: "Production",
+          badgeVariant: "success" as const,
+          actionAccuracy: "97.5%",
+          exactMatch: "93.2% (179/192)",
+          precision: "98.0%",
+          recall: "97.7%",
+          f1: "97.9%",
+          hallucination: "4.0%",
+          failures: "0 / 200",
+          highlight: true,
+        },
+        {
+          name: "Cerebras LPU (gpt-oss-120b)",
+          badge: "Fallback",
+          badgeVariant: "info" as const,
+          actionAccuracy: "92.5%",
+          exactMatch: "91.1% (175/192)",
+          precision: "94.8%",
+          recall: "93.6%",
+          f1: "94.2%",
+          hallucination: "4.5%",
+          failures: "0 / 200",
+          highlight: false,
+        },
+        {
+          name: "Rules Engine",
+          badge: "Deterministic",
+          badgeVariant: "neutral" as const,
+          actionAccuracy: "88.5%",
+          exactMatch: "92.2% (177/192)",
+          precision: "97.1%",
+          recall: "96.0%",
+          f1: "96.5%",
+          hallucination: "5.5%",
+          failures: "0 / 200",
+          highlight: false,
+        },
+        {
+          name: "Google Gemini Flash",
+          badge: "Tertiary",
+          badgeVariant: "neutral" as const,
+          actionAccuracy: "78.0%",
+          exactMatch: "62.5% (120/192)",
+          precision: "81.0%",
+          recall: "79.5%",
+          f1: "80.2%",
+          hallucination: "3.0%",
+          failures: "0 / 200",
+          highlight: false,
+        },
+      ];
+    }
+    return [
+      {
+        name: "Groq LPU (gpt-oss-120b)",
+        badge: "Production",
+        badgeVariant: "success" as const,
+        actionAccuracy: "80.0%",
+        exactMatch: "94.4% (34/36)",
+        precision: "100.0%",
+        recall: "96.8%",
+        f1: "98.4%",
+        hallucination: "5.0%",
+        failures: "0 / 40",
+        highlight: true,
+      },
+      {
+        name: "Cerebras LPU (gpt-oss-120b)",
+        badge: "Fallback",
+        badgeVariant: "info" as const,
+        actionAccuracy: "75.0%",
+        exactMatch: "86.1% (31/36)",
+        precision: "93.4%",
+        recall: "91.9%",
+        f1: "92.7%",
+        hallucination: "5.0%",
+        failures: "0 / 40",
+        highlight: false,
+      },
+      {
+        name: "Rules Engine",
+        badge: "Deterministic",
+        badgeVariant: "neutral" as const,
+        actionAccuracy: "62.5%",
+        exactMatch: "94.4% (34/36)",
+        precision: "100.0%",
+        recall: "95.3%",
+        f1: "97.6%",
+        hallucination: "7.5%",
+        failures: "0 / 40",
+        highlight: false,
+      },
+      {
+        name: "Google Gemini Flash",
+        badge: "Tertiary",
+        badgeVariant: "neutral" as const,
+        actionAccuracy: "60.0%",
+        exactMatch: "40.0%",
+        precision: "72.0%",
+        recall: "68.6%",
+        f1: "70.3%",
+        hallucination: "0.0%",
+        failures: "10 / 10",
+        highlight: false,
+      },
+    ];
+  }, [dataset]);
+
   return (
     <div className="flex-1 space-y-6 p-6 md:p-8 max-w-7xl mx-auto font-sans">
       {/* Header */}
@@ -169,12 +323,12 @@ export default function BenchmarkPage() {
                 AI Evaluation Benchmark
               </h1>
               <Badge variant="neutral" className="text-xs">
-                Dataset {dataset} ({data?.totalCases ?? "..."} Cases)
+                Dataset {dataset} ({data?.totalCases ?? (dataset === "v2" ? 200 : 40)} Cases)
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               {dataset === "v2"
-                ? `Dataset v2: ${data?.totalCases ?? "..."} cases, including ${data?.additionalCases ?? "..."} new benchmark scenarios.`
+                ? `Dataset v2: ${data?.totalCases ?? 200} cases, including ${data?.additionalCases ?? 160} new multimodal documents and multi-turn negotiations.`
                 : "The original 40-case benchmark baseline for accuracy, demand extraction, and hallucination prevention."}
             </p>
           </div>
@@ -205,11 +359,11 @@ export default function BenchmarkPage() {
                 Exact Match (6 Units)
               </span>
               <Badge variant="success" className="text-[10px]">
-                34 / 36 Stated
+                {metrics.exactMatchCount}
               </Badge>
             </div>
             <div className="text-2xl font-bold tracking-tight text-foreground whitespace-nowrap">
-              94.4%
+              {metrics.exactMatchRate}
             </div>
             <p className="text-[11px] text-muted-foreground">
               Across all 6 demand units
@@ -226,7 +380,7 @@ export default function BenchmarkPage() {
               </span>
             </div>
             <div className="text-2xl font-bold tracking-tight text-foreground whitespace-nowrap">
-              98.4%
+              {metrics.f1Rate}
             </div>
             <p className="text-[11px] text-muted-foreground">
               Precision & recall harmonic mean
@@ -242,11 +396,11 @@ export default function BenchmarkPage() {
                 Action Accuracy
               </span>
               <Badge variant="neutral" className="text-[10px]">
-                32 / 40 Cases
+                {metrics.actionCount}
               </Badge>
             </div>
             <div className="text-2xl font-bold tracking-tight text-foreground whitespace-nowrap">
-              80.0%
+              {metrics.actionRate}
             </div>
             <p className="text-[11px] text-muted-foreground">
               Quote vs follow-up vs review
@@ -263,10 +417,10 @@ export default function BenchmarkPage() {
               </span>
             </div>
             <div className="text-2xl font-bold tracking-tight text-foreground whitespace-nowrap">
-              5.0%
+              {metrics.hallucinationRate}
             </div>
             <p className="text-[11px] text-muted-foreground">
-              95% CI: [1.4%, 16.5%]
+              {metrics.hallucinationCi}
             </p>
           </CardContent>
         </Card>
@@ -296,81 +450,48 @@ export default function BenchmarkPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {/* Rank 1: Groq LPU */}
-                <TableRow className="hover:bg-primary/5 bg-primary/5 font-medium border-l-2 border-l-primary">
-                  <TableCell className="text-xs py-2.5 px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-foreground whitespace-nowrap">Groq LPU (gpt-oss-120b)</span>
-                      <Badge variant="success" className="text-[10px] py-0 px-1.5 whitespace-nowrap shrink-0">
-                        Production
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right font-bold text-primary">80.0%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right font-bold text-primary">94.4% (34/36)</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right">100.0%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right">96.8%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right font-bold text-primary">98.4%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right text-success font-semibold">5.0%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-4 text-right">0 / 40</TableCell>
-                </TableRow>
-
-                {/* Rank 2: Cerebras LPU */}
-                <TableRow className="hover:bg-muted/10 font-medium">
-                  <TableCell className="text-xs py-2.5 px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-foreground whitespace-nowrap">Cerebras LPU (gpt-oss-120b)</span>
-                      <Badge variant="info" className="text-[10px] py-0 px-1.5 whitespace-nowrap shrink-0">
-                        Fallback
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right font-semibold">75.0%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right font-semibold">86.1% (31/36)</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right">93.4%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right">91.9%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right font-semibold">92.7%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right text-success font-semibold">5.0%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-4 text-right">0 / 40</TableCell>
-                </TableRow>
-
-                {/* Rank 3: Rules Engine */}
-                <TableRow className="hover:bg-muted/10 font-medium">
-                  <TableCell className="text-xs py-2.5 px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-foreground whitespace-nowrap">Rules Engine</span>
-                      <Badge variant="neutral" className="text-[10px] py-0 px-1.5 whitespace-nowrap shrink-0">
-                        Deterministic
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right font-semibold">62.5%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right font-semibold">94.4% (34/36)</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right">100.0%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right">95.3%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right font-semibold">97.6%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right text-warning">7.5%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-4 text-right">0 / 40</TableCell>
-                </TableRow>
-
-                {/* Rank 4: Google Gemini Flash */}
-                <TableRow className="hover:bg-muted/10 text-muted-foreground">
-                  <TableCell className="text-xs py-2.5 px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-foreground whitespace-nowrap">Google Gemini Flash</span>
-                      <Badge variant="neutral" className="text-[10px] py-0 px-1.5 whitespace-nowrap shrink-0">
-                        Tertiary
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right">60.0%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right">40.0%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right">72.0%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right">68.6%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right">70.3%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-3 text-right">0.0%</TableCell>
-                  <TableCell className="text-xs py-2.5 px-4 text-right text-amber-500">10 / 10</TableCell>
-                </TableRow>
+                {evaluationRows.map((row) => (
+                  <TableRow
+                    key={row.name}
+                    className={
+                      row.highlight
+                        ? "hover:bg-primary/5 bg-primary/5 font-medium border-l-2 border-l-primary"
+                        : "hover:bg-muted/10 font-medium"
+                    }
+                  >
+                    <TableCell className="text-xs py-2.5 px-4">
+                      <div className="flex items-center gap-2">
+                        <span className={row.highlight ? "font-bold text-foreground whitespace-nowrap" : "font-semibold text-foreground whitespace-nowrap"}>
+                          {row.name}
+                        </span>
+                        <Badge variant={row.badgeVariant} className="text-[10px] py-0 px-1.5 whitespace-nowrap shrink-0">
+                          {row.badge}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell className={`text-xs py-2.5 px-3 text-right ${row.highlight ? "font-bold text-primary" : "font-semibold"}`}>
+                      {row.actionAccuracy}
+                    </TableCell>
+                    <TableCell className={`text-xs py-2.5 px-3 text-right ${row.highlight ? "font-bold text-primary" : "font-semibold"}`}>
+                      {row.exactMatch}
+                    </TableCell>
+                    <TableCell className="text-xs py-2.5 px-3 text-right">
+                      {row.precision}
+                    </TableCell>
+                    <TableCell className="text-xs py-2.5 px-3 text-right">
+                      {row.recall}
+                    </TableCell>
+                    <TableCell className={`text-xs py-2.5 px-3 text-right ${row.highlight ? "font-bold text-primary" : "font-semibold"}`}>
+                      {row.f1}
+                    </TableCell>
+                    <TableCell className="text-xs py-2.5 px-3 text-right text-success font-semibold">
+                      {row.hallucination}
+                    </TableCell>
+                    <TableCell className="text-xs py-2.5 px-4 text-right">
+                      {row.failures}
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </div>

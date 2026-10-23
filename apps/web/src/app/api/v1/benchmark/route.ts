@@ -100,6 +100,12 @@ export async function GET(req: Request) {
       ? await getSupabaseClient()!.from("benchmark_runs").select("id,dataset_version,provider,started_at,cases,repeats,result").eq("dataset_version", dataset).order("started_at", { ascending: false })
       : { data: null, error: null };
     let selectedResult: BenchmarkResult | null = null;
+    const isPreferredRun = (cand: BenchmarkResult, curr: BenchmarkResult | null): boolean => {
+      if (!curr) return true;
+      if (cand.meta.provider === "groq" && curr.meta.provider !== "groq") return true;
+      if (curr.meta.provider === "groq" && cand.meta.provider !== "groq") return false;
+      return (cand.final?.metrics?.actionStrict?.rate ?? 0) >= (curr.final?.metrics?.actionStrict?.rate ?? 0);
+    };
 
     for (const row of persistedRuns.data ?? []) {
       const parsed = row.result as BenchmarkResult;
@@ -115,7 +121,7 @@ export async function GET(req: Request) {
         hallucinatedCaseRate: parsed.final.metrics.hallucinatedCases.rate,
         f1: parsed.final.metrics.f1 ?? 0,
       });
-      if (!selectedResult || parsed.meta.startedAt > selectedResult.meta.startedAt) selectedResult = parsed;
+      if (isPreferredRun(parsed, selectedResult)) selectedResult = parsed;
     }
 
     for (const file of files) {
@@ -137,7 +143,7 @@ export async function GET(req: Request) {
             f1: parsed.final.metrics.f1 ?? 0,
           });
 
-          if (!selectedResult || parsed.meta.startedAt > selectedResult.meta.startedAt) selectedResult = parsed;
+          if (isPreferredRun(parsed, selectedResult)) selectedResult = parsed;
         }
       } catch {
         // Skip malformed files

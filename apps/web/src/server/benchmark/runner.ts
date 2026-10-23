@@ -8,7 +8,7 @@ import { loadActiveCatalogue } from "../catalogue/loader.ts";
 import type { EmailMessage, EmailThread, MessageAttachment, RequirementProfile } from "@/types/domain";
 import { parseInboundDocument } from "../documents/inbound-document-parser.ts";
 import { extractRequirements, mergeRequirements } from "../extraction/extractor.ts";
-import { BENCHMARK_CASES } from "./cases.ts";
+import { BENCHMARK_CASES, BENCHMARK_CASES_V1 } from "./cases.ts";
 import { aggregate, scoreCase, type DetectContext } from "./scorer.ts";
 import {
   UNITS,
@@ -363,7 +363,14 @@ export async function runBenchmark(options: RunOptions): Promise<BenchmarkResult
     planIds: new Set(catalogue.plans.map((p) => p.id)),
     supportedCategories: new Set(deriveSupportedCategories(catalogue)),
   };
-  let selected = options.cases ?? BENCHMARK_CASES;
+  const isReplay = Array.isArray(options.replayRuns) && options.replayRuns.length > 0;
+  const replayMap = isReplay ? new Map(options.replayRuns!.map((r) => [r.caseId, r])) : null;
+
+  let selected = options.cases ?? (isReplay && options.replayRuns!.length <= 40 ? BENCHMARK_CASES_V1 : BENCHMARK_CASES);
+  if (isReplay && !options.cases) {
+    const replayIds = new Set(options.replayRuns!.map((r) => r.caseId));
+    selected = selected.filter((c) => replayIds.has(c.id));
+  }
   if (options.ids?.length) selected = selected.filter((c) => options.ids?.includes(c.id));
   if (options.categories?.length) selected = selected.filter((c) => options.categories?.includes(c.category));
   if (options.limit) selected = selected.slice(0, options.limit);
@@ -371,9 +378,6 @@ export async function runBenchmark(options: RunOptions): Promise<BenchmarkResult
   const repeats = Math.max(1, options.repeats ?? 1);
   const runs: BenchmarkResult["runs"] = [];
   const byId = new Map(selected.map((c) => [c.id, c]));
-
-  const isReplay = Array.isArray(options.replayRuns) && options.replayRuns.length > 0;
-  const replayMap = isReplay ? new Map(options.replayRuns!.map((r) => [r.caseId, r])) : null;
 
   let currentDelayMs = options.delayMs ?? (options.provider ? 3000 : 0);
 
