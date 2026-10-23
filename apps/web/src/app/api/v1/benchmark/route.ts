@@ -19,11 +19,48 @@ function getResultsDir(): string {
   return p1;
 }
 
+function getAttachmentPath(filename: string): string | null {
+  const safeName = path.basename(filename);
+  const candidates = [
+    path.resolve(process.cwd(), "test-attachments", safeName),
+    path.resolve(process.cwd(), "apps/web/test-attachments", safeName),
+    path.resolve(process.cwd(), "..", "test-attachments", safeName),
+  ];
+  return candidates.find((candidate) => fsSync.existsSync(candidate)) ?? null;
+}
+
+function attachmentContentType(filename: string): string {
+  const extension = path.extname(filename).toLowerCase();
+  return {
+    ".pdf": "application/pdf",
+    ".csv": "text/csv; charset=utf-8",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls": "application/vnd.ms-excel",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+  }[extension] ?? "application/octet-stream";
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const dataset = searchParams.get("dataset") === "v1" ? "v1" : "v2";
     const activeCases = dataset === "v1" ? BENCHMARK_CASES_V1 : BENCHMARK_CASES;
+    const attachmentName = searchParams.get("attachment");
+    if (attachmentName) {
+      const attachmentPath = getAttachmentPath(attachmentName);
+      if (!attachmentPath) return NextResponse.json({ success: false, error: "Attachment not found" }, { status: 404 });
+      const content = await fs.readFile(attachmentPath);
+      return new NextResponse(new Uint8Array(content), {
+        headers: {
+          "Content-Type": attachmentContentType(attachmentName),
+          "Content-Disposition": `inline; filename="${path.basename(attachmentName)}"`,
+          "Cache-Control": "public, max-age=3600",
+        },
+      });
+    }
     if (searchParams.get("download") === "dataset") {
       const filename = dataset === "v1" ? "benchmark-dataset-v1.json" : "benchmark-dataset-v2.json";
       const datasetPath = fsSync.existsSync(path.resolve(process.cwd(), filename))
@@ -147,6 +184,11 @@ export async function GET(req: Request) {
         description: c.description,
         subject: c.subject || c.description,
         testedContent: c.turns.join("\n\n---\n\n"),
+        attachments: (c.attachments ?? []).map((filename) => ({
+          filename,
+          url: `/api/v1/benchmark?dataset=${dataset}&attachment=${encodeURIComponent(filename)}`,
+          available: Boolean(getAttachmentPath(filename)),
+        })),
         turnsCount: c.turns.length,
         expected: {
           action: c.expected.action,
@@ -168,6 +210,8 @@ export async function GET(req: Request) {
       success: true,
       dataset,
       totalCases: activeCases.length,
+      sharedBaselineCases: dataset === "v2" ? BENCHMARK_CASES_V1.length : 0,
+      additionalCases: dataset === "v2" ? activeCases.length - BENCHMARK_CASES_V1.length : 0,
       availableRuns,
       benchmarkCases,
       metrics: selectedResult?.final?.metrics || null,
